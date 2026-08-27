@@ -1,0 +1,24 @@
+# Virtual envs
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Browser profiles (huge, machine-specific)
+chrome-profile/
+chrome-profile-test/
+
+# Evidence media (large MP4/JSONL — versioned separately)
+evidence/*.mp4
+evidence/*.jsonl
+
+# Secrets
+.env
+*.local.env
+
+# OS / editor
+Thumbs.db
+.DS_Store
+
+# MCP server runtime
+mcp_server/oauth_clients.json

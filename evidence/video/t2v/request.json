@@ -1,0 +1,28 @@
+{
+  "mediaGenerationContext": {
+    "batchId": "b9321a58-e4d1-4519-9cca-1d825eb829d5",
+    "audioFailurePreference": "AUDIO_FAILURE_PREFERENCE_UNSPECIFIED"
+  },
+  "clientContext": {
+    "tool": "PINHOLE",
+    "sessionId": "1787804313019"
+  },
+  "requests": [
+    {
+      "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+      "textInput": {
+        "structuredPrompt": {
+          "parts": [
+            {
+              "text": "A golden retriever running in a green park"
+            }
+          ]
+        }
+      },
+      "videoModelKey": "veo_3_1_t2v_fast",
+      "seed": 202,
+      "metadata": {}
+    }
+  ],
+  "useV2ModelConfig": true
+}

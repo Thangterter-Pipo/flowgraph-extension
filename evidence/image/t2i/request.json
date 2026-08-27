@@ -1,0 +1,29 @@
+{
+  "clientContext": {
+    "tool": "PINHOLE",
+    "sessionId": "1787804311461"
+  },
+  "mediaGenerationContext": {
+    "batchId": "9876fa27-184b-419f-a050-57446d9bb725"
+  },
+  "useNewMedia": true,
+  "requests": [
+    {
+      "clientContext": {
+        "tool": "PINHOLE",
+        "sessionId": "1787804311462"
+      },
+      "imageModelName": "NARWHAL",
+      "imageAspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
+      "structuredPrompt": {
+        "parts": [
+          {
+            "text": "A serene lotus flower on still water at morning"
+          }
+        ]
+      },
+      "seed": 101,
+      "imageInputs": []
+    }
+  ]
+}

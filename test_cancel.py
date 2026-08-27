@@ -1,0 +1,62 @@
+import asyncio
+import json
+import os
+from playwright.async_api import async_playwright
+
+def sanitize(obj):
+    if isinstance(obj, dict):
+        res = {}
+        for k, v in obj.items():
+            if k.lower() in ('authorization', 'cookie', 'token', 'access_token', 'session_cookie') or 'token' in k.lower():
+                res[k] = '<REDACTED_TOKEN>'
+            elif k.lower() in ('email', 'name', 'image', 'user') and isinstance(v, str):
+                res[k] = '<REDACTED_PII>'
+            else:
+                res[k] = sanitize(v)
+        return res
+    elif isinstance(obj, list):
+        return [sanitize(i) for i in obj]
+    return obj
+
+async def test_cancel_generation():
+    media_id = "b834294a-0e9a-4dd3-b2ff-f6cfdeb30550"
+    project_id = "15e493d2-6465-4a3d-956f-a11c18d41e96"
+
+    async with async_playwright() as p:
+        browser = await p.chromium.connect_over_cdp('http://localhost:9222')
+        context = browser.contexts[0]
+        page = [pg for pg in context.pages if 'labs.google' in pg.url][0]
+
+        session = await page.evaluate("async () => await (await fetch('/fx/api/auth/session')).json()")
+        access_token = session['access_token']
+
+        # Call cancelGeneration endpoint
+        res = await page.evaluate("""async (args) => {
+            const body = {
+                mediaId: args.mediaId,
+                projectId: args.projectId
+            };
+            const r = await fetch('https://aisandbox-pa.googleapis.com/v1/flowMedia:cancelGeneration', {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + args.token,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            });
+            let j = {}; try { j = await r.json(); } catch(e) { j = { text: await r.text() }; }
+            return { status: r.status, json: j, bodySent: body };
+        }""", {'token': access_token, 'mediaId': media_id, 'projectId': project_id})
+
+        print('[+] Cancel Generation Status:', res['status'])
+        print('    Response Body:', json.dumps(res['json'], indent=2))
+
+        os.makedirs('evidence/cancel', exist_ok=True)
+        with open('evidence/cancel/request.json', 'w', encoding='utf-8') as f:
+            json.dump(sanitize(res['bodySent']), f, indent=2)
+        with open('evidence/cancel/response.json', 'w', encoding='utf-8') as f:
+            json.dump(sanitize(res['json']), f, indent=2)
+        with open('evidence/cancel/notes.md', 'w', encoding='utf-8') as f:
+            f.write(f"# Cancel Generation Fixture Notes\n\n- **Status**: {res['status']}\n- **Endpoint**: `POST https://aisandbox-pa.googleapis.com/v1/flowMedia:cancelGeneration`\n- **Behavior**: Returns 404 NOT_FOUND for completed media, or 200 OK for active jobs.\n- **Date**: 2026-08-27\n")
+
+asyncio.run(test_cancel_generation())

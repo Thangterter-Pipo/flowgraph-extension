@@ -1,0 +1,37 @@
+{
+  "mediaGenerationContext": {
+    "batchId": "a32d139c-4630-44e9-9125-e9279c42daf6",
+    "audioFailurePreference": "AUDIO_FAILURE_PREFERENCE_UNSPECIFIED"
+  },
+  "clientContext": {
+    "projectId": "15e493d2-6465-4a3d-956f-a11c18d41e96",
+    "tool": "PINHOLE",
+    "userPaygateTier": "PAYGATE_TIER_ONE",
+    "sessionId": "test-session",
+    "recaptchaContext": {
+      "token": "<REDACTED_TOKEN>",
+      "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+    }
+  },
+  "requests": [
+    {
+      "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+      "textInput": {
+        "structuredPrompt": {
+          "parts": [
+            {
+              "text": "Camera slow zoom in on lake"
+            }
+          ]
+        }
+      },
+      "startImage": {
+        "mediaId": "0b2c2ca5-28ba-4bb6-b9e6-51ceba80edfd"
+      },
+      "videoModelKey": "veo_3_1_i2v_s_fast",
+      "seed": 42,
+      "metadata": {}
+    }
+  ],
+  "useV2ModelConfig": true
+}

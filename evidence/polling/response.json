@@ -1,0 +1,19 @@
+{
+  "remainingCredits": 1050,
+  "media": [
+    {
+      "name": "<REDACTED_PII>",
+      "mediaMetadata": {
+        "mediaStatus": {
+          "mediaGenerationStatus": "MEDIA_GENERATION_STATUS_FAILED",
+          "error": {
+            "message": "Media not found."
+          },
+          "failureReasons": [
+            "Media not found."
+          ]
+        }
+      }
+    }
+  ]
+}

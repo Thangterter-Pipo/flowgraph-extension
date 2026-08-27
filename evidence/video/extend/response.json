@@ -1,0 +1,18 @@
+{
+  "mediaId": "9f714655-adcc-4c67-adb6-ad7847c4d49b",
+  "cdn_url": "https://flow-content.google/video/9f714655-adcc-4c67-adb6-ad7847c4d49b?Expires=1787854000&KeyName=labs-flow-prod-cdn-key&Signature=REDACTED",
+  "contentType": "video/mp4",
+  "length_bytes": 5119753,
+  "verified_field_shape": "videoInput: { mediaId: '<uuid>' }",
+  "endpoint": "POST https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoEditVideo",
+  "_evidence": {
+    "status": 200,
+    "credits_deducted": 20,
+    "credits_before": 1003,
+    "credits_after": 983,
+    "model": "veo_3_1_edit_lite",
+    "source_video_media_id": "d6e527a8-2089-4b2c-8e88-c7a26bd4a764",
+    "mp4_artifact": "evidence/download/extend_verified_9f714655-adcc-4c67-adb6-ad7847c4d49b.mp4",
+    "capturedAt": "2026-08-27T19:20:00Z"
+  }
+}

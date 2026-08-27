@@ -1,0 +1,39 @@
+{
+  "mediaGenerationContext": {
+    "batchId": "587c9516-0880-4cae-8233-5ef3865551cf",
+    "audioFailurePreference": "AUDIO_FAILURE_PREFERENCE_UNSPECIFIED"
+  },
+  "clientContext": {
+    "projectId": "15e493d2-6465-4a3d-956f-a11c18d41e96",
+    "tool": "PINHOLE",
+    "userPaygateTier": "PAYGATE_TIER_ONE",
+    "sessionId": "1787835701623",
+    "recaptchaContext": {
+      "token": "<REDACTED_TOKEN>",
+      "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+    }
+  },
+  "requests": [
+    {
+      "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+      "textInput": {
+        "structuredPrompt": {
+          "parts": [
+            {
+              "text": "Camera panning around scenic view inspired by reference image"
+            }
+          ]
+        }
+      },
+      "videoModelKey": "veo_3_1_t2v_fast",
+      "seed": 42,
+      "metadata": {},
+      "referenceImages": [
+        {
+          "mediaId": "0b2c2ca5-28ba-4bb6-b9e6-51ceba80edfd"
+        }
+      ]
+    }
+  ],
+  "useV2ModelConfig": true
+}

@@ -1,0 +1,13 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Precondition check failed.",
+    "status": "FAILED_PRECONDITION",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "PUBLIC_ERROR_MEDIA_GENERATION_CANNOT_BE_CANCELED"
+      }
+    ]
+  }
+}

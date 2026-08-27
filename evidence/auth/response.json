@@ -1,0 +1,9 @@
+{
+  "user": {
+    "name": "<REDACTED_PII>",
+    "email": "<REDACTED_PII>",
+    "image": "<REDACTED_PII>"
+  },
+  "expires": "2026-08-27T23:00:17.000Z",
+  "access_token": "<REDACTED_TOKEN>"
+}

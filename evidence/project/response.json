@@ -1,0 +1,16 @@
+{
+  "result": {
+    "data": {
+      "json": {
+        "result": {
+          "projectId": "7f338db7-1bdb-4659-8ac2-5cbd310358d6",
+          "projectInfo": {
+            "projectTitle": "RC2_CAPTURE_SUITE"
+          }
+        },
+        "status": 200,
+        "statusText": "OK"
+      }
+    }
+  }
+}

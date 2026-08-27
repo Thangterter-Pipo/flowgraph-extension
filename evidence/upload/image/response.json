@@ -1,0 +1,34 @@
+{
+  "media": {
+    "name": "<REDACTED_PII>",
+    "projectId": "15e493d2-6465-4a3d-956f-a11c18d41e96",
+    "workflowId": "b641e4a7-2aea-451a-ad4f-0b88d5d59c5e",
+    "workflowStepId": "CAE",
+    "mediaMetadata": {
+      "createTime": "2026-08-27T09:54:10.567880Z",
+      "requestData": {
+        "clientPlatform": "CLIENT_PLATFORM_WEB"
+      },
+      "visibility": "PRIVATE",
+      "mediaBlobSize": "379"
+    },
+    "image": {
+      "userUploadedImage": {
+        "aspectRatio": "IMAGE_ASPECT_RATIO_UNSPECIFIED"
+      },
+      "dimensions": {
+        "width": 128,
+        "height": 128
+      }
+    }
+  },
+  "workflow": {
+    "name": "<REDACTED_PII>",
+    "metadata": {
+      "displayName": "test_upload.png",
+      "createTime": "2026-08-27T09:54:10.567880Z",
+      "primaryMediaId": "83d6a985-8005-41dc-961e-36bbf9b35e07"
+    },
+    "projectId": "15e493d2-6465-4a3d-956f-a11c18d41e96"
+  }
+}
