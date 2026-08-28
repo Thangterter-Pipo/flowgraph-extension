@@ -73,8 +73,53 @@ def start_server() -> subprocess.Popen:
         )
 
 
-def start_tunnel() -> subprocess.Popen:
+def cleanup_vps_port(port: int = 3080, retries: int = 3) -> bool:
+    """Free port 3080 on the VPS before (re)starting the tunnel.
+
+    When a tunnel dies abruptly the VPS sshd keeps an orphan fd bound to the
+    forward port, so a new `ssh -R` fails with 'address already in use' and the
+    supervisor loops on exit 255. This finds that holding sshd on the VPS and
+    kills it so the port is free. Returns True if the port ended free.
+    """
+    import subprocess as sp
+
+    for _ in range(retries):
+        try:
+            # Find pid(s) holding the port on the VPS via `ss -tlnp`.
+            out = sp.run(
+                [SSH, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                 "contabo", f"ss -tlnp | grep ':{port} '"],
+                capture_output=True, text=True, timeout=25,
+            ).stdout
+            # Lines like: LISTEN ... users:(("sshd",pid=1234,fd=5))
+            import re
+
+            pids = set(re.findall(r"pid=(\d+)", out))
+            for pid in pids:
+                log(f"Freeing port {port} on VPS: killing orphan sshd pid {pid}")
+                sp.run([SSH, "-o", "BatchMode=yes", "contabo", f"kill {pid}"],
+                       capture_output=True, timeout=20)
+        except Exception as e:
+            log(f"cleanup_vps_port error: {e}")
+        # Check if port is now free
+        try:
+            chk = sp.run(
+                [SSH, "-o", "BatchMode=yes", "-o", "ConnectTimeout=8",
+                 "contabo", f"ss -tln | grep -c ':{port} '"],
+                capture_output=True, text=True, timeout=20,
+            ).stdout.strip()
+            if chk == "0":
+                return True
+        except Exception:
+            pass
+        time.sleep(2)
+    return False
+
+
+def start_tunnel(cleanup: bool = True) -> subprocess.Popen:
     log("Starting SSH reverse tunnel to contabo (0.0.0.0:3080 -> local 3080)")
+    if cleanup:
+        cleanup_vps_port(PORT)
     with TUNNEL_LOG.open("ab") as logf:
         return subprocess.Popen(
             [
