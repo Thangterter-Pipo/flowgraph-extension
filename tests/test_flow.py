@@ -561,7 +561,7 @@ def _sdk_ast():
 def test_130_sdk_contains_expected_core_classes():
     tree = _sdk_ast()
     classes = {node.name for node in tree.body if isinstance(node, ast.ClassDef)}
-    assert {"FlowMedia", "AuthManager", "ModelResolver", "Poller", "DownloadClient", "VideoTextClient", "GoogleFlowClient"} <= classes
+    assert {"FlowMedia", "AuthManager", "ModelResolver", "Poller", "DownloadClient", "BrowserOverlayClient", "VideoTextClient", "GoogleFlowClient"} <= classes
 
 
 def test_131_sdk_does_not_hardcode_paygate_tier_one():
@@ -596,6 +596,23 @@ def test_135_audio_failure_preference_is_not_forced_into_payload():
     text = read_text("sdk/client.py")
     assert "audio_failure_preference: Optional[str] = None" in text
     assert "if audio_failure_preference:" in text
+
+
+def test_136_browser_overlay_helper_is_exposed_on_google_flow_client():
+    tree = _sdk_ast()
+    browser_cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "BrowserOverlayClient")
+    browser_methods = {n.name for n in browser_cls.body if isinstance(n, ast.FunctionDef)}
+    assert {"_find_flow_page", "dismiss_overlays"} <= browser_methods
+    top_cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "GoogleFlowClient")
+    top_methods = {n.name for n in top_cls.body if isinstance(n, ast.FunctionDef)}
+    assert "dismiss_flow_overlays" in top_methods
+
+
+def test_137_overlay_helper_has_security_and_payment_denylist():
+    text = read_text("sdk/client.py").lower()
+    for marker in ("recaptcha", "security", "bảo mật", "verify", "xác minh", "payment", "thanh toán"):
+        assert marker in text
+    assert "overlayancestor" in text.lower()
 
 
 # ---------------------------------------------------------------------------

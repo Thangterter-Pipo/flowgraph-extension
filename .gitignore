@@ -7,6 +7,8 @@ __pycache__/
 # Browser profiles (huge, machine-specific)
 chrome-profile/
 chrome-profile-test/
+chrome-profile2/
+_ctl/profile/
 
 # Evidence media (large MP4/JSONL — versioned separately)
 evidence/*.mp4

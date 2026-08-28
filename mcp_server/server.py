@@ -774,7 +774,14 @@ def main() -> None:
         middleware=[Middleware(APIKeyMiddleware)],
         lifespan=_lifespan,
     )
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+    # Keep-alive high so long-running tool calls (pytest, exec) aren't cut off
+    # mid-stream. Request handling itself is unbounded; this only affects idle
+    # connection reuse between MCP messages.
+    uvicorn.run(
+        app, host=HOST, port=PORT, log_level="info",
+        timeout_keep_alive=int(os.environ.get("UVICORN_KEEP_ALIVE", "120")),
+        timeout_graceful_shutdown=30,
+    )
 
 
 if __name__ == "__main__":

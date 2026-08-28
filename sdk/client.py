@@ -1,6 +1,8 @@
 """
 Google Flow SDK v2 - Truly Dynamic Specification-Compliant Client
 """
+import json
+import re
 import uuid
 import time
 import requests
@@ -102,6 +104,90 @@ class DownloadClient:
                     fh.write(chunk)
         return save_path
 
+class BrowserOverlayClient:
+    """Local Chrome/CDP helper for dismissing non-security Flow UI overlays."""
+
+    SAFE_LABELS = {
+        "Bắt đầu", "Đóng", "Got it", "Dismiss", "Continue", "Tiếp tục",
+        "Skip", "Bỏ qua", "Not now", "Để sau",
+    }
+    DANGEROUS_PATTERN = re.compile(
+        r"captcha|recaptcha|security|bảo mật|verify|xác minh|payment|thanh toán",
+        re.I,
+    )
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 9222):
+        self.host = host
+        self.port = port
+
+    def _find_flow_page(self) -> Dict[str, Any]:
+        res = requests.get(f"http://{self.host}:{self.port}/json/list", timeout=5)
+        res.raise_for_status()
+        pages = res.json()
+        for page in pages:
+            if page.get("type") == "page" and "labs.google/fx" in page.get("url", ""):
+                return page
+        raise RuntimeError("No Google Flow page found on the configured CDP port.")
+
+    def dismiss_overlays(self) -> Dict[str, Any]:
+        """Dismiss visible onboarding/changelog overlays without touching security/payment UI."""
+        try:
+            import websocket
+        except ImportError as exc:  # pragma: no cover
+            raise RuntimeError("Install websocket-client to use BrowserOverlayClient.") from exc
+
+        page = self._find_flow_page()
+        ws = websocket.create_connection(page["webSocketDebuggerUrl"], timeout=5, suppress_origin=True)
+        labels_json = json.dumps(sorted(self.SAFE_LABELS), ensure_ascii=False)
+        danger = self.DANGEROUS_PATTERN.pattern.replace("\\", "\\\\").replace("/", "\\/")
+        expression = f"""
+(() => {{
+  const safe = new Set({labels_json});
+  const danger = new RegExp({json.dumps(danger)}, 'i');
+  const visible = el => {{
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+  }};
+  const overlayAncestor = el => {{
+    let n = el;
+    for (let i = 0; i < 10 && n; i++, n = n.parentElement) {{
+      const role = n.getAttribute && n.getAttribute('role');
+      const modal = n.getAttribute && n.getAttribute('aria-modal');
+      const pos = getComputedStyle(n).position;
+      if (role === 'dialog' || modal === 'true' || pos === 'fixed') return true;
+    }}
+    return false;
+  }};
+  const clicked = [];
+  for (const el of document.querySelectorAll('button,[role="button"]')) {{
+    if (!visible(el) || !overlayAncestor(el)) continue;
+    const raw = (el.innerText || el.textContent || el.getAttribute('aria-label') || '').trim();
+    const parts = raw.split(/\\n+/).map(s => s.trim()).filter(Boolean);
+    const label = parts[parts.length - 1] || raw;
+    if (!label || danger.test(raw)) continue;
+    if (safe.has(label) || safe.has(raw)) {{
+      el.click();
+      clicked.push(label);
+    }}
+  }}
+  return {{clicked, url: location.href, title: document.title}};
+}})()
+"""
+        try:
+            ws.send(json.dumps({
+                "id": 1,
+                "method": "Runtime.evaluate",
+                "params": {"expression": expression, "returnByValue": True, "awaitPromise": True},
+            }))
+            while True:
+                msg = json.loads(ws.recv())
+                if msg.get("id") == 1:
+                    value = msg.get("result", {}).get("result", {}).get("value")
+                    return value or {"clicked": [], "url": page.get("url")}
+        finally:
+            ws.close()
+
 class VideoTextClient:
     """Dedicated Sub-client for Text-to-Video Requests."""
     def __init__(self, auth: AuthManager):
@@ -147,12 +233,13 @@ class VideoTextClient:
 
 class GoogleFlowClient:
     """Top-level Google Flow API SDK Client."""
-    def __init__(self, session_cookie: str, registry_data: Optional[Dict[str, Any]] = None):
+    def __init__(self, session_cookie: str, registry_data: Optional[Dict[str, Any]] = None, browser_host: str = "127.0.0.1", browser_port: int = 9222):
         self.auth = AuthManager(session_cookie)
         self.poller = Poller(self.auth)
         self.downloader = DownloadClient(self.auth)
         self.resolver = ModelResolver(registry_data or {})
         self.video_text = VideoTextClient(self.auth)
+        self.browser = BrowserOverlayClient(browser_host, browser_port)
 
     def create_project(self, title: str) -> str:
         url = "https://labs.google/fx/api/trpc/project.createProject"
@@ -162,3 +249,7 @@ class GoogleFlowClient:
 
     def generate_video(self, project_id: str, recaptcha_token: str, prompt: str, model_key: str, aspect_ratio: str, seed: Optional[int] = None, audio_failure_preference: Optional[str] = None) -> FlowMedia:
         return self.video_text.generate(project_id, recaptcha_token, prompt, model_key, aspect_ratio, seed, audio_failure_preference)
+
+    def dismiss_flow_overlays(self) -> Dict[str, Any]:
+        """Close non-security onboarding/changelog overlays in the local Flow browser."""
+        return self.browser.dismiss_overlays()

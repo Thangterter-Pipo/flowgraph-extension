@@ -1,12 +1,12 @@
 # 🎬 GOOGLE FLOW (VEO 3.1 & NANO BANANA) — VERIFIED INTERNAL API REFERENCE & SPECIFICATION
 
-**Document Version:** 2.0.0-RC2  
-**Verification Status:** PARTIALLY_RUNTIME_VERIFIED  
-**Last Verification Date:** 2026-08-27  
-**Disclaimer:** *Runtime Verified as of 2026-08-27. Internal API — subject to change without notice.*  
-**Verified Account Tier:** `SERVICE_TIER_INTERMEDIATE` / `PAYGATE_TIER_ONE`  
-**Verified Region:** Global / US Supported Regions  
-**Browser Runtime Environment:** Chrome DevTools / CDP Automation Engine (Port 9222)  
+**Document Version:** 2.0.0
+**Verification Status:** CORE_RUNTIME_VERIFIED_WITH_DOCUMENTED_PARTIALS
+**Last Verification Date:** 2026-08-28
+**Disclaimer:** *Runtime Verified as of 2026-08-28. Internal API — subject to change without notice.*
+**Verified Account Tier:** `SERVICE_TIER_INTERMEDIATE` / `PAYGATE_TIER_ONE`
+**Verified Region:** Global / US Supported Regions
+**Browser Runtime Environment:** Chrome DevTools / CDP Automation Engine (Port 9222)
 
 ---
 
@@ -21,6 +21,7 @@ This document is strictly produced for technical documentation and interoperabil
 ### Distinction: Documentation Verification vs Runtime API Verification
 - **Documentation Verification (`verify_docs.py`):** Đảm bảo tính nhất quán tuyệt đối giữa tài liệu, enum, bảng giá, và các JSON schema/bundle thu thập được (241/241 checks PASSED).
 - **Runtime API Verification:** Yêu cầu cuộc gọi HTTP runtime thực tế thành công (200 OK) mang về artifact media thật. Các endpoint chưa khép kín vòng chạy thành công được phân loại minh bạch ở mức `[RUNTIME_PARTIAL]`, `[BUNDLE_VERIFIED]`, `[DISPROVED_CURRENT_HYPOTHESIS]` hoặc `[UNKNOWN]`.
+- **Release 2.0.0 completion rule:** Tài liệu được xem là hoàn chỉnh khi mọi endpoint/field đã quan sát đều có trạng thái bằng chứng rõ ràng và các giới hạn chưa xác minh được ghi công khai. “Hoàn chỉnh tài liệu” không đồng nghĩa mọi endpoint nội bộ đều phải được ép thành trạng thái runtime verified.
 
 ### 5-Level Source of Truth Evidence Classification System
 
@@ -165,6 +166,7 @@ Project (projectId)
 ### 7.1 Text-to-Image (`batchGenerateImages`) `[RUNTIME_PARTIAL]`
 - **Endpoint:** `POST https://aisandbox-pa.googleapis.com/v1/projects/{projectId}/flowMedia:batchGenerateImages`
 - **Fixture:** `evidence/image/t2i/request.json`, `evidence/image/t2i/response.json`
+- **2026-08-28 browser evidence:** Flow UI/Agent path produced real image outputs successfully, but the direct successful `batchGenerateImages` request/response pair was not captured cleanly enough to promote this endpoint. The existing direct fixture remains a 403 reCAPTCHA negative/partial capture, therefore the endpoint intentionally stays `[RUNTIME_PARTIAL]`.
 
 ### 7.2 Image Transform (`transformImage`) `[DISPROVED_CURRENT_HYPOTHESIS / RUNTIME_PARTIAL]`
 - **Endpoint:** `POST https://aisandbox-pa.googleapis.com/v1/flow:transformImage`
@@ -198,8 +200,9 @@ Project (projectId)
 
 ### 8.4 Reference Images Video (`batchAsyncGenerateVideoReferenceImages`) `[RUNTIME_PARTIAL]`
 - **Endpoint:** `POST https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoReferenceImages`
-- **Fixture:** `evidence/video/reference/request.json`, `evidence/video/reference/response.json`
+- **Fixture:** `evidence/video/reference/request.json`, `evidence/video/reference/response.json`; browser-live outcome record: `evidence/runtime/browser_live_2026-08-28.md`
 - **Verified Shape:** **`referenceImages: [ { "mediaId": "<uuid>" } ]`** *(Bác bỏ `referenceImages[].name` bị 400 Unknown field → `[DISPROVED]`)*.
+- **2026-08-28 browser-live evidence:** `test_browser_live_040_reference` completed with HTTP 200 and terminal `MEDIA_GENERATION_STATUS_SUCCESSFUL` when run independently through the authorized Flow UI. It remains `[RUNTIME_PARTIAL]` under the strict evidence policy because a sanitized successful direct request/response fixture plus persisted MP4 artifact has not yet been committed to `evidence/video/reference/`.
 
 ### 8.5 Video Extension & Edit (`batchAsyncGenerateVideoEditVideo`) `[RUNTIME_VERIFIED]`
 <!-- claim_id: video_extend_edit -->
@@ -225,11 +228,11 @@ Project (projectId)
 | `batchId` | `mediaGenerationContext` | `string<UUIDv4>` | `[RUNTIME_PARTIAL]` | UUIDv4 string |
 | `aspectRatio` | `requests[]` | `string` | `[RUNTIME_PARTIAL]` | `"VIDEO_ASPECT_RATIO_LANDSCAPE"` |
 | `videoModelKey` | `requests[]` | `string` | `[RUNTIME_PARTIAL]` | E.g. `"abra_t2v_8s"`, `"veo_3_1_t2v_fast"` |
-| `startImage` | `requests[]` | `object` | `[RUNTIME_PARTIAL]` | **`{ "mediaId": "<uuid>" }`** *(Disproved: `{ "name": "..." }`)* |
-| `endImage` | `requests[]` | `object` | `[RUNTIME_PARTIAL]` | **`{ "mediaId": "<uuid>" }`** *(Disproved: `{ "name": "..." }`)* |
-| `referenceImages` | `requests[]` | `array` | `[RUNTIME_PARTIAL]` | **`[ { "mediaId": "<uuid>" } ]`** *(Disproved: `[ { "name": "..." } ]`)* |
-| `videoInput` | `requests[]` | `object` | `[RUNTIME_PARTIAL]` | **`{ "mediaId": "<uuid>" }`** *(Disproved: `{ "name": "..." }`)* |
-| `imageBytes` | Root | `string` | `[RUNTIME_PARTIAL]` | **Raw Base64 string** *(Disproved: `encodedImage`)* |
+| `startImage` | `requests[]` | `object` | `[RUNTIME_PARTIAL]` | Shape verified by parent claim §8.2: **`{ "mediaId": "<uuid>" }`** *(Disproved: `{ "name": "..." }`)* |
+| `endImage` | `requests[]` | `object` | `[RUNTIME_PARTIAL]` | Shape verified by parent claim §8.3: **`{ "mediaId": "<uuid>" }`** *(Disproved: `{ "name": "..." }`)* |
+| `referenceImages` | `requests[]` | `array` | `[RUNTIME_PARTIAL]` | **`[ { "mediaId": "<uuid>" } ]`** *(Disproved: `[ { "name": "..." } ]`)*; browser-live success observed, strict persisted artifact fixture still pending |
+| `videoInput` | `requests[]` | `object` | `[RUNTIME_PARTIAL]` | Shape verified by parent claim §8.5: **`{ "mediaId": "<uuid>" }`** *(Disproved: `{ "name": "..." }`)* |
+| `imageBytes` | Root | `string` | `[RUNTIME_PARTIAL]` | Shape verified by parent claim §6.1: **Raw Base64 string** *(Disproved: `encodedImage`)* |
 
 ---
 
@@ -275,6 +278,7 @@ Project (projectId)
 - **Endpoint:** `POST https://aisandbox-pa.googleapis.com/v1/flowMedia:cancelGeneration`
 - **Fixture:** `evidence/cancel/request.json`, `evidence/cancel/response.json`
 - **Verified Payload Shape:** `{ "mediaId": "<media_id>" }` *(Disproved: `{ "name": "..." }`)*. Completed job returns `PUBLIC_ERROR_MEDIA_GENERATION_CANNOT_BE_CANCELED`.
+- **2026-08-28 active-attempt result:** an immediate cancel call made directly after a successful T2V submit was accepted at the schema level but returned HTTP 400 `FAILED_PRECONDITION` (`Precondition check failed.`). Therefore active-job cancel success is **not** claimed. This endpoint intentionally remains `[RUNTIME_PARTIAL]`.
 
 ---
 
@@ -305,23 +309,63 @@ Implementation lives in `sdk/client.py`. Verified properties:
 - `AuthManager`, `Poller`, `DownloadClient`, `ModelResolver`
 - Dedicated `VideoTextClient`
 - Verified dynamic signatures for `generate_video()`
+- `BrowserOverlayClient` for local Chrome/CDP UI hygiene before Flow UI automation.
+- `GoogleFlowClient.dismiss_flow_overlays()` closes only visible onboarding/changelog/modal controls from a safe allowlist (`Bắt đầu`, `Đóng`, `Got it`, `Continue`, `Skip`, etc.).
+- The overlay helper has an explicit denylist for reCAPTCHA/security/verification/payment UI and does **not** bypass or interact with those controls.
+
+### 18.1 Local Browser Overlay Helper
+
+This is a **local browser automation helper**, not a Google Flow backend endpoint.
+
+```python
+result = client.dismiss_flow_overlays()
+# {"clicked": ["Bắt đầu"], "url": "https://labs.google/fx/...", "title": "Google Flow ..."}
+```
+
+Requirements: an authorized Chrome instance with CDP enabled on `127.0.0.1:9222` (default). The helper scopes clicks to visible overlay/dialog/fixed-position UI and returns the labels it dismissed.
+
+### 18.2 Browser-Live Verification Matrix (2026-08-28)
+
+The browser-live suite keeps OAuth/session/reCAPTCHA material inside the authorized Chrome context and returns only sanitized status/schema/media metadata.
+
+| Case | Runtime result | Evidence interpretation |
+|---|---|---|
+| Auth session | PASS | HTTP 200; access token/user/expiry presence verified without exporting secret values |
+| Credits | PASS | HTTP 200; live balance/tier schema observed |
+| Image upload | PASS | HTTP 200; real media ID returned |
+| Invalid reCAPTCHA negative control | PASS | HTTP 403 `PERMISSION_DENIED` / `reCAPTCHA evaluation failed` |
+| T2V | PASS | Direct `batchAsyncGenerateVideoText` HTTP 200 + terminal SUCCESS |
+| T2V credit delta | PASS | Positive credit deduction observed after generation |
+| I2V | PASS | Direct `batchAsyncGenerateVideoStartImage` HTTP 200 + terminal SUCCESS |
+| Interpolation | PASS independently | Direct `batchAsyncGenerateVideoStartAndEndImage` HTTP 200 + terminal SUCCESS; full-suite run later hit CDP/WebSocket transport timeout |
+| Reference Images | PASS independently | Direct `batchAsyncGenerateVideoReferenceImages` HTTP 200 + terminal SUCCESS; strict persisted artifact fixture still pending |
+| Edit/Extend | PASS in direct runtime probe | `batchAsyncGenerateVideoEditVideo` HTTP 200 + terminal SUCCESS; `workflowId` confirmed to map directly to `/edit/{workflowId}` |
+| Download | PASS | 307 redirect → `flow-content.google` → 200/206 `video/mp4` |
+| Cancel active | NOT VERIFIED | Immediate cancel attempt returned 400 `FAILED_PRECONDITION`; success is not claimed |
+
+**Harness note:** a full 12-case sequential run most recently reached 8 PASS / 4 FAIL because the later tests hit `WebSocketTimeoutException` in CDP transport. Those transport failures do not replace the independent successful endpoint evidence listed above. The helper default evaluate timeout has been increased from 30s to 90s to reduce this long-run flakiness.
 
 ---
 
-## 19. ROADMAP TO 2.0.0-VERIFIED (THE 7 GATES STATUS)
+## 19. 2.0.0 VERIFICATION CLOSURE STATUS (THE 7 GATES)
 
-- **GATE 1 — MEDIA INGESTION:** Image Upload Verified (HTTP 200 OK + `imageBytes`).
-- **GATE 2 — IMAGE ADVANCED:** Transform & Upsample 2K/4K probed.
-- **GATE 3 — VIDEO ADVANCED:** T2V, I2V, Interpolation, Extend/Edit 100% Verified with MP4 artifacts on disk.
-- **GATE 4 — LIKENESS / AUDIO:** Likeness Eligibility & List Verified.
-- **GATE 5 — LIFECYCLE:** Active generation polling & 307 Signed CDN Download 100% Verified.
-- **GATE 6 — EVIDENCE:** 11 `[RUNTIME_VERIFIED]` claims backed by exact semantic fixtures & 4 MP4 files (~24.5 MB).
-- **GATE 7 — AUTOMATION:** 5/5 Guardrail Unit Tests PASSED.
+- **GATE 1 — MEDIA INGESTION:** Image Upload verified (HTTP 200 + `imageBytes`).
+- **GATE 2 — IMAGE ADVANCED:** T2I UI output observed; direct T2I success fixture, Transform and Image Upsample remain explicitly partial/disproved-current-hypothesis where applicable.
+- **GATE 3 — VIDEO ADVANCED:** T2V, I2V, Interpolation and Extend/Edit have strict runtime evidence with successful video outputs. Reference Images also succeeded in browser-live runtime, but remains `[RUNTIME_PARTIAL]` until a sanitized success fixture plus persisted MP4 artifact is committed. Video Upsample remains partial.
+- **GATE 4 — LIKENESS / AUDIO:** Likeness Eligibility & List verified; broader character/likeness creation surface remains partial.
+- **GATE 5 — LIFECYCLE:** Active polling and 307 signed-CDN download verified. Cancel-active success remains unverified after backend `FAILED_PRECONDITION`.
+- **GATE 6 — EVIDENCE:** 11 strict `[RUNTIME_VERIFIED]` claim IDs remain backed by semantic fixtures and 4 persisted MP4 artifacts (~24.5 MB); newer browser-live successes are documented separately rather than silently promoted beyond the evidence policy.
+- **GATE 7 — AUTOMATION:** Core offline regression is 78/78 PASS. Browser-live cases are individually validated as shown in §18.2; long sequential CDP execution still has transport-level flakiness.
 
 ---
 
 ## 20. KNOWN UNKNOWNS & DISPROVED HYPOTHESES SUMMARY
 
-1. **`[DISPROVED]` `startImage.name` / `endImage.name` / `referenceImages[].name` / `videoInput.name`:** Backend returned HTTP 400 `Unknown field name`. **Verified field shape across all video endpoints is `{ "mediaId": "<uuid>" }`**.
+1. **`[DISPROVED]` `startImage.name` / `endImage.name` / `referenceImages[].name` / `videoInput.name`:** Backend returned HTTP 400 `Unknown field name`. Successful I2V, interpolation and edit flows verify `{ "mediaId": "<uuid>" }`; Reference Images has successful browser-live behavior with the same shape but remains strict `[RUNTIME_PARTIAL]` until its persisted success artifact is committed.
 2. **`[DISPROVED]` `encodedImage` inline Base64:** Backend returned HTTP 400 `Unknown field encodedImage`. **Verified field shape is `imageBytes: "<raw_base64>"`**.
 3. **`[DISPROVED]` `cancelGeneration` `name`/`projectId`:** Backend returned HTTP 400 `Unknown field name`. **Verified field shape is `{ "mediaId": "<uuid>" }`**.
+4. **T2I direct success fixture:** Real image output was produced through the Flow UI/Agent path, but a clean successful direct `batchGenerateImages` request/response capture is still missing.
+5. **Video Upsample success artifact:** Request shape/model registry information is known, but a complete successful runtime artifact chain has not been persisted.
+6. **Reference Images strict artifact closure:** Browser-live generation succeeded, but the success request/response fixture and MP4 artifact have not yet been committed under `evidence/video/reference/`.
+7. **Cancel ACTIVE semantics:** Immediate cancel attempts returned `FAILED_PRECONDITION`; no successful cancellation of an ACTIVE generation is claimed.
+8. **Long sequential Browser/CDP harness:** Independent generation cases succeed, while a full long-running sequence can still hit CDP/WebSocket transport timeouts. This is tracked as automation-harness flakiness, not silently reclassified as API failure.

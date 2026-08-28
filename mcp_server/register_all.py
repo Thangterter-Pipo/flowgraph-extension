@@ -13,7 +13,9 @@ escalation, no ACL bypass.
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -126,7 +128,98 @@ def _parse_pytest_summary(stdout: str) -> dict:
     return summary
 
 
-def _run_exec(command: str, cwd: str, shell: bool, timeout: int, env: dict | None) -> dict:
+def _is_drive_path(s: str) -> bool:
+    """True if s looks like an absolute Windows path (C:\\..., \\\\server\\..., or .\\)."""
+    return bool(re.match(r"^[A-Za-z]:[\\/]", s) or s.startswith("\\\\") or s.startswith(".\\") or s.startswith("..\\"))
+
+
+def _split_command(command: str) -> list[str]:
+    """Split a command line into argv, correctly handling full paths with spaces.
+
+    shlex.split(..., posix=False) splits on every space, which breaks executable
+    paths like 'C:\\Program Files\\...\\chrome.exe'. Strategy:
+      - If the command starts with an absolute Windows path (drive or UNC), find
+        where that path ends (the first token that is a flag/arg, i.e. no longer
+        a backslash-continued path segment), quote that leading path, then shlex
+        the rest. This keeps 'C:\\Program Files\\...\\chrome.exe' as argv[0].
+    """
+    import shlex
+
+    command = command.strip()
+    if not command:
+        return []
+
+    # If already starts with a quoted path, just shlex it.
+    if command.startswith('"') or command.startswith("'"):
+        return shlex.split(command, posix=False)
+
+    # Determine the executable path length if it is a drive/UNC path.
+    if _is_drive_path(command):
+        idx = _end_of_path(command)
+        if idx != -1:
+            exe = command[:idx].strip()
+            rest = command[idx:].strip()
+            command = '"' + exe + '"'
+            if rest:
+                command += " " + rest
+            tokens = shlex.split(command, posix=False)
+            # When we quote the executable ourselves, shlex(posix=False) keeps the
+            # quotes; strip them from argv[0] since we added them.
+            if tokens and tokens[0].startswith('"') and tokens[0].endswith('"'):
+                tokens[0] = tokens[0][1:-1]
+            return tokens
+
+    # Default: shlex with posix=False handles quoting itself; it fails only on
+    # unquoted space-containing paths (already handled above).
+    return shlex.split(command, posix=False)
+
+
+def _end_of_path(cmd: str) -> int:
+    """Return the index where the leading executable path ends (before first arg).
+
+    Walks the command; a path segment is a run of chars with no space, OR a space
+    followed immediately by another path segment (contains a backslash / continues
+    a directory). The path ends at the first token that does not continue a path
+    (a flag like '--xxx' or a bare word).
+    """
+    import re
+
+    # Split candidate into space-separated chunks and decide where the path stops.
+    # A chunk belongs to the path if it contains a backslash (Windows dir) or the
+    # accumulated path so far has backslashes and this chunk starts with a space-intact
+    # segment. Simpler: regex all path segments from the start.
+    m = re.match(r"^((?:[A-Za-z]:[\\/](?:[^ ]+[\\/])*[^ ]*|\\\\[^ ]+))(?=\s|$)", cmd)
+    # Our path can include spaces inside segments (e.g. "Program Files").
+    # We instead scan: consume chars; a space consumes the NEXT token too only if
+    # that token later contains a backslash (part of a deep path).
+    i = 0
+    n = len(cmd)
+    # We'll collect token words until we hit a word that is clearly a flag.
+    while i < n:
+        # read one word
+        start = i
+        while i < n and cmd[i] != " ":
+            i += 1
+        word = cmd[start:i]
+        # skip spaces
+        while i < n and cmd[i] == " ":
+            i += 1
+        # If word is a flag (starts with -) and we already have a path, stop.
+        if word.startswith("-") and i != 0:
+            # find index of start of this word
+            return cmd.rfind(word)
+        # If word contains a backslash, it's still path; continue.
+        if "\\" in word or ":" in word:
+            continue
+        # bare word without backslash that is not a flag — this could be a path
+        # segment if we're still early (e.g. drive "C:\" handled) — but for
+        # "C:\Program Files\chrome.exe", "Files\chrome.exe" has backslash.
+        # If no backslash and it's the first word, probably not a drive path.
+        return start
+    return n
+
+
+def _run_exec(command: str, cwd: str, shell: bool, timeout: int, env: dict | None, argv: list[str] | None = None) -> dict:
     """Run a short-lived command, capturing output. No command whitelist."""
     import shlex
 
@@ -134,19 +227,21 @@ def _run_exec(command: str, cwd: str, shell: bool, timeout: int, env: dict | Non
     kwargs: dict = {"env": env or os.environ.copy()}
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    # timeout<=0 means "no limit" (run to completion) — used for long operations.
+    run_timeout = timeout if timeout and timeout > 0 else None
     try:
         if shell:
             # Explicit user request to use a shell (PowerShell/cmd).
-            # We pass through as a string; still bounded by timeout.
             proc = subprocess.run(
                 command, cwd=cwd, capture_output=True, text=True,
-                shell=True, timeout=timeout, **kwargs,
+                shell=True, timeout=run_timeout, **kwargs,
             )
         else:
-            argv = shlex.split(command, posix=False)
+            if argv is None:
+                argv = _split_command(command)
             proc = subprocess.run(
                 argv, cwd=cwd, capture_output=True, text=True,
-                timeout=timeout, **kwargs,
+                timeout=run_timeout, **kwargs,
             )
         duration_ms = int((time.monotonic() - start) * 1000)
         # Cap output size
@@ -195,7 +290,7 @@ def register_all_tools(mcp) -> None:
 
     @mcp.tool(annotations={"readOnlyHint": True})
     async def get_roots() -> dict:
-        """READ-ONLY. List all drive roots (C:\, D:\, E:\...) with size, free space and drive type."""
+        """READ-ONLY. List all drive roots (for example C:, D:, E:) with size, free space and drive type."""
         with Audit("get_roots", {}) as a:
             res = ext.get_roots()
             a.success = res.get("success", False)
@@ -438,16 +533,18 @@ def register_all_tools(mcp) -> None:
     # ======================================================================
 
     @mcp.tool(annotations={"readOnlyHint": True})
-    async def exec_command(command: str, cwd: str = ".", shell: bool = False, timeout: int = 120, env: dict | None = None) -> dict:
+    async def exec_command(command: str, cwd: str = ".", shell: bool = False, timeout: int = 0, env: dict | None = None) -> dict:
         """EXECUTE. Run a command (PowerShell/cmd/python/node/git/npm/any CLI on PATH) and capture output.
 
         Runs with the current user's permissions — no elevation. `cwd` may be any path.
-        `shell=true` passes the command to a shell for pipes/redirects. Bounded by timeout.
-        Use start_process for long-running processes instead of this tool.
+        Full absolute executable paths with spaces (e.g. "C:\\Program Files\\...\\chrome.exe")
+        are handled correctly. `shell=true` passes the command to a shell for pipes/redirects.
+        `timeout=0` (default) means NO TIME LIMIT — the command runs to completion (use only for
+        commands known to finish). For genuinely long-running work use start_process instead.
         """
         with Audit("exec_command", {"command": command[:200], "cwd": cwd, "shell": shell, "timeout": timeout}) as a:
-            if timeout < 1 or timeout > 600:
-                return {"success": False, "error_code": "INVALID_INPUT", "message": "timeout must be 1..600"}
+            if timeout < 0 or timeout > 86400:
+                return {"success": False, "error_code": "INVALID_INPUT", "message": "timeout must be 0 (no limit) or 1..86400"}
             try:
                 cwd_resolved = _paths.normalize(cwd)
                 if not cwd_resolved.is_dir():
@@ -466,8 +563,6 @@ def register_all_tools(mcp) -> None:
     async def start_process(command: str, cwd: str = ".", env: dict | None = None, name: str | None = None) -> dict:
         """EXECUTE. Start a long-running process (dev server, Chrome CDP). Returns process_id for status/output/kill."""
         with Audit("start_process", {"command": command[:200], "cwd": cwd, "name": name}) as a:
-            import shlex
-
             try:
                 cwd_resolved = _paths.normalize(cwd)
                 if not cwd_resolved.is_dir():
@@ -475,7 +570,7 @@ def register_all_tools(mcp) -> None:
             except _paths.PathError as e:
                 return {"success": False, "error_code": e.code, "message": e.message}
             try:
-                argv = shlex.split(command, posix=False)
+                argv = _split_command(command)
             except ValueError as e:
                 return {"success": False, "error_code": "INVALID_INPUT", "message": str(e)}
             try:
@@ -602,10 +697,11 @@ def register_all_tools(mcp) -> None:
     # ======================================================================
 
     @mcp.tool(annotations={"readOnlyHint": True})
-    async def run_pytest(path: str = "tests", args: str | None = None, cwd: str = ".", timeout: int = 300) -> dict:
+    async def run_pytest(path: str = "tests", args: str | None = None, cwd: str = ".", timeout: int = 0) -> dict:
         """EXECUTE. Run pytest and return a parsed summary (passed/failed/skipped/duration).
 
         `path` is the test file/dir. `args` is optional extra pytest flags, e.g. '-m live_paid -vv'.
+        `timeout=0` (default) means NO LIMIT; otherwise seconds up to 86400.
         """
         with Audit("run_pytest", {"path": path, "args": args, "cwd": cwd}) as a:
             try:
@@ -633,8 +729,8 @@ def register_all_tools(mcp) -> None:
             return {"success": True, **summary}
 
     @mcp.tool(annotations={"readOnlyHint": True})
-    async def run_python_script(script: str, args: str | None = None, cwd: str = ".", timeout: int = 300) -> dict:
-        """EXECUTE. Run a .py script (e.g. '_ctl/verify_docs.py') and return exit_code + stdout/stderr."""
+    async def run_python_script(script: str, args: str | None = None, cwd: str = ".", timeout: int = 0) -> dict:
+        """EXECUTE. Run a .py script (e.g. '_ctl/verify_docs.py') and return exit_code + stdout/stderr. timeout=0 = no limit."""
         with Audit("run_python_script", {"script": script, "args": args, "cwd": cwd}) as a:
             try:
                 cwd_resolved = _paths.normalize(cwd)

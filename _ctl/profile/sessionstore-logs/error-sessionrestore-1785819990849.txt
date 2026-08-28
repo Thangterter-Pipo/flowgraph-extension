@@ -1,8 +1,0 @@
-1785820399952	SessionStore	ERROR	SessionSaver write() rejected with error: Error: SessionFile is closed(resource:///modules/sessionstore/SessionFile.sys.mjs:424:29) JS Stack trace: write@SessionFile.sys.mjs:424:29
-write@SessionFile.sys.mjs:47:32
-_writeState@SessionSaver.sys.mjs:375:29
-_saveState@SessionSaver.sys.mjs:308:17
-_saveStateAsync@SessionSaver.sys.mjs:354:10
-saveStateAsyncWhenIdle@SessionSaver.sys.mjs:194:14
-requestIdleCallback/<@Timer.sys.mjs:180:15
-observe@AsyncShutdown.sys.mjs:587:17

@@ -710,13 +710,117 @@ def get_environment(names: str | None = None) -> dict:
     return {"success": True, "available": sorted(k for k in allow if k in os.environ)}
 
 
+# Well-known install locations for common tools that are often NOT on PATH.
+# Value name maps to the exe filename (or list of candidates) per location.
+_KNOWN_TOOL_LOCATIONS = {
+    "chrome": [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+               r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"],
+    "chromium": [r"C:\Program Files\Chromium\Application\chrome.exe",
+                 r"C:\Program Files (x86)\Chromium\Application\chrome.exe"],
+    "msedge": [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+               r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"],
+    "firefox": [r"C:\Program Files\Mozilla Firefox\firefox.exe",
+                r"C:\Program Files (x86)\Mozilla Firefox\firefox.exe"],
+    "node": [r"C:\Program Files\nodejs\node.exe"],
+    "npm": [r"C:\Program Files\nodejs\npm.cmd", r"C:\Program Files\nodejs\npm"],
+    "python": [r"C:\Python312\python.exe", r"C:\Python311\python.exe", r"C:\Python310\python.exe",
+               r"%LOCALAPPDATA%\Programs\Python\Python312\python.exe",
+               r"%LOCALAPPDATA%\Programs\Python\Python311\python.exe"],
+    "git": [r"C:\Program Files\Git\cmd\git.exe"],
+    "code": [r"%LOCALAPPDATA%\Programs\Microsoft VS Code\Code.exe",
+             r"C:\Program Files\Microsoft VS Code\Code.exe"],
+    "docker": [r"C:\Program Files\Docker\Docker\resources\bin\docker.exe"],
+    "pwsh": [r"C:\Program Files\PowerShell\7\pwsh.exe"],
+    "pythonw": [r"C:\Python312\pythonw.exe", r"C:\Python311\pythonw.exe"],
+}
+
+
+def _which_in_known_locations(name: str, expanded_env: dict | None = None) -> str | None:
+    """Search known install locations for a tool name (case-insensitive extension-agnostic)."""
+    candidates = _KNOWN_TOOL_LOCATIONS.get(name.lower())
+    if not candidates:
+        return None
+    env = os.environ.copy()
+    if expanded_env:
+        env.update(expanded_env)
+    for cand in candidates:
+        cand = os.path.expandvars(cand)
+        p = Path(cand)
+        found = None
+        if p.exists():
+            found = str(p)
+        else:
+            # Some entries omit the .exe/.cmd suffix — try adding common exts.
+            for ext in (".exe", ".cmd", ".bat"):
+                q = Path(str(p) + ext)
+                if q.exists():
+                    found = str(q)
+                    break
+        if found:
+            return found
+    return None
+
+
 def which_command(name: str) -> dict:
-    """Locate an executable on PATH. Returns full path or null."""
+    """Locate an executable. Returns full path or null.
+
+    Searches in order:
+      1. PATH (via shutil.which)
+      2. Well-known install locations for common tools (chrome, node, python,
+         git, docker, code, ...) that are often NOT on PATH.
+      3. Global fallback: recursive scan of C:\\Program Files and
+         C:\\Program Files (x86) for an executable matching `name` (bounded).
+
+    This lets ChatGPT find chrome.exe in Program Files even though it is not on PATH.
+    """
     try:
         p = shutil.which(name)
-        return {"success": True, "name": name, "found": p is not None, "path": p}
+        found = str(p) if p else None
+        source = "PATH"
+        if not found:
+            found = _which_in_known_locations(name)
+            source = "known-location"
+        if not found and os.name == "nt":
+            found = _scan_program_files(name)
+            source = "program-files-scan"
+        return {"success": True, "name": name, "found": found is not None, "path": found, "source": source}
     except Exception as e:
         return {"success": False, "error_code": "INTERNAL_ERROR", "message": str(e), "path": None}
+
+
+def _scan_program_files(name: str, depth: int = 0, max_depth: int = 3, _visited: set | None = None) -> str | None:
+    """Recursively search Program Files dirs for an executable matching `name`.
+
+    Bounded by depth + visited-set so it stays fast. Only looks for the exact
+    basename (name + common executable extensions)."""
+    if depth > max_depth:
+        return None
+    if _visited is None:
+        _visited = set()
+    roots = [r"C:\Program Files", r"C:\Program Files (x86)"]
+    for root in roots:
+        if root in _visited:
+            continue
+        _visited.add(root)
+        rp = Path(root)
+        if not rp.exists():
+            continue
+        try:
+            for child in rp.iterdir():
+                if not child.is_dir():
+                    continue
+                # exec name match - case-insensitive, try with/without extension
+                for cand in (name, name + ".exe", name + ".cmd", name + ".bat"):
+                    exe = child / cand
+                    if exe.exists():
+                        return str(exe)
+                # recurse one more level for tools like "Google/Chrome/Application"
+                found = _scan_program_files(name, depth + 1, max_depth, _visited)
+                if found:
+                    return found
+        except OSError:
+            continue
+    return None
 
 
 def disk_usage(path: str = ".") -> dict:
