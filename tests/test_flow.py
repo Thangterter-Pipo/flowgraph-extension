@@ -38,6 +38,7 @@ KNOWN_SUCCESS_RULES = {
     "has_mp4_artifact",
     "has_cdn_url",
     "has_eligible_field",
+    "has_character_slot",
 }
 
 # ---------------------------------------------------------------------------
@@ -75,7 +76,7 @@ def test_002_manifest_claim_ids_are_unique(manifest):
 
 def test_003_manifest_has_13_runtime_verified_claims(manifest):
     verified = [c for c in manifest["claims"] if c.get("status") == "RUNTIME_VERIFIED"]
-    assert len(verified) == 13, f"Expected 13 verified claims, got {len(verified)}"
+    assert len(verified) == 14, f"Expected 14 verified claims, got {len(verified)}"
 
 
 def test_004_every_verified_heading_has_immediate_claim_id(master_text):
@@ -161,6 +162,9 @@ def _validate_manifest_claim(claim: dict):
         assert data.get("contentType") == "video/mp4"
     elif rule == "has_eligible_field":
         assert isinstance(data.get("eligible"), bool)
+    elif rule == "has_character_slot":
+        ctx = data.get("destinationMediaContext", {}).get("entityContext", {})
+        assert "entityId" in ctx and "characterSlot" in ctx
     else:  # pragma: no cover
         raise AssertionError(f"Unhandled success rule: {rule}")
 

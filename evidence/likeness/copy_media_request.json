@@ -1,0 +1,12 @@
+{
+  "mediaId": "7d306cc6-6cea-44df-ad3b-6980be119054",
+  "destinationProjectId": "64d45b46-4389-4e29-8795-1f48739b93e0",
+  "destinationMediaContext": {
+    "entityContext": {
+      "entityId": "c30a4c2b-4491-4ba8-ade5-7364a60632c7",
+      "characterSlot": {
+        "imageReferenceIndex": 1
+      }
+    }
+  }
+}

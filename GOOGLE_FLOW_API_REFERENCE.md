@@ -258,7 +258,29 @@ Project (projectId)
 - **Endpoint:** `GET https://aisandbox-pa.googleapis.com/v1/flow/likeness:listUserLikenesses?populateImage=true`
 - **Fixture:** `evidence/likeness/list_response.json`
 
-### 10.3 Character Creation & Likeness Generation Surface `[RUNTIME_PARTIAL]`
+### 10.3 Assign Image to Character Slot (`flow:copyProjectMedia`) `[RUNTIME_VERIFIED]`
+<!-- claim_id: character_copy_project_media -->
+- **Endpoint:** `POST https://aisandbox-pa.googleapis.com/v1/flow:copyProjectMedia`
+- **Request schema (runtime captured from Flow UI):**
+  ```json
+  {
+    "mediaId": "<media_uuid>",
+    "destinationProjectId": "<project_uuid>",
+    "destinationMediaContext": {
+      "entityContext": {
+        "entityId": "<character_uuid>",
+        "characterSlot": {
+          "imageReferenceIndex": 1
+        }
+      }
+    }
+  }
+  ```
+- **Fixture:** `evidence/likeness/copy_media_request.json`
+- **Purpose:** Gán một media (ảnh) vào slot `imageReferenceIndex` của một Character (`entityId`). Đây là bước khởi tạo nội dung nhân vật từ ảnh sẵn có trong project.
+- **Note:** Nội dung nhân vật sau đó được sinh ra qua `POST /v1/projects/{projectId}/flowMedia:batchGenerateImages` (model Nano Banana 2 / NARWHAL).
+
+### 10.4 Character Creation & Likeness Generation Surface `[RUNTIME_PARTIAL]`
 - **UI Route:** `https://labs.google/fx/vi/tools/flow/project/{projectId}/characters`
 - **UI Behavior:** Creating a character in the Flow web UI dispatches `POST /v1/projects/{id}/flowMedia:batchGenerateImages` using `Nano Banana 2` with workflow metadata (`displayName`, `primaryMediaId`).
 - **Limitation:** The current Google Flow web UI does not expose a dedicated `createLikeness` API button. Eligibility and list endpoints are verified; full likeness creation endpoint remains `[RUNTIME_PARTIAL]`.

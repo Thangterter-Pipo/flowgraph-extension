@@ -77,6 +77,12 @@
       "status": "RUNTIME_VERIFIED",
       "fixture": "evidence/likeness/list_response.json",
       "success_rule": "no_top_level_error"
+    },
+    {
+      "id": "character_copy_project_media",
+      "status": "RUNTIME_VERIFIED",
+      "fixture": "evidence/likeness/copy_media_request.json",
+      "success_rule": "has_character_slot"
     }
   ]
 }
