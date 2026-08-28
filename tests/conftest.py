@@ -15,6 +15,7 @@ VERIFIED_ARTIFACTS = {
     "t2v": "evidence/download/verified_fox_video.mp4",
     "i2v": "evidence/download/i2v_verified_cd2ef7e8-606b-47a7-89b2-681117c0451d.mp4",
     "interpolation": "evidence/download/interpolation_verified_d6e527a8-2089-4b2c-8e88-c7a26bd4a764.mp4",
+    "reference": "evidence/video/reference/reference_verified_1d2d1e90-a4be-4b6a-82b3-f691e787632e.mp4",
     "extend_edit": "evidence/download/extend_verified_9f714655-adcc-4c67-adb6-ad7847c4d49b.mp4",
 }
 

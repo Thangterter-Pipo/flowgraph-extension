@@ -1,28 +1,38 @@
 {
   "clientContext": {
+    "recaptchaContext": {
+      "token": "<REDACTED>",
+      "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+    },
+    "projectId": "64d45b46-4389-4e29-8795-1f48739b93e0",
     "tool": "PINHOLE",
-    "sessionId": "1787804311461"
+    "sessionId": ";1787915693778"
   },
   "mediaGenerationContext": {
-    "batchId": "9876fa27-184b-419f-a050-57446d9bb725"
+    "batchId": "a9b5755a-1b89-4b0c-bccb-6709a7fbad14"
   },
   "useNewMedia": true,
   "requests": [
     {
       "clientContext": {
+        "recaptchaContext": {
+          "token": "<REDACTED>",
+          "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"
+        },
+        "projectId": "64d45b46-4389-4e29-8795-1f48739b93e0",
         "tool": "PINHOLE",
-        "sessionId": "1787804311462"
+        "sessionId": ";1787915693778"
       },
       "imageModelName": "NARWHAL",
       "imageAspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
       "structuredPrompt": {
         "parts": [
           {
-            "text": "A serene lotus flower on still water at morning"
+            "text": "A small red paper boat floating on a calm blue lake at sunrise, clean cinematic composition"
           }
         ]
       },
-      "seed": 101,
+      "seed": 35543,
       "imageInputs": []
     }
   ]

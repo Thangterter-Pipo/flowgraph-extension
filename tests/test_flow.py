@@ -34,6 +34,7 @@ KNOWN_SUCCESS_RULES = {
     "recaptcha_invalid_403",
     "result_status_200",
     "has_media_name",
+    "has_image_artifact",
     "has_mp4_artifact",
     "has_cdn_url",
     "has_eligible_field",
@@ -72,9 +73,9 @@ def test_002_manifest_claim_ids_are_unique(manifest):
     assert len(ids) == len(set(ids)), "Duplicate claim id in evidence_manifest.json"
 
 
-def test_003_manifest_has_11_runtime_verified_claims(manifest):
+def test_003_manifest_has_13_runtime_verified_claims(manifest):
     verified = [c for c in manifest["claims"] if c.get("status") == "RUNTIME_VERIFIED"]
-    assert len(verified) == 11, f"Expected 11 verified claims, got {len(verified)}"
+    assert len(verified) == 13, f"Expected 13 verified claims, got {len(verified)}"
 
 
 def test_004_every_verified_heading_has_immediate_claim_id(master_text):
@@ -138,6 +139,17 @@ def _validate_manifest_claim(claim: dict):
         assert "media" in data and isinstance(data["media"], dict)
         primary = data.get("workflow", {}).get("metadata", {}).get("primaryMediaId")
         assert primary or data["media"].get("name")
+    elif rule == "has_image_artifact":
+        ev = data.get("_evidence", {})
+        assert ev.get("status") == 200
+        artifact = ev.get("artifact")
+        assert artifact, f"No image artifact recorded for {claim['id']}"
+        path = repo_path(artifact)
+        assert path.exists() and path.stat().st_size == ev.get("artifact_bytes")
+        assert path.stat().st_size > 1024
+        head = path.read_bytes()[:16]
+        assert head.startswith(b"\xff\xd8\xff") or head.startswith(b"\x89PNG\r\n\x1a\n") or head.startswith(b"RIFF")
+        assert ev.get("valid_image_magic") is True
     elif rule == "has_mp4_artifact":
         ev = data.get("_evidence", {})
         assert ev.get("status") == 200
@@ -315,25 +327,35 @@ def test_052_interpolation_verified_shape_has_no_legacy_name():
 
 
 # ---------------------------------------------------------------------------
-# G. Reference images (schema observed, generation currently partial)
+# G. Reference images (runtime verified)
 # ---------------------------------------------------------------------------
 
 def test_060_reference_request_uses_media_id_shape():
     refs = load_json("evidence/video/reference/request.json")["requests"][0]["referenceImages"]
-    assert refs and all(set(item) == {"mediaId"} for item in refs)
+    assert refs
     for item in refs:
+        assert "mediaId" in item
         assert_uuid(item["mediaId"])
+        if "imageUsageType" in item:
+            assert item["imageUsageType"] == "IMAGE_USAGE_TYPE_ASSET"
+        assert "name" not in item
 
 
-def test_061_reference_current_response_remains_partial_403():
+def test_061_reference_response_and_artifact_are_verified():
     res = load_json("evidence/video/reference/response.json")
-    assert res["error"]["code"] == 403
-    assert res["error"]["status"] == "PERMISSION_DENIED"
+    ev = res["_evidence"]
+    assert ev["status"] == 200
+    assert ev["terminal_status"] == "MEDIA_GENERATION_STATUS_SUCCESSFUL"
+    assert ev["ftyp"] is True
+    assert_mp4(repo_path(ev["mp4_artifact"]), ev["mp4_bytes"])
+    media = res["media"][0]
+    assert_uuid(media["name"])
+    assert media["mediaMetadata"]["requestData"]["videoGenerationRequestData"]["videoModelControlInput"]["videoGenerationMode"] == "VIDEO_GENERATION_MODE_REFERENCE_TO_VIDEO"
 
 
-def test_062_reference_is_not_in_runtime_verified_manifest(manifest):
+def test_062_reference_is_in_runtime_verified_manifest(manifest):
     ids = {c["id"] for c in manifest["claims"] if c["status"] == "RUNTIME_VERIFIED"}
-    assert "reference_to_video" not in ids
+    assert "reference_to_video" in ids
 
 
 # ---------------------------------------------------------------------------
@@ -413,11 +435,12 @@ def test_092_primary_download_artifact_matches_download_length():
     assert_mp4(repo_path(VERIFIED_ARTIFACTS["t2v"]), res["length_bytes"])
 
 
-def test_093_all_four_verified_mp4_artifacts_are_real_files():
+def test_093_all_five_verified_mp4_artifacts_are_real_files():
     evidence = {
         "t2v": load_json("evidence/video/t2v/response.json")["_evidence"]["mp4_bytes"],
         "i2v": load_json("evidence/video/i2v/response.json")["length_bytes"],
         "interpolation": load_json("evidence/video/interpolation/response.json")["length_bytes"],
+        "reference": load_json("evidence/video/reference/response.json")["_evidence"]["mp4_bytes"],
         "extend_edit": load_json("evidence/video/extend/response.json")["length_bytes"],
     }
     for key, rel in VERIFIED_ARTIFACTS.items():
@@ -429,6 +452,7 @@ def test_094_total_verified_mp4_bytes_are_consistent():
         load_json("evidence/video/t2v/response.json")["_evidence"]["mp4_bytes"],
         load_json("evidence/video/i2v/response.json")["length_bytes"],
         load_json("evidence/video/interpolation/response.json")["length_bytes"],
+        load_json("evidence/video/reference/response.json")["_evidence"]["mp4_bytes"],
         load_json("evidence/video/extend/response.json")["length_bytes"],
     ])
     actual = sum(repo_path(p).stat().st_size for p in VERIFIED_ARTIFACTS.values())
@@ -480,10 +504,13 @@ def test_104_total_credit_spend_is_67():
 # L. Partial / disproved regression fixtures
 # ---------------------------------------------------------------------------
 
-def test_110_t2i_remains_partial_until_success_fixture_exists():
+def test_110_t2i_success_fixture_has_real_image_artifact():
     res = load_json("evidence/image/t2i/response.json")
-    assert "error" in res
-    assert res["error"]["code"] == 403
+    assert "error" not in res
+    assert res["_evidence"]["status"] == 200
+    assert res["_evidence"]["valid_image_magic"] is True
+    assert_uuid(res["media"][0]["name"])
+    assert repo_path(res["_evidence"]["artifact"]).stat().st_size == res["_evidence"]["artifact_bytes"]
 
 
 def test_111_transform_old_payload_is_still_disproved():
@@ -505,10 +532,8 @@ def test_113_video_upsample_remains_partial():
 def test_114_partial_features_are_not_promoted_in_manifest(manifest):
     verified = {c["id"] for c in manifest["claims"] if c["status"] == "RUNTIME_VERIFIED"}
     forbidden = {
-        "text_to_image_t2i",
         "image_transform",
         "image_upsample",
-        "reference_to_video",
         "video_upsample",
         "cancel_active_generation",
         "audio_reference",
@@ -715,11 +740,13 @@ def test_161_master_documents_media_id_for_i2v_and_interpolation(master_text):
     assert "endImage" in master_text and "mediaId" in master_text
 
 
-def test_162_master_keeps_reference_generation_partial(master_text):
+def test_162_master_marks_reference_generation_verified(master_text):
     ref_idx = master_text.find("Reference Images")
     assert ref_idx >= 0
-    window = master_text[ref_idx:ref_idx + 700]
-    assert "RUNTIME_PARTIAL" in window
+    window = master_text[ref_idx:ref_idx + 900]
+    assert "[RUNTIME_VERIFIED]" in window
+    assert "claim_id: reference_to_video" in window
+    assert "reference_verified_1d2d1e90-a4be-4b6a-82b3-f691e787632e.mp4" in window
 
 
 # ---------------------------------------------------------------------------

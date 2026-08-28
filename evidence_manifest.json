@@ -25,6 +25,12 @@
       "success_rule": "has_media_name"
     },
     {
+      "id": "text_to_image_t2i",
+      "status": "RUNTIME_VERIFIED",
+      "fixture": "evidence/image/t2i/response.json",
+      "success_rule": "has_image_artifact"
+    },
+    {
       "id": "text_to_video_t2v",
       "status": "RUNTIME_VERIFIED",
       "fixture": "evidence/video/t2v/response.json",
@@ -40,6 +46,12 @@
       "id": "start_end_interpolation",
       "status": "RUNTIME_VERIFIED",
       "fixture": "evidence/video/interpolation/response.json",
+      "success_rule": "has_mp4_artifact"
+    },
+    {
+      "id": "reference_to_video",
+      "status": "RUNTIME_VERIFIED",
+      "fixture": "evidence/video/reference/response.json",
       "success_rule": "has_mp4_artifact"
     },
     {

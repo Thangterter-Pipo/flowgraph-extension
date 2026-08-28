@@ -1,13 +1,60 @@
 {
-  "error": {
-    "code": 403,
-    "message": "reCAPTCHA evaluation failed",
-    "status": "PERMISSION_DENIED",
-    "details": [
-      {
-        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
-        "reason": "PUBLIC_ERROR_UNUSUAL_ACTIVITY"
+  "media": [
+    {
+      "name": "b5cbf3fc-f059-4f58-9c6f-64294a2c64e4",
+      "workflowId": "e1ad737d-3b0c-48fa-9b3d-474e23bab7a4",
+      "image": {
+        "generatedImage": {
+          "seed": 35543,
+          "mediaVisibility": "PRIVATE",
+          "prompt": "A small red paper boat floating on a calm blue lake at sunrise, clean cinematic composition",
+          "modelNameType": "NARWHAL",
+          "workflowId": "e1ad737d-3b0c-48fa-9b3d-474e23bab7a4",
+          "fifeUrl": "<REDACTED_URL>",
+          "aspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
+          "requestData": {
+            "promptInputs": [
+              {
+                "textInput": "A small red paper boat floating on a calm blue lake at sunrise, clean cinematic composition",
+                "structuredPrompt": {
+                  "parts": [
+                    {
+                      "text": "A small red paper boat floating on a calm blue lake at sunrise, clean cinematic composition"
+                    }
+                  ]
+                }
+              }
+            ],
+            "imageGenerationRequestData": {}
+          },
+          "mediaId": "b5cbf3fc-f059-4f58-9c6f-64294a2c64e4"
+        },
+        "dimensions": {
+          "width": 1376,
+          "height": 768
+        }
       }
-    ]
+    }
+  ],
+  "workflows": [
+    {
+      "name": "e1ad737d-3b0c-48fa-9b3d-474e23bab7a4",
+      "metadata": {
+        "displayName": "Red paper boat floating",
+        "createTime": "2026-08-28T11:06:19.976456Z",
+        "primaryMediaId": "b5cbf3fc-f059-4f58-9c6f-64294a2c64e4",
+        "batchId": "a9b5755a-1b89-4b0c-bccb-6709a7fbad14",
+        "updateTime": "2026-08-28T11:06:41.438904Z"
+      },
+      "projectId": "64d45b46-4389-4e29-8795-1f48739b93e0"
+    }
+  ],
+  "_evidence": {
+    "status": 200,
+    "artifact": "evidence/image/t2i/t2i_verified_b5cbf3fc-f059-4f58-9c6f-64294a2c64e4.jpg",
+    "artifact_bytes": 85292,
+    "content_type": "image/jpeg",
+    "sha256": "2daaa0df17fd2270de653f07be5fdee2ed222756acd5cc7cc32849c2005fdeaf",
+    "valid_image_magic": true
   }
 }

@@ -1,7 +1,11 @@
-# Reference Images Video Fixture Notes
+# Reference Images runtime verification
 
-- **Status**: 403 (Valid Payload Structure Verified)
-- **Endpoint**: `POST https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoReferenceImages`
-- **Verified Shape**: `referenceImages: [ { 'mediaId': '<uuid>' } ]`
-- **Evidence**: `referenceImages[].mediaId` returned 403 reCAPTCHA (valid payload), whereas `referenceImages[].name` returned 400 Unknown field.
-- **Date**: 2026-08-27
+- Endpoint: `https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoReferenceImages`
+- Submit: HTTP 200
+- Terminal status: `MEDIA_GENERATION_STATUS_SUCCESSFUL`
+- Media ID: `1d2d1e90-a4be-4b6a-82b3-f691e787632e`
+- Artifact: `reference_verified_1d2d1e90-a4be-4b6a-82b3-f691e787632e.mp4`
+- Artifact bytes: `692033`
+- SHA-256: `a67a8b95debf655be29ab0c594c45acf2f8175a912036eed0c1997c56a6efa61`
+- MP4 signature: `ftyp` present
+- Browser session, OAuth token, reCAPTCHA token, cookies and signed download URL were not persisted.
