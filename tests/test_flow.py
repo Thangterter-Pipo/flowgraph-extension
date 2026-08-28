@@ -513,15 +513,17 @@ def test_110_t2i_success_fixture_has_real_image_artifact():
     assert repo_path(res["_evidence"]["artifact"]).stat().st_size == res["_evidence"]["artifact_bytes"]
 
 
-def test_111_transform_old_payload_is_still_disproved():
+def test_111_transform_mediaId_root_recognized_400():
     res = load_json("evidence/image/transform/response.json")
     assert res["error"]["code"] == 400
-    assert "Unknown name" in json.dumps(res)
+    assert res["error"]["status"] == "INVALID_ARGUMENT"
+    assert "Unknown name" not in json.dumps(res)
 
 
-def test_112_image_upsample_old_payload_is_still_disproved():
+def test_112_image_upsample_schema_validated_recaptcha_403():
     res = load_json("evidence/image/upsample/response.json")
-    assert res["error"]["code"] == 400
+    assert res["error"]["code"] == 403
+    assert "reCAPTCHA" in json.dumps(res)
 
 
 def test_113_video_upsample_remains_partial():

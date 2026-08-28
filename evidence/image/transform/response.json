@@ -1,23 +1,7 @@
 {
   "error": {
     "code": 400,
-    "message": "<REDACTED_LONG_STR>",
-    "status": "INVALID_ARGUMENT",
-    "details": [
-      {
-        "@type": "type.googleapis.com/google.rpc.BadRequest",
-        "fieldViolations": [
-          {
-            "description": "Invalid JSON payload received. Unknown name \"clientContext\": Cannot find field."
-          },
-          {
-            "description": "Invalid JSON payload received. Unknown name \"imageMediaId\": Cannot find field."
-          },
-          {
-            "description": "Invalid JSON payload received. Unknown name \"structuredPrompt\": Cannot find field."
-          }
-        ]
-      }
-    ]
+    "message": "Request contains an invalid argument.",
+    "status": "INVALID_ARGUMENT"
   }
 }

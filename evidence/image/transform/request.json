@@ -1,14 +1,3 @@
 {
-  "clientContext": {
-    "projectId": "7f338db7-1bdb-4659-8ac2-5cbd310358d6",
-    "tool": "PINHOLE"
-  },
-  "imageMediaId": "58804705-6b02-4fa3-ab46-acd29edd2918",
-  "structuredPrompt": {
-    "parts": [
-      {
-        "text": "Convert to watercolor painting"
-      }
-    ]
-  }
+  "mediaId": "<REDACTED_MEDIA_UUID>"
 }

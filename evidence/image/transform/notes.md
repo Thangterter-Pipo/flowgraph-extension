@@ -1,6 +1,8 @@
 # Image Transform Fixture Notes
 
-- **Status**: 400 INVALID_ARGUMENT (Payload structure verified but field name probed)
-- **Endpoint**: `POST https://aisandbox-pa.googleapis.com/v1/flow:transformImage`
-- **Probed Shape**: `imageMediaId: "<uuid>"`
-- **Date**: 2026-08-27
+- **Endpoint:** POST https://aisandbox-pa.googleapis.com/v1/flow:transformImage
+- **Status:** 400 INVALID_ARGUMENT (schema accepted, missing required enum fields)
+- **Verified Field Shape:** { "mediaId": "<uuid>" }
+- **UI Crop Flow:** The Flow web UI triggers transform via Crop button (Cắt) with aspect ratio options (16:9, 9:16, 1:1, custom)
+- **Blocker:** reCAPTCHA Enterprise blocks direct API calls (403 PUBLIC_ERROR_UNUSUAL_ACTIVITY)
+- **Evidence Date:** 2026-08-28

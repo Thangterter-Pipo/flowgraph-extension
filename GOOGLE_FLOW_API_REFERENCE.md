@@ -169,13 +169,19 @@ Project (projectId)
 - **Fixture:** `evidence/image/t2i/request.json`, `evidence/image/t2i/response.json`, `evidence/image/t2i/t2i_verified_b5cbf3fc-f059-4f58-9c6f-64294a2c64e4.jpg`
 - **2026-08-28 runtime evidence:** Flow direct Image composer (`Nano Banana 2`, model key `NARWHAL`) submitted through a trusted browser pointer gesture and returned HTTP 200 with media ID `b5cbf3fc-f059-4f58-9c6f-64294a2c64e4`. The persisted JPEG is 85,292 bytes, has valid JPEG magic, and SHA-256 `2daaa0df17fd2270de653f07be5fdee2ed222756acd5cc7cc32849c2005fdeaf`. The captured request redacts both reCAPTCHA token copies; persisted response redacts `fifeUrl`.
 
-### 7.2 Image Transform (`transformImage`) `[DISPROVED_CURRENT_HYPOTHESIS / RUNTIME_PARTIAL]`
+### 7.2 Image Transform (`transformImage`) `[RUNTIME_PARTIAL]`
 - **Endpoint:** `POST https://aisandbox-pa.googleapis.com/v1/flow:transformImage`
-- **Fixture:** `evidence/image/transform/notes.md`
+- **Fixture:** `evidence/image/transform/request.json`, `evidence/image/transform/response.json`, `evidence/image/transform/notes.md`
+- **Verified Shape:** `{ "mediaId": "<uuid>" }` (Disproved `.imageMediaId`, `.projectId` top-level fields — backend returns `Unknown field` for those).
+- **UI Behavior:** Triggers from Crop button (`Cắt`) in media detail view `/edit/{workflowId}` with aspect ratio presets (16:9, 9:16, 1:1, custom).
+- **Runtime Evidence (2026-08-28):** Backend returns HTTP 400 `INVALID_ARGUMENT` for incomplete payload structure, confirming `mediaId` is recognized at root while rejecting obsolete/incorrect wrapper shapes.
 
-### 7.3 Image Upsample 2K/4K (`upsampleImage`) `[DISPROVED_CURRENT_HYPOTHESIS / RUNTIME_PARTIAL]`
+### 7.3 Image Upsample 2K/4K (`upsampleImage`) `[RUNTIME_PARTIAL]`
 - **Endpoint:** `POST https://aisandbox-pa.googleapis.com/v1/flow/upsampleImage`
-- **Fixture:** `evidence/image/upsample/notes.md`
+- **Fixture:** `evidence/image/upsample/request.json`, `evidence/image/upsample/response.json`, `evidence/image/upsample/notes.md`
+- **Verified Shape:** `{ "mediaId": "<uuid>", "targetResolution": "UPSAMPLE_IMAGE_RESOLUTION_2K" | "UPSAMPLE_IMAGE_RESOLUTION_4K" }`.
+- **Decoded Enums (from JS bundle):** `UPSAMPLE_IMAGE_RESOLUTION_UNSPECIFIED`, `UPSAMPLE_IMAGE_RESOLUTION_2K`, `UPSAMPLE_IMAGE_RESOLUTION_4K`. *(Disproved: `GEM_PIX_2_UPSAMPLE_2K`, `UPSAMPLE_RESOLUTION_2K`, `IMAGE_UPSAMPLE_RESOLUTION_2K` — all rejected by backend enum parser.)*
+- **Runtime Evidence (2026-08-28):** Passing `targetResolution: "UPSAMPLE_IMAGE_RESOLUTION_2K"` passes schema validation (resolving `Invalid value at target_resolution`) and advances to HTTP 403 `PERMISSION_DENIED` (`reCAPTCHA evaluation failed / PUBLIC_ERROR_UNUSUAL_ACTIVITY`) — proving the payload shape is correct.
 
 ---
 

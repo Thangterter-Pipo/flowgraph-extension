@@ -1,21 +1,7 @@
 {
   "error": {
-    "code": 400,
-    "message": "<REDACTED_LONG_STR>",
-    "status": "INVALID_ARGUMENT",
-    "details": [
-      {
-        "@type": "type.googleapis.com/google.rpc.BadRequest",
-        "fieldViolations": [
-          {
-            "description": "Invalid JSON payload received. Unknown name \"imageMediaId\": Cannot find field."
-          },
-          {
-            "field": "target_resolution",
-            "description": "Invalid value at 'target_resolution' (type.googleapis.com/google.internal.labs.aisandbox.proto.flow.v1.UpsampleImageResolution), \"GEM_PIX_2_UPSAMPLE_2K\""
-          }
-        ]
-      }
-    ]
+    "code": 403,
+    "message": "reCAPTCHA evaluation failed",
+    "status": "PERMISSION_DENIED"
   }
 }
