@@ -416,7 +416,7 @@ async function generateApi(payload: GeneratePayload): Promise<NormalizedMediaRef
   if (!media?.name) throw bridgeError('MEDIA_FAILED', 'Provider returned no media id', false);
   const imageFife = media.image?.generatedImage?.fifeUrl;
   const previewUrl = imageFife
-    ? (await resolveRedirect(media.name).catch(() => imageFife))
+    ? (await resolveMediaUrl(media.name, 'IMAGE').catch(() => imageFife))
     : undefined;
   return {
     mediaId: media.name,
@@ -441,7 +441,7 @@ async function pollOnce(payload: MediaStatusPayload, resolvePreview = false): Pr
     return data;
   }
   if (item && resolvePreview) {
-    const previewUrl = await resolveRedirectSafe(payload.mediaId);
+    const previewUrl = await resolveRedirectSafe(payload.mediaId, item.video ? 'VIDEO' : 'IMAGE');
     data.media = {
       mediaId: payload.mediaId,
       type: item.video ? 'VIDEO' : 'IMAGE',
@@ -458,43 +458,97 @@ async function pollOnce(payload: MediaStatusPayload, resolvePreview = false): Pr
 // leaves the worker; only the resolved URL passes over the bridge once).
 // ---------------------------------------------------------------------------
 
-async function resolveRedirect(mediaId: string): Promise<string> {
+// After Google's labs.google/fx -> flow.google.com migration the old
+// `media.getMediaUrlRedirect` endpoint returns 401 (SERVER_UNAUTHORIZED) for
+// media created on the new domain, so it can no longer be used to download
+// freshly generated assets. The Flow UI now serves every asset through a
+// same-origin proxy at `https://flow.google.com/asb/<token>`: images expose it
+// directly on their `[data-media-id]` element, and videos expose it on the
+// `<video>` element once the tile has been played. We read that URL from the
+// signed-in page (MAIN world, so page-owned state is visible) and hand it to
+// chrome.downloads, which follows it with the site cookie jar. No token or
+// cookie ever leaves the worker; only the resolved same-origin URL crosses the
+// bridge once.
+async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): Promise<string> {
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
-  const reply = await timeoutable(
-    chrome.tabs.sendMessage(tab.id, { type: 'RESOLVE_MEDIA_URL', mediaId }),
+  // The video element only materialises its src while the tile is rendered in a
+  // visible viewport, so bring the Flow tab to the front before resolving.
+  try {
+    if (tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
+    await chrome.tabs.update(tab.id, { active: true });
+  } catch {
+    // Best-effort focus; resolution may still succeed for images.
+  }
+  const results = await timeoutable(
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      args: [mediaId, mediaType ?? null],
+      func: async (id: string, type: 'IMAGE' | 'VIDEO' | null) => {
+        const isAsb = (u: string | null | undefined): u is string => !!u && u.includes('/asb/');
+        // Images: the [data-media-id] element (or its child img) already points at the asb proxy.
+        const el = document.querySelector(`[data-media-id="${id}"]`);
+        if (el) {
+          const img = (el.tagName === 'IMG' ? el : el.querySelector('img')) as HTMLImageElement | null;
+          const s = img ? (img.currentSrc || img.getAttribute('src')) : null;
+          if (isAsb(s)) return { ok: true, url: s };
+        }
+        // Videos: locate the flow-video-tile whose thumbnail carries the UUID, then
+        // ensure a <video> with an asb src exists (play it if needed).
+        const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+        const tile = tiles.find((t) => {
+          const thumb = t.querySelector('img');
+          return thumb && (thumb.getAttribute('src') || '').includes(id);
+        });
+        if (tile) {
+          let v = tile.querySelector('video');
+          let s = v ? (v.currentSrc || v.src) : null;
+          if (!isAsb(s)) {
+            const trigger = tile.querySelector('.footer-left') || tile.querySelector('img');
+            if (trigger) (trigger as HTMLElement).click();
+            for (let i = 0; i < 25; i += 1) {
+              await new Promise((r) => setTimeout(r, 300));
+              v = tile.querySelector('video');
+              s = v ? (v.currentSrc || v.src) : null;
+              if (isAsb(s)) break;
+            }
+          }
+          if (isAsb(s)) return { ok: true, url: s };
+        }
+        void type;
+        return { ok: false, message: 'Could not find a same-origin /asb/ URL for this media on the Flow page.' };
+      },
+    }),
     DOWNLOAD_TIMEOUT_MS,
   );
+  const reply = results?.[0]?.result as { ok?: boolean; url?: string; message?: string } | undefined;
   if (!reply?.ok || !reply.url) throw bridgeError('MEDIA_FAILED', reply?.message ?? 'Could not resolve media url', false);
   return reply.url as string;
 }
 
-// The content-script fetch to getMediaUrlRedirect returns an opaque redirect
-// (status 0, no readable location header) because the 307 target is cross-origin.
-// The raw redirect endpoint is exactly what the Flow UI itself uses as a tile
-// `src`, and it renders directly from the Studio extension page with the site
-// cookie jar. This non-secret endpoint is the safe preview URL fallback.
-function redirectEndpoint(mediaId: string): string {
-  return `${FX_API_BASE}/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(mediaId)}`;
-}
-
-async function resolveRedirectSafe(mediaId: string): Promise<string> {
+async function resolveRedirectSafe(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): Promise<string> {
   try {
-    return await resolveRedirect(mediaId);
+    return await resolveMediaUrl(mediaId, mediaType);
   } catch {
-    return redirectEndpoint(mediaId);
+    return '';
   }
 }
 
 async function downloadMedia(payload: MediaDownloadPayload): Promise<MediaDownloadData> {
-  // The content-script fetch to getMediaUrlRedirect returns an opaque redirect
-  // (status 0) because the 307 target is cross-origin, so we cannot read the
-  // signed CDN URL from page context. The browser download manager does NOT
-  // have this limitation: it follows the redirect with the site cookie jar.
-  // Build the raw redirect endpoint and let chrome.downloads.download follow it.
-  const rawRedirectUrl = `${FX_API_BASE}/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(payload.mediaId)}`;
-  const url = payload.url ?? rawRedirectUrl;
-  const filename = payload.fileName ? `${payload.fileName}.${url.includes('/video/') ? 'mp4' : 'jpg'}` : undefined;
+  // Resolve the same-origin /asb/ proxy URL from the signed-in Flow page (the
+  // legacy labs.google/fx redirect endpoint 401s for new-domain media), then let
+  // chrome.downloads follow it with the site cookie jar.
+  let url = payload.url;
+  if (!url) {
+    try {
+      url = await resolveMediaUrl(payload.mediaId, payload.mediaType);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+  const isVideo = payload.mediaType === 'VIDEO' || /video|\.mp4/i.test(url);
+  const filename = payload.fileName ? `${payload.fileName}.${isVideo ? 'mp4' : 'jpg'}` : undefined;
   return timeoutable(
     new Promise<MediaDownloadData>((resolve) => {
       chrome.downloads.download({
@@ -1159,7 +1213,7 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
         const current = (await readMediaIds()) ?? [];
         const newId = current.find((id) => !initialSet.has(id));
         if (newId) {
-          const previewUrl = await resolveRedirectSafe(newId);
+          const previewUrl = await resolveRedirectSafe(newId, isVideoKind(payload.kind) ? 'VIDEO' : 'IMAGE');
           return {
             mediaId: newId,
             type: isVideoKind(payload.kind) ? 'VIDEO' : 'IMAGE',

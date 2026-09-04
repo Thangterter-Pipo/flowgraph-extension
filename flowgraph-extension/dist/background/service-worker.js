@@ -252,7 +252,7 @@
       return data;
     }
     if (item && resolvePreview) {
-      const previewUrl = await resolveRedirectSafe(payload.mediaId);
+      const previewUrl = await resolveRedirectSafe(payload.mediaId, item.video ? "VIDEO" : "IMAGE");
       data.media = {
         mediaId: payload.mediaId,
         type: item.video ? "VIDEO" : "IMAGE",
@@ -263,30 +263,75 @@
     }
     return data;
   }
-  async function resolveRedirect(mediaId) {
+  async function resolveMediaUrl(mediaId, mediaType) {
     const tab = await findFlowTab();
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
-    const reply = await timeoutable(
-      chrome.tabs.sendMessage(tab.id, { type: "RESOLVE_MEDIA_URL", mediaId }),
+    try {
+      if (tab.windowId !== void 0) await chrome.windows.update(tab.windowId, { focused: true });
+      await chrome.tabs.update(tab.id, { active: true });
+    } catch {
+    }
+    const results = await timeoutable(
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: "MAIN",
+        args: [mediaId, mediaType ?? null],
+        func: async (id, type) => {
+          const isAsb = (u) => !!u && u.includes("/asb/");
+          const el = document.querySelector(`[data-media-id="${id}"]`);
+          if (el) {
+            const img = el.tagName === "IMG" ? el : el.querySelector("img");
+            const s = img ? img.currentSrc || img.getAttribute("src") : null;
+            if (isAsb(s)) return { ok: true, url: s };
+          }
+          const tiles = Array.from(document.querySelectorAll("flow-video-tile"));
+          const tile = tiles.find((t) => {
+            const thumb = t.querySelector("img");
+            return thumb && (thumb.getAttribute("src") || "").includes(id);
+          });
+          if (tile) {
+            let v = tile.querySelector("video");
+            let s = v ? v.currentSrc || v.src : null;
+            if (!isAsb(s)) {
+              const trigger = tile.querySelector(".footer-left") || tile.querySelector("img");
+              if (trigger) trigger.click();
+              for (let i = 0; i < 25; i += 1) {
+                await new Promise((r) => setTimeout(r, 300));
+                v = tile.querySelector("video");
+                s = v ? v.currentSrc || v.src : null;
+                if (isAsb(s)) break;
+              }
+            }
+            if (isAsb(s)) return { ok: true, url: s };
+          }
+          void type;
+          return { ok: false, message: "Could not find a same-origin /asb/ URL for this media on the Flow page." };
+        }
+      }),
       DOWNLOAD_TIMEOUT_MS
     );
+    const reply = results?.[0]?.result;
     if (!reply?.ok || !reply.url) throw bridgeError("MEDIA_FAILED", reply?.message ?? "Could not resolve media url", false);
     return reply.url;
   }
-  function redirectEndpoint(mediaId) {
-    return `${FX_API_BASE}/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(mediaId)}`;
-  }
-  async function resolveRedirectSafe(mediaId) {
+  async function resolveRedirectSafe(mediaId, mediaType) {
     try {
-      return await resolveRedirect(mediaId);
+      return await resolveMediaUrl(mediaId, mediaType);
     } catch {
-      return redirectEndpoint(mediaId);
+      return "";
     }
   }
   async function downloadMedia(payload) {
-    const rawRedirectUrl = `${FX_API_BASE}/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(payload.mediaId)}`;
-    const url = payload.url ?? rawRedirectUrl;
-    const filename = payload.fileName ? `${payload.fileName}.${url.includes("/video/") ? "mp4" : "jpg"}` : void 0;
+    let url = payload.url;
+    if (!url) {
+      try {
+        url = await resolveMediaUrl(payload.mediaId, payload.mediaType);
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+    const isVideo = payload.mediaType === "VIDEO" || /video|\.mp4/i.test(url);
+    const filename = payload.fileName ? `${payload.fileName}.${isVideo ? "mp4" : "jpg"}` : void 0;
     return timeoutable(
       new Promise((resolve) => {
         chrome.downloads.download({
@@ -869,7 +914,7 @@
           const current = await readMediaIds() ?? [];
           const newId = current.find((id) => !initialSet.has(id));
           if (newId) {
-            const previewUrl2 = await resolveRedirectSafe(newId);
+            const previewUrl2 = await resolveRedirectSafe(newId, isVideoKind(payload.kind) ? "VIDEO" : "IMAGE");
             return {
               mediaId: newId,
               type: isVideoKind(payload.kind) ? "VIDEO" : "IMAGE",
