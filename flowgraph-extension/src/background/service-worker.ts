@@ -54,6 +54,8 @@ import {
   MEDIA_WAIT_VIDEO_MS,
   VIDEO_TILE_MAX_CANDIDATES,
   VIDEO_TILE_RECOVERY_STEP_MS,
+  DOWNLOAD_RESOLVE_BUDGET_MS,
+  DOWNLOAD_TRANSFER_BUDGET_MS,
 } from '../shared/timeouts';
 
 const AISANDBOX_BASE = 'https://aisandbox-pa.googleapis.com/v1';
@@ -62,7 +64,10 @@ const FX_API_BASE = 'https://labs.google/fx/api';
 const TOKEN_TTL_MS = 50 * 60 * 1000; // refresh below 1h lifespan (verified ~3600s)
 const REQUEST_TIMEOUT_MS = 60_000;
 const SYNC_WRITE_TIMEOUT_MS = 12_000;
-const DOWNLOAD_TIMEOUT_MS = 180_000;
+// The transfer budget only. The signed-URL resolve loop above has its own
+// bounds, and the adapter's DOWNLOAD_BRIDGE_CEILING_MS sits above both, so the
+// bridge is never the thing that ends a healthy download.
+const DOWNLOAD_TIMEOUT_MS = DOWNLOAD_TRANSFER_BUDGET_MS;
 
 const FLOW_SITEKEY = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
 
@@ -492,7 +497,12 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
   // trusted-click mechanism the generate path uses) and capture the signed URL
   // the app itself fetches.
   if (mediaType === 'VIDEO') {
-    return resolveVideoUrlViaDebugger(tab.id, tab.url, mediaId);
+    // Bound the trusted-click resolve loop on its own so it can never eat the
+    // transfer budget below it (shared/timeouts.ts invariant).
+    return timeoutable(
+      resolveVideoUrlViaDebugger(tab.id, tab.url, mediaId),
+      DOWNLOAD_RESOLVE_BUDGET_MS,
+    );
   }
   // Images: bring the tab forward (best-effort) and read the same-origin /asb/
   // proxy URL that the [data-media-id] element already exposes.
@@ -774,26 +784,34 @@ async function downloadMedia(payload: MediaDownloadPayload): Promise<MediaDownlo
   const isVideo = payload.mediaType === 'VIDEO' || /video|\.mp4/i.test(url);
   const filename = payload.fileName ? `${payload.fileName}.${isVideo ? 'mp4' : 'jpg'}` : undefined;
   return timeoutable(
-    new Promise<MediaDownloadData>((resolve) => {
-      chrome.downloads.download({
+    // Poll the item instead of waiting for `onChanged`. Live run 95a31d7a proved
+    // the event path unreliable: the artifact (`flowgraph-output (9).mp4`, id 30)
+    // reached state=complete 2.5s after it started, yet the listener never saw a
+    // matching delta, so a perfectly good download hung until the 180s worker
+    // deadline and surfaced as `PROVIDER_ERROR: Bridge request timed out`.
+    // Reading state from `chrome.downloads.search` cannot miss a transition.
+    (async (): Promise<MediaDownloadData> => {
+      const downloadId = await chrome.downloads.download({
         url,
         filename,
         saveAs: false,
         conflictAction: 'uniquify',
-      }).then((downloadId) => {
-        const listener = (delta: chrome.downloads.DownloadDelta) => {
-          if (delta.id !== downloadId || !delta.state?.current) return;
-          if (delta.state.current !== 'complete' && delta.state.current !== 'interrupted') return;
-          chrome.downloads.onChanged.removeListener(listener);
-          if (delta.state.current === 'interrupted') {
-            resolve({ ok: false, downloadId, error: delta.error?.current ?? 'Download interrupted' });
-            return;
-          }
-          void chrome.downloads.search({ id: downloadId }).then(([item]) => resolve({ ok: true, downloadId, filename: item?.filename }));
-        };
-        chrome.downloads.onChanged.addListener(listener);
-      }).catch((error: unknown) => resolve({ ok: false, error: error instanceof Error ? error.message : String(error) }));
-    }),
+      });
+      const deadline = Date.now() + DOWNLOAD_TIMEOUT_MS;
+      for (;;) {
+        const [item] = await chrome.downloads.search({ id: downloadId });
+        if (item?.state === 'complete') {
+          return { ok: true, downloadId, filename: item.filename };
+        }
+        if (item?.state === 'interrupted') {
+          return { ok: false, downloadId, error: item.error ?? 'Download interrupted' };
+        }
+        if (Date.now() > deadline) {
+          return { ok: false, downloadId, error: 'Download did not finish in time' };
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    })(),
     DOWNLOAD_TIMEOUT_MS,
   );
 }
