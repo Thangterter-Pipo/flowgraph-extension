@@ -767,7 +767,9 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           const isChip = (b) => {
             const t = (b.innerText || '').replace(/\\s+/g, ' ');
-            return b.getAttribute('aria-haspopup') === 'menu' && (t.includes('Video ·') || t.includes('Nano Banana'));
+            const isTrigger = b.getAttribute('aria-haspopup') === 'menu'
+              || b.classList.contains('settings-trigger-button');
+            return isTrigger && (t.includes('Video ·') || t.includes('Nano Banana'));
           };
           const readChip = () => {
             const chip = Array.from(document.querySelectorAll('button')).find(isChip);
@@ -788,7 +790,8 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
 
           fire(chip);
           await sleep(800);
-          const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+          // Legacy Radix [role=tab] plus new Angular Material [role=radio].
+          const tabs = Array.from(document.querySelectorAll('[role="tab"], [role="radio"]'));
           const tab = tabs.find((t) => {
             const txt = (t.innerText || '').toLowerCase();
             return ${wantVideo} ? txt.includes('video') : (txt.includes('hình ảnh') || txt.includes('image'));
@@ -820,8 +823,18 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
     const readMediaIds = () => evalOnPage<string[]>(`
       (() => {
         const ids = new Set();
-        document.querySelectorAll('img, video, a, [data-media-id]').forEach((el) => {
-          const src = el.src || el.href || el.getAttribute('data-media-id') || '';
+        const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+        // New Angular Flow UI (flow.google.com): media elements expose the raw
+        // UUID via data-media-id, and image/video src points at a /asb/ proxy
+        // that does NOT contain the id. Read the attribute directly so polling
+        // detects freshly generated media instead of timing out.
+        document.querySelectorAll('[data-media-id]').forEach((el) => {
+          const attr = el.getAttribute('data-media-id');
+          if (attr && UUID.test(attr)) ids.add(attr);
+        });
+        // Legacy labs.google/fx UI: id embedded in a getMediaUrlRedirect / /media/ URL.
+        document.querySelectorAll('img, video, a').forEach((el) => {
+          const src = el.currentSrc || el.src || el.href || '';
           const m = src.match(/getMediaUrlRedirect\\?name=([0-9a-f-]{36})/i) || src.match(/\\/media\\/([0-9a-f-]{36})/i);
           if (m && m[1]) ids.add(m[1]);
         });
@@ -1313,9 +1326,11 @@ async function clearRealtimeFrameBindings(
               .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
           if (!swap) {
             const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+              || document.querySelector('.ProseMirror[contenteditable="true"]')
               || document.querySelector('[role="textbox"][contenteditable="true"]');
-            const videoChip = [...document.querySelectorAll('button[aria-haspopup="menu"]')]
-              .some((button) => /Video ·/.test(button.innerText || ''));
+            const videoChip = [...document.querySelectorAll('button')]
+              .some((button) => /Video ·/.test(button.innerText || '')
+                && (button.getAttribute('aria-haspopup') === 'menu' || button.classList.contains('settings-trigger-button')));
             const generate = [...document.querySelectorAll('button')].some((button) =>
               [...button.querySelectorAll('i.google-symbols, .google-symbols')]
                 .some((icon) => (icon.textContent || '').trim() === 'arrow_forward'));
@@ -1415,9 +1430,11 @@ async function clearRealtimeFrameBindings(
             .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
         if (!swap) {
           const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+            || document.querySelector('.ProseMirror[contenteditable="true"]')
             || document.querySelector('[role="textbox"][contenteditable="true"]');
-          const videoChip = [...document.querySelectorAll('button[aria-haspopup="menu"]')]
-            .some((button) => /Video ·/.test(button.innerText || ''));
+          const videoChip = [...document.querySelectorAll('button')]
+            .some((button) => /Video ·/.test(button.innerText || '')
+              && (button.getAttribute('aria-haspopup') === 'menu' || button.classList.contains('settings-trigger-button')));
           const generate = [...document.querySelectorAll('button')].some((button) =>
             [...button.querySelectorAll('i.google-symbols, .google-symbols')]
               .some((icon) => (icon.textContent || '').trim() === 'arrow_forward'));

@@ -82,7 +82,10 @@
 
     const opened = await openComposerSettings();
     if (!opened.ok) return { ok: false, reason: 'mode-menu-not-found', detail: opened.message };
-    const tabs = Array.from(opened.menu.querySelectorAll('[role="tab"]'));
+    // Legacy Radix used [role=tab]; the new Angular UI exposes the mode
+    // options as Material radios ([role=radio]) with text like
+    // "image Hình ảnh" / "videocam Video".
+    const tabs = Array.from(opened.menu.querySelectorAll('[role="tab"], [role="radio"]'));
     const tab = tabs.find((candidate) => {
       const text = normalizeSettingText(candidate.innerText).toLowerCase();
       return wantVideo ? text.includes('video') : (text.includes('hình ảnh') || text.includes('image'));
@@ -187,10 +190,12 @@
     // 1. Ghi nhận mediaId hiện tại trên DOM
     const getMediaIds = () => {
       const ids = new Set();
-      document.querySelectorAll('img, video').forEach((el) => {
-        const src = el.src || '';
-        const match = src.match(/getMediaUrlRedirect\?name=([0-9a-f-]{36})/i) || src.match(/\/media\/([0-9a-f-]{36})/i);
-        if (match?.[1]) ids.add(match[1]);
+      // UI mới (flow.google.com) lưu UUID trong data-media-id và src trỏ tới
+      // proxy /asb/ không chứa id, nên phải dùng mediaIdFromElement (đọc cả
+      // attribute lẫn URL) thay vì chỉ parse src.
+      document.querySelectorAll('img, video, a, [data-media-id]').forEach((el) => {
+        const id = mediaIdFromElement(el);
+        if (id) ids.add(id);
       });
       return ids;
     };
@@ -535,7 +540,12 @@
   function findModelChip() {
     return Array.from(document.querySelectorAll('button')).find((button) => {
       const text = (button.innerText || '').replace(/\s+/g, ' ');
-      return button.getAttribute('aria-haspopup') === 'menu' && (text.includes('Video ·') || text.includes('Nano Banana'));
+      // Legacy Radix UI used aria-haspopup="menu"; the new Angular Flow UI
+      // (flow.google.com) renders the composer chip as a Material
+      // settings-trigger-button with no aria-haspopup, so accept either.
+      const isTrigger = button.getAttribute('aria-haspopup') === 'menu'
+        || button.classList.contains('settings-trigger-button');
+      return isTrigger && (text.includes('Video ·') || text.includes('Nano Banana'));
     });
   }
 
@@ -593,6 +603,20 @@
     return (value || '').replace(/\r\n/g, '\n').trim();
   }
 
+  // The composer placeholder must never be treated as real prompt text.
+  // Legacy Slate marked it with data-slate-placeholder; the new Angular Flow
+  // UI uses a ProseMirror widget span (contenteditable="false").
+  function isPlaceholderNode(node) {
+    const parent = node?.parentElement;
+    if (!parent) return false;
+    return Boolean(
+      parent.closest('[data-slate-placeholder="true"]')
+      || parent.closest('.prosemirror-placeholder')
+      || parent.closest('.ProseMirror-widget')
+      || parent.closest('[contenteditable="false"]')
+    );
+  }
+
   function findComposerEditor() {
     return document.querySelector('div[contenteditable="true"]');
   }
@@ -607,7 +631,7 @@
     let anchorNode = null;
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
       acceptNode: (node) =>
-        node.parentElement?.closest('[data-slate-placeholder="true"]')
+        isPlaceholderNode(node)
           ? NodeFilter.FILTER_REJECT
           : (node.nodeValue || '').length > 0
             ? NodeFilter.FILTER_ACCEPT
@@ -619,10 +643,13 @@
       range.setStart(anchorNode, 0);
       range.setEnd(anchorNode, anchorNode.nodeValue.length);
     } else {
-      const leaf = editor.querySelector('[data-slate-leaf="true"]');
-      if (!leaf) return false;
-      range.setStart(leaf, 0);
-      range.setEnd(leaf, 0);
+      // Empty editor: anchor at the first editable paragraph so insertText has
+      // a live selection. ProseMirror uses <p>, Slate uses data-slate-leaf.
+      const leaf = editor.querySelector('[data-slate-leaf="true"]')
+        || editor.querySelector('p')
+        || editor;
+      range.selectNodeContents(leaf);
+      range.collapse(true);
     }
     selection.removeAllRanges();
     selection.addRange(range);
@@ -638,9 +665,7 @@
     let text = '';
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, {
       acceptNode: (node) =>
-        node.parentElement?.closest('[data-slate-placeholder="true"]')
-          ? NodeFilter.FILTER_REJECT
-          : NodeFilter.FILTER_ACCEPT,
+        isPlaceholderNode(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
     });
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       text += node.nodeValue || '';
@@ -801,7 +826,11 @@
   }
 
   function findOpenMenus() {
-    return Array.from(document.querySelectorAll('[role="menu"][data-state="open"]'));
+    // Legacy Radix menus expose [role=menu][data-state=open]; the new Angular
+    // Flow UI opens its composer settings inside a CDK overlay pane.
+    const radix = Array.from(document.querySelectorAll('[role="menu"][data-state="open"]'));
+    const cdk = Array.from(document.querySelectorAll('.cdk-overlay-pane'));
+    return [...radix, ...cdk];
   }
 
   function clickMenuItemLike(element) {
@@ -817,9 +846,11 @@
   }
 
   function findSettingsChip() {
-    return Array.from(document.querySelectorAll('button')).find((button) =>
-      button.getAttribute('aria-haspopup') === 'menu' &&
-      /Video ·|Nano Banana/.test(normalizeSettingText(button.innerText)));
+    return Array.from(document.querySelectorAll('button')).find((button) => {
+      const isTrigger = button.getAttribute('aria-haspopup') === 'menu'
+        || button.classList.contains('settings-trigger-button');
+      return isTrigger && /Video ·|Nano Banana/.test(normalizeSettingText(button.innerText));
+    });
   }
 
   async function closeOpenMenus() {
