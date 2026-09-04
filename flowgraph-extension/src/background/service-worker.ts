@@ -1347,13 +1347,18 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       // Google Flow can answer a real Generate click with an interactive
       // reCAPTCHA Enterprise "I am not a robot" challenge instead of starting the
       // render. We must surface that honestly and let the human solve it — never
-      // bypass it. The anchor iframe is only visible when a real challenge is on
-      // screen, so a visible widget after a render grace window with no new media
-      // is a genuine CAPTCHA_REQUIRED signal rather than a misleading timeout.
+      // bypass it.
+      //
+      // Detection has to reject the mandatory Google reCAPTCHA *branding badge*.
+      // Flow always ships a `.grecaptcha-badge` anchor iframe (256x60) that is
+      // parked off the right edge of the viewport with `visibility: hidden`, so a
+      // naive "is there a visible recaptcha iframe" check reports a false positive
+      // on every single run. A genuine challenge is an anchor widget that is
+      // actually on screen, inherited-visible, and hit-testable at its centre.
       const captchaGraceMs = 25_000;
       const detectInteractiveCaptcha = () =>
         evalOnPage<boolean>(
-          `(()=>{const f=[...document.querySelectorAll('iframe')].find((el)=>/recaptcha/i.test(el.src||''));if(!f)return false;const r=f.getBoundingClientRect();return !!f.offsetParent&&r.width>=120&&r.height>=40})()`,
+          `(()=>{for(const f of document.querySelectorAll('iframe')){if(!/recaptcha/i.test(f.src||''))continue;const r=f.getBoundingClientRect();if(r.width<120||r.height<40)continue;const cx=r.x+r.width/2,cy=r.y+r.height/2;if(cx<0||cy<0||cx>=innerWidth||cy>=innerHeight)continue;let el=f,vis=true;while(el){const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity)===0){vis=false;break}el=el.parentElement}if(!vis)continue;const hit=document.elementFromPoint(cx,cy);if(hit&&(hit===f||f.contains(hit)))return true}return false})()`,
         );
 
       while (Date.now() - startMs < maxWaitMs) {

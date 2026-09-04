@@ -1026,7 +1026,7 @@
         const wantVideo = isVideoKind(payload.kind);
         const captchaGraceMs = 25e3;
         const detectInteractiveCaptcha = () => evalOnPage(
-          `(()=>{const f=[...document.querySelectorAll('iframe')].find((el)=>/recaptcha/i.test(el.src||''));if(!f)return false;const r=f.getBoundingClientRect();return !!f.offsetParent&&r.width>=120&&r.height>=40})()`
+          `(()=>{for(const f of document.querySelectorAll('iframe')){if(!/recaptcha/i.test(f.src||''))continue;const r=f.getBoundingClientRect();if(r.width<120||r.height<40)continue;const cx=r.x+r.width/2,cy=r.y+r.height/2;if(cx<0||cy<0||cx>=innerWidth||cy>=innerHeight)continue;let el=f,vis=true;while(el){const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity)===0){vis=false;break}el=el.parentElement}if(!vis)continue;const hit=document.elementFromPoint(cx,cy);if(hit&&(hit===f||f.contains(hit)))return true}return false})()`
         );
         while (Date.now() - startMs < maxWaitMs) {
           await new Promise((r) => setTimeout(r, 4e3));
