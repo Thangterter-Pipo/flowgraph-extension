@@ -577,6 +577,14 @@
     }
     let text = rawText;
     text = text.replace(/[^A-Za-z0-9 .:+_-]/gu, ' ');
+    // The image-mode chip concatenates the model name with the aspect-ratio
+    // icon token (e.g. "crop_16_9") and the batch-count token (e.g. "x2").
+    // Those are separate settings, not part of the model label, so strip them
+    // before returning. Otherwise the model short-circuit comparison in
+    // writeModel never matches and every sync re-opens the (flaky) menu.
+    text = text.replace(/\bcrop_\d+_\d+\b/gi, ' ');
+    text = text.replace(/\bcrop_free\b/gi, ' ');
+    text = text.replace(/\bx\d+\b/gi, ' ');
     text = text.replace(/\s+/g, ' ').trim();
     return text;
   }
@@ -888,7 +896,21 @@
     }
 
     clickMenuItemLike(chip);
-    await syncSleep(500);
+    // The composer settings pane is rendered by Angular CDK and can lag behind
+    // the trigger click, especially right after a generation has the page busy.
+    // Poll for the pane and re-click the trigger a few times before giving up,
+    // instead of relying on a single fixed 500ms wait.
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      for (let waited = 0; waited < 1500; waited += 150) {
+        const menu = findOpenMenus()
+          .find((candidate) => /Hình ảnh|Video/.test(normalizeSettingText(candidate.innerText)));
+        if (menu) return { ok: true, menu };
+        await syncSleep(150);
+      }
+      // Still closed: the previous click may have toggled it shut or been
+      // swallowed while the page was busy. Re-click the trigger and retry.
+      clickMenuItemLike(chip);
+    }
     const menu = findOpenMenus()
       .find((candidate) => /Hình ảnh|Video/.test(normalizeSettingText(candidate.innerText)));
     return menu ? { ok: true, menu } : { ok: false, message: 'Flow settings menu did not open.' };
@@ -996,16 +1018,24 @@
     modelButton.click();
     await syncSleep(400);
 
-    const submenu = Array.from(document.querySelectorAll('[role="menu"][data-state="open"]'))
+    // The new Angular Flow UI renders the model submenu inside a CDK overlay
+    // pane (not a Radix [role=menu]) and its options are plain buttons rather
+    // than [role=menuitem]. Search every open overlay for the newest pane that
+    // is not the settings pane itself, then match options by their visible text.
+    const submenu = findOpenMenus()
       .filter((menu) => menu !== opened.menu)
       .pop();
-    const item = Array.from(submenu?.querySelectorAll('[role="menuitem"]') ?? [])
-      .find((candidate) => {
-        const text = normalizeSettingText(candidate.innerText);
-        const buttonText = normalizeSettingText(candidate.querySelector('button')?.innerText);
-        return text === requested || text.endsWith(` ${requested}`) ||
-          buttonText === requested || buttonText.endsWith(` ${requested}`);
-      });
+    const optionText = (candidate) => normalizeSettingText(candidate.innerText)
+      .replace(/arrow_drop_down/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const matchesRequested = (candidate) => {
+      const text = optionText(candidate);
+      return text === requested || text.endsWith(` ${requested}`);
+    };
+    const item = Array.from(
+      submenu?.querySelectorAll('[role="menuitem"],[role="option"],button') ?? [],
+    ).find(matchesRequested);
     if (!item) {
       await closeOpenMenus();
       return {

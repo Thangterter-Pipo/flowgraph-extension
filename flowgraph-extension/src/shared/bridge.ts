@@ -181,6 +181,14 @@ export interface NormalizedMediaRef {
   fileName?: string;
   /** Transient signed CDN URL. Never persisted. */
   previewUrl?: string;
+  /**
+   * Set when the service worker confirmed the asset finished rendering directly
+   * on the signed-in Google Flow UI (a new media tile appeared and its id was
+   * recovered). The legacy aisandbox-pa bearer status API is dead for migrated
+   * flow.google accounts, so video executors use this to skip bearer polling;
+   * the download step re-resolves the URL from the page when previewUrl is empty.
+   */
+  completedViaUi?: boolean;
 }
 
 export interface MediaUploadPayload {

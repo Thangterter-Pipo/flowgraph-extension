@@ -824,6 +824,9 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
   const tabId = tab.id;
   const prompt = payload.prompt ?? 'A cinematic red paper boat floating on a calm lake at sunrise, 16:9';
+  // Canonical gallery URL (project root, no /edit/... suffix) so the video-tile
+  // recovery helper can always return to the grid after opening an editor.
+  const galleryUrl = (tab.url ?? '').replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, '');
 
   const target: chrome.debugger.Debuggee = { tabId };
   let attached = false;
@@ -984,8 +987,65 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       })()
     `);
 
+    // After the labs.google/fx -> flow.google migration a freshly generated video
+    // tile no longer exposes its mediaId anywhere in the gallery DOM: the tile's
+    // only stable identifier is the same-origin poster proxy URL
+    // `https://flow.google.com/asb/<opaqueToken>` (a JPEG poster, not a UUID).
+    // `readMediaIds()` therefore cannot see new videos and the generate loop would
+    // time out. We snapshot the poster tokens so the loop can detect "a new video
+    // tile appeared", then open that exact tile in the editor — whose URL is
+    // `/project/<pid>/edit/<mediaId>` — to recover the real mediaId.
+    const readVideoPosterTokens = () => evalOnPage<string[]>(`
+      (() => {
+        const toks = [];
+        document.querySelectorAll('flow-video-tile img').forEach((el) => {
+          const s = el.currentSrc || el.src || '';
+          const m = s.match(/\\/asb\\/([A-Za-z0-9_-]+)/);
+          if (m && m[1]) toks.push(m[1]);
+        });
+        return toks;
+      })()
+    `);
+
+    // Open the video tile whose poster matches `token` with a real pointer click
+    // (Angular ignores synthetic clicks), read the mediaId from the resulting
+    // `/edit/<mediaId>` URL, then return to the gallery. Best-effort: returns ''
+    // when the tile cannot be located or the editor URL does not expose a UUID.
+    const openVideoTileAndGetId = async (token: string): Promise<string> => {
+      const pos = await evalOnPage<{ x: number; y: number } | null>(`((tok) => {
+        const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+        for (const t of tiles) {
+          const img = t.querySelector('img');
+          const s = img ? (img.currentSrc || img.src || '') : '';
+          if (s.includes('/asb/' + tok)) {
+            t.scrollIntoView?.({ block: 'center', inline: 'center' });
+            const b = t.getBoundingClientRect();
+            if (b.width < 10 || b.height < 10) return null;
+            return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
+          }
+        }
+        return null;
+      })(${JSON.stringify(token)})`);
+      if (!pos) return '';
+      await clickAt(pos.x, pos.y);
+      for (let k = 0; k < 15; k += 1) {
+        await new Promise((r) => setTimeout(r, 400));
+        const href = await evalOnPage<string>(`location.href`);
+        const m = href && href.match(/\/edit\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+        if (m && m[1]) {
+          await chrome.debugger.sendCommand(target, 'Page.navigate', { url: galleryUrl }).catch(() => {});
+          await new Promise((r) => setTimeout(r, 3000));
+          return m[1];
+        }
+      }
+      await chrome.debugger.sendCommand(target, 'Page.navigate', { url: galleryUrl }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 3000));
+      return '';
+    };
+
     try {
       const beforeIds = (await readMediaIds()) ?? [];
+      const beforeVidTokens = new Set((await readVideoPosterTokens()) ?? []);
 
       // Explicitly set the composer mode before interacting with media / prompt.
       await setComposerMode(payload.kind);
@@ -1283,20 +1343,33 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       const maxWaitMs = 180_000;
       const startMs = Date.now();
       const initialSet = new Set(beforeIds);
+      const wantVideo = isVideoKind(payload.kind);
 
       while (Date.now() - startMs < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 4000));
-        const current = (await readMediaIds()) ?? [];
-        const newId = current.find((id) => !initialSet.has(id));
-        if (newId) {
-          const previewUrl = await resolveRedirectSafe(newId, isVideoKind(payload.kind) ? 'VIDEO' : 'IMAGE');
-          return {
-            mediaId: newId,
-            type: isVideoKind(payload.kind) ? 'VIDEO' : 'IMAGE',
-            projectId: payload.projectId,
-            previewUrl,
-          };
+        if (!wantVideo) {
+          // Images still expose their raw UUID via [data-media-id] in the gallery.
+          const current = (await readMediaIds()) ?? [];
+          const newId = current.find((id) => !initialSet.has(id));
+          if (newId) {
+            const previewUrl = await resolveRedirectSafe(newId, 'IMAGE');
+            return { mediaId: newId, type: 'IMAGE', projectId: payload.projectId, previewUrl, completedViaUi: true };
+          }
+          continue;
         }
+        // Videos: detect a new poster token, then open that exact tile to recover
+        // its mediaId from the /edit/<mediaId> URL. The poster appears as soon as
+        // Flow finishes rendering the clip, so this is a genuine completion signal.
+        const tokens = (await readVideoPosterTokens()) ?? [];
+        const newToken = tokens.find((t) => !beforeVidTokens.has(t));
+        if (!newToken) continue;
+        const videoId = await openVideoTileAndGetId(newToken);
+        if (!videoId) continue;
+        const previewUrl = await resolveRedirectSafe(videoId, 'VIDEO');
+        // The tile only appears once Flow finishes rendering the clip, and its id
+        // was recovered from the /edit/<mediaId> URL, so completion is proven on
+        // the real UI. Mark it so the video executor skips the dead bearer poll.
+        return { mediaId: videoId, type: 'VIDEO', projectId: payload.projectId, previewUrl, completedViaUi: true };
       }
       throw bridgeError('TIMEOUT', 'Timed out waiting for generated media to appear on Flow page via CDP.', true);
     } finally {
@@ -1610,6 +1683,30 @@ async function clearRealtimeFrameBindings(
   }
 }
 
+// Google Flow renders a "mobile" tile layout when the browser viewport is
+// narrow. In that layout the per-tile action bar (.hover-overlay) is forced to
+// display:none, so the "more_vert" menu that exposes "Animate / Tạo ảnh động"
+// can never be revealed by a hover — which breaks the I2V start-frame binding.
+// Widen the Flow window past the desktop breakpoint before any tile interaction
+// so the hotbar renders. This is a real UI precondition, not a bypass.
+async function ensureDesktopViewport(tab: chrome.tabs.Tab): Promise<void> {
+  if (tab.id === undefined || tab.windowId === undefined) return;
+  try {
+    const win = await chrome.windows.get(tab.windowId);
+    const MIN_DESKTOP_WIDTH = 1280;
+    if ((win.width ?? 0) >= MIN_DESKTOP_WIDTH) return;
+    const targetWidth = Math.max(win.width ?? MIN_DESKTOP_WIDTH, MIN_DESKTOP_WIDTH + 320);
+    await chrome.windows.update(tab.windowId, {
+      width: targetWidth,
+      state: win.state === 'minimized' ? 'normal' : win.state,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 900));
+  } catch {
+    // Best-effort: if the window cannot be resized the downstream tile probe
+    // will still surface a clear MEDIA_FAILED reason.
+  }
+}
+
 async function bindRealtimeStartImage(
   tab: chrome.tabs.Tab,
   mediaId: string,
@@ -1617,6 +1714,7 @@ async function bindRealtimeStartImage(
   if (tab.id === undefined || !mediaId) {
     throw bridgeError('INVALID_VALUE', 'Start Frame requires an exact mediaId.', false);
   }
+  await ensureDesktopViewport(tab);
   await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
   await timeoutable(chrome.tabs.sendMessage(tab.id, {
     type: 'FLOWGRAPH_SYNC_SUPPRESS_ECHO',

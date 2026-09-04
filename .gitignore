@@ -24,3 +24,6 @@ Thumbs.db
 
 # MCP server runtime
 mcp_server/oauth_clients.json
+
+# Vendored third-party bundles (draw.io) kept out of root
+research/vendor/

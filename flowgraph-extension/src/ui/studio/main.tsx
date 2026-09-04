@@ -337,7 +337,7 @@ function Inspector({ node, edges, updateConfig, close, locked }: { node?: FlowNo
   );
 }
 
-function ExecutionPanel({ nodes, runStatus, elapsed, validationIssues, creditsBefore, creditsAfter }: { nodes: FlowNode[]; runStatus: RunStatus; elapsed: number; validationIssues?: string[]; creditsBefore?: number; creditsAfter?: number }) {
+function ExecutionPanel({ nodes, runStatus, elapsed, validationIssues, runError, creditsBefore, creditsAfter }: { nodes: FlowNode[]; runStatus: RunStatus; elapsed: number; validationIssues?: string[]; runError?: NodeErrorInfo; creditsBefore?: number; creditsAfter?: number }) {
   const successCount = nodes.filter((node) => node.data.status === 'success').length;
   const failedCount = nodes.filter((node) => node.data.status === 'failed').length;
   const runLabel = runStatus === 'ready' ? 'CONFIGURING' : runStatus === 'running' ? 'RUNNING' : runStatus === 'success' ? 'SUCCESS' : 'FAILED';
@@ -360,6 +360,12 @@ function ExecutionPanel({ nodes, runStatus, elapsed, validationIssues, creditsBe
             <div className="validation-report">
               <strong>Pre-run report</strong>
               {validationIssues.map((issue, index) => <div className="validation-issue" key={index}>{issue}</div>)}
+            </div>
+          )}
+          {runError && (
+            <div className="validation-report">
+              <strong>Run error</strong>
+              <div className="validation-issue">{runError.code}: {runError.message}</div>
             </div>
           )}
         </div>
@@ -1307,7 +1313,7 @@ function Studio() {
                 <MiniMap position="top-right" pannable zoomable nodeColor={(node) => colorForTone((node.data as FlowNode['data']).tone)} maskColor="rgba(5,9,14,.60)" />
               </ReactFlow>
             </div>
-            <ExecutionPanel nodes={nodes} runStatus={runStatus} elapsed={elapsed} validationIssues={validationIssues} creditsBefore={creditsBefore} creditsAfter={creditsAfter} />
+            <ExecutionPanel nodes={nodes} runStatus={runStatus} elapsed={elapsed} validationIssues={validationIssues} runError={runError} creditsBefore={creditsBefore} creditsAfter={creditsAfter} />
           </ProjectGateOverlay>
         </section>
 

@@ -266,6 +266,9 @@
   async function resolveMediaUrl(mediaId, mediaType) {
     const tab = await findFlowTab();
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    if (mediaType === "VIDEO") {
+      return resolveVideoUrlViaDebugger(tab.id, tab.url, mediaId);
+    }
     try {
       if (tab.windowId !== void 0) await chrome.windows.update(tab.windowId, { focused: true });
       await chrome.tabs.update(tab.id, { active: true });
@@ -275,8 +278,8 @@
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: "MAIN",
-        args: [mediaId, mediaType ?? null],
-        func: async (id, type) => {
+        args: [mediaId],
+        func: async (id) => {
           const isAsb = (u) => !!u && u.includes("/asb/");
           const el = document.querySelector(`[data-media-id="${id}"]`);
           if (el) {
@@ -284,27 +287,10 @@
             const s = img ? img.currentSrc || img.getAttribute("src") : null;
             if (isAsb(s)) return { ok: true, url: s };
           }
-          const tiles = Array.from(document.querySelectorAll("flow-video-tile"));
-          const tile = tiles.find((t) => {
-            const thumb = t.querySelector("img");
-            return thumb && (thumb.getAttribute("src") || "").includes(id);
-          });
-          if (tile) {
-            let v = tile.querySelector("video");
-            let s = v ? v.currentSrc || v.src : null;
-            if (!isAsb(s)) {
-              const trigger = tile.querySelector(".footer-left") || tile.querySelector("img");
-              if (trigger) trigger.click();
-              for (let i = 0; i < 25; i += 1) {
-                await new Promise((r) => setTimeout(r, 300));
-                v = tile.querySelector("video");
-                s = v ? v.currentSrc || v.src : null;
-                if (isAsb(s)) break;
-              }
-            }
-            if (isAsb(s)) return { ok: true, url: s };
-          }
-          void type;
+          const v = Array.from(document.querySelectorAll("video")).find(
+            (el2) => (el2.currentSrc || el2.src || "").includes(id)
+          );
+          if (v) return { ok: true, url: v.currentSrc || v.src };
           return { ok: false, message: "Could not find a same-origin /asb/ URL for this media on the Flow page." };
         }
       }),
@@ -313,6 +299,88 @@
     const reply = results?.[0]?.result;
     if (!reply?.ok || !reply.url) throw bridgeError("MEDIA_FAILED", reply?.message ?? "Could not resolve media url", false);
     return reply.url;
+  }
+  async function resolveVideoUrlViaDebugger(tabId, galleryUrl, mediaId) {
+    const target = { tabId };
+    let attachedHere = false;
+    try {
+      await chrome.debugger.attach(target, "1.3");
+      attachedHere = true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!/already attached/i.test(msg)) {
+        throw bridgeError("MEDIA_FAILED", `Could not attach debugger to resolve video: ${msg}`, false);
+      }
+    }
+    try {
+      await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => {
+      });
+      const evalOnPage = async (expression) => {
+        try {
+          const res = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
+            expression,
+            returnByValue: true,
+            awaitPromise: true
+          });
+          return res?.result?.value;
+        } catch {
+          return void 0;
+        }
+      };
+      const clickAt = async (x, y) => {
+        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+          type: "mousePressed",
+          x,
+          y,
+          button: "left",
+          buttons: 1,
+          clickCount: 1
+        });
+        await new Promise((r) => setTimeout(r, 80));
+        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+          type: "mouseReleased",
+          x,
+          y,
+          button: "left",
+          buttons: 0,
+          clickCount: 1
+        });
+      };
+      const findVideo = () => evalOnPage(
+        `(()=>{const v=Array.from(document.querySelectorAll('video')).find((el)=>((el.currentSrc||el.src||'').includes(${JSON.stringify(mediaId)})));return v?(v.currentSrc||v.src||''):''})()`
+      );
+      const already = await findVideo();
+      if (already) return already;
+      const tileCount = await evalOnPage(`document.querySelectorAll('flow-video-tile').length`) ?? 0;
+      for (let i = 0; i < Math.min(tileCount, 24); i += 1) {
+        const pos = await evalOnPage(
+          `(()=>{const t=document.querySelectorAll('flow-video-tile')[${i}];if(!t)return null;const b=t.getBoundingClientRect();if(b.width<10)return null;return{x:Math.round(b.left+b.width/2),y:Math.round(b.top+b.height/2)}})()`
+        );
+        if (!pos) continue;
+        await clickAt(pos.x, pos.y);
+        let url = "";
+        for (let k = 0; k < 12; k += 1) {
+          await new Promise((r) => setTimeout(r, 400));
+          url = await findVideo() ?? "";
+          if (url) break;
+        }
+        if (url) return url;
+        if (galleryUrl) {
+          await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
+          });
+          await new Promise((r) => setTimeout(r, 4e3));
+        }
+      }
+      throw bridgeError("MEDIA_FAILED", "Could not resolve a signed video URL for this media on the Flow page.", false);
+    } finally {
+      if (attachedHere) {
+        try {
+          await chrome.debugger.detach(target);
+        } catch {
+        }
+      }
+    }
   }
   async function resolveRedirectSafe(mediaId, mediaType) {
     try {
@@ -508,6 +576,7 @@
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
     const tabId = tab.id;
     const prompt = payload.prompt ?? "A cinematic red paper boat floating on a calm lake at sunrise, 16:9";
+    const galleryUrl = (tab.url ?? "").replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, "");
     const target = { tabId };
     let attached = false;
     try {
@@ -647,8 +716,53 @@
         return Array.from(ids);
       })()
     `);
+      const readVideoPosterTokens = () => evalOnPage(`
+      (() => {
+        const toks = [];
+        document.querySelectorAll('flow-video-tile img').forEach((el) => {
+          const s = el.currentSrc || el.src || '';
+          const m = s.match(/\\/asb\\/([A-Za-z0-9_-]+)/);
+          if (m && m[1]) toks.push(m[1]);
+        });
+        return toks;
+      })()
+    `);
+      const openVideoTileAndGetId = async (token) => {
+        const pos = await evalOnPage(`((tok) => {
+        const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+        for (const t of tiles) {
+          const img = t.querySelector('img');
+          const s = img ? (img.currentSrc || img.src || '') : '';
+          if (s.includes('/asb/' + tok)) {
+            t.scrollIntoView?.({ block: 'center', inline: 'center' });
+            const b = t.getBoundingClientRect();
+            if (b.width < 10 || b.height < 10) return null;
+            return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
+          }
+        }
+        return null;
+      })(${JSON.stringify(token)})`);
+        if (!pos) return "";
+        await clickAt(pos.x, pos.y);
+        for (let k = 0; k < 15; k += 1) {
+          await new Promise((r) => setTimeout(r, 400));
+          const href = await evalOnPage(`location.href`);
+          const m = href && href.match(/\/edit\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+          if (m && m[1]) {
+            await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
+            });
+            await new Promise((r) => setTimeout(r, 3e3));
+            return m[1];
+          }
+        }
+        await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
+        });
+        await new Promise((r) => setTimeout(r, 3e3));
+        return "";
+      };
       try {
         const beforeIds = await readMediaIds() ?? [];
+        const beforeVidTokens = new Set(await readVideoPosterTokens() ?? []);
         await setComposerMode(payload.kind);
         const exactStartAlreadyBound = payload.kind === "i2v" && payload.startImage?.mediaId ? Boolean(await evalOnPage(`((mediaId) => {
             const swap = [...document.querySelectorAll('button')].find((button) =>
@@ -909,19 +1023,25 @@
         const maxWaitMs = 18e4;
         const startMs = Date.now();
         const initialSet = new Set(beforeIds);
+        const wantVideo = isVideoKind(payload.kind);
         while (Date.now() - startMs < maxWaitMs) {
           await new Promise((r) => setTimeout(r, 4e3));
-          const current = await readMediaIds() ?? [];
-          const newId = current.find((id) => !initialSet.has(id));
-          if (newId) {
-            const previewUrl2 = await resolveRedirectSafe(newId, isVideoKind(payload.kind) ? "VIDEO" : "IMAGE");
-            return {
-              mediaId: newId,
-              type: isVideoKind(payload.kind) ? "VIDEO" : "IMAGE",
-              projectId: payload.projectId,
-              previewUrl: previewUrl2
-            };
+          if (!wantVideo) {
+            const current = await readMediaIds() ?? [];
+            const newId = current.find((id) => !initialSet.has(id));
+            if (newId) {
+              const previewUrl3 = await resolveRedirectSafe(newId, "IMAGE");
+              return { mediaId: newId, type: "IMAGE", projectId: payload.projectId, previewUrl: previewUrl3, completedViaUi: true };
+            }
+            continue;
           }
+          const tokens = await readVideoPosterTokens() ?? [];
+          const newToken = tokens.find((t) => !beforeVidTokens.has(t));
+          if (!newToken) continue;
+          const videoId = await openVideoTileAndGetId(newToken);
+          if (!videoId) continue;
+          const previewUrl2 = await resolveRedirectSafe(videoId, "VIDEO");
+          return { mediaId: videoId, type: "VIDEO", projectId: payload.projectId, previewUrl: previewUrl2, completedViaUi: true };
         }
         throw bridgeError("TIMEOUT", "Timed out waiting for generated media to appear on Flow page via CDP.", true);
       } finally {
@@ -1206,10 +1326,26 @@
       if (attached) await chrome.debugger.detach(target).catch(() => void 0);
     }
   }
+  async function ensureDesktopViewport(tab) {
+    if (tab.id === void 0 || tab.windowId === void 0) return;
+    try {
+      const win = await chrome.windows.get(tab.windowId);
+      const MIN_DESKTOP_WIDTH = 1280;
+      if ((win.width ?? 0) >= MIN_DESKTOP_WIDTH) return;
+      const targetWidth = Math.max(win.width ?? MIN_DESKTOP_WIDTH, MIN_DESKTOP_WIDTH + 320);
+      await chrome.windows.update(tab.windowId, {
+        width: targetWidth,
+        state: win.state === "minimized" ? "normal" : win.state
+      });
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    } catch {
+    }
+  }
   async function bindRealtimeStartImage(tab, mediaId) {
     if (tab.id === void 0 || !mediaId) {
       throw bridgeError("INVALID_VALUE", "Start Frame requires an exact mediaId.", false);
     }
+    await ensureDesktopViewport(tab);
     await chrome.tabs.update(tab.id, { active: true }).catch(() => void 0);
     await timeoutable(chrome.tabs.sendMessage(tab.id, {
       type: "FLOWGRAPH_SYNC_SUPPRESS_ECHO",
