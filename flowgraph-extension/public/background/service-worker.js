@@ -354,6 +354,7 @@
   async function resolveVideoUrlViaDebugger(tabId, galleryUrl, mediaId) {
     const target = { tabId };
     let attachedHere = false;
+    let projectUrl = "";
     try {
       await chrome.tabs.update(tabId, { active: true });
     } catch {
@@ -402,6 +403,7 @@
         });
       };
       const editUrl = galleryUrl ? `${galleryUrl.replace(/\/edit\/[^/]+.*$/, "")}/edit/${mediaId}` : "";
+      projectUrl = galleryUrl ? galleryUrl.replace(/\/edit\/[^/]+.*$/, "") : "";
       const downloadBtnXY = () => evalOnPage(
         `(()=>{const b=[...document.querySelectorAll('flow-video-tile button')].find((x)=>{const a=(x.getAttribute('aria-label')||'').toLowerCase();const i=x.querySelector('mat-icon,i');return /download|t\u1EA3i/.test(a)||(i&&i.textContent.trim()==='download')});if(!b)return null;const r=b.getBoundingClientRect();if(r.width<2)return null;return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`
       );
@@ -482,6 +484,15 @@
       if (attachedHere) {
         try {
           await chrome.debugger.detach(target);
+        } catch {
+        }
+      }
+      if (projectUrl) {
+        try {
+          const current = await chrome.tabs.get(tabId);
+          if ((current.url || "").includes("/edit/")) {
+            await chrome.tabs.update(tabId, { url: projectUrl });
+          }
         } catch {
         }
       }
