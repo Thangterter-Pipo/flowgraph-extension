@@ -494,30 +494,43 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
           const s = img ? (img.currentSrc || img.getAttribute('src')) : null;
           if (isAsb(s)) return { ok: true, url: s };
         }
-        // Videos: locate the flow-video-tile whose thumbnail carries the UUID, then
-        // ensure a <video> with an asb src exists (play it if needed).
+        // Videos: opening a flow-video-tile in the editor makes Angular render a
+        // <video> whose src is a signed CDN URL that embeds the mediaId
+        // (https://flow-content.google/video/<mediaId>?...Signature=...), which
+        // chrome.downloads can fetch directly. The element only materialises while
+        // the tab is visible, so the caller focuses the window first. We match the
+        // rendered <video> by mediaId so we never download the wrong clip.
+        const videoUrlOk = (u: string | null | undefined): u is string =>
+          !!u && u.includes(id) && (u.includes('/video/') || u.includes('/asb/'));
         const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
-        const tile = tiles.find((t) => {
+        // Prefer the tile whose thumbnail still carries the raw UUID (freshly
+        // generated, before a reload rewrites it to an opaque /asb/ token); fall
+        // back to scanning tiles and matching the rendered <video> by mediaId.
+        const byThumb = tiles.filter((t) => {
           const thumb = t.querySelector('img');
           return thumb && (thumb.getAttribute('src') || '').includes(id);
         });
-        if (tile) {
-          let v = tile.querySelector('video');
-          let s = v ? (v.currentSrc || v.src) : null;
-          if (!isAsb(s)) {
-            const trigger = tile.querySelector('.footer-left') || tile.querySelector('img');
-            if (trigger) (trigger as HTMLElement).click();
-            for (let i = 0; i < 25; i += 1) {
-              await new Promise((r) => setTimeout(r, 300));
-              v = tile.querySelector('video');
-              s = v ? (v.currentSrc || v.src) : null;
-              if (isAsb(s)) break;
-            }
+        const candidates = byThumb.length ? byThumb : tiles;
+        // A <video> may already be rendered (e.g. we are already in the editor).
+        const existing = Array.from(document.querySelectorAll('video')).find((v) =>
+          videoUrlOk(v.currentSrc || v.src),
+        );
+        if (existing) return { ok: true, url: (existing.currentSrc || existing.src) as string };
+        for (const tile of candidates.slice(0, 24)) {
+          const trigger = (tile.querySelector('.footer-left') ||
+            tile.querySelector('img') ||
+            tile) as HTMLElement;
+          trigger.click();
+          for (let i = 0; i < 20; i += 1) {
+            await new Promise((r) => setTimeout(r, 300));
+            const v = Array.from(document.querySelectorAll('video')).find((el) =>
+              videoUrlOk(el.currentSrc || el.src),
+            );
+            if (v) return { ok: true, url: (v.currentSrc || v.src) as string };
           }
-          if (isAsb(s)) return { ok: true, url: s };
         }
         void type;
-        return { ok: false, message: 'Could not find a same-origin /asb/ URL for this media on the Flow page.' };
+        return { ok: false, message: 'Could not resolve a signed video URL for this media on the Flow page.' };
       },
     }),
     DOWNLOAD_TIMEOUT_MS,
