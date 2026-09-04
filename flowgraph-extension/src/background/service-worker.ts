@@ -563,6 +563,15 @@ async function resolveVideoUrlViaDebugger(
 ): Promise<string> {
   const target: chrome.debugger.Debuggee = { tabId };
   let attachedHere = false;
+  // Google Flow only lays out the editor (and therefore the tile hotbar) while
+  // its tab is the visible one; a backgrounded tab reports a 0x0 viewport and
+  // every coordinate click lands on nothing. Live run 30c818fa burned the whole
+  // bridge budget this way. Make the Flow tab frontmost before attaching.
+  try {
+    await chrome.tabs.update(tabId, { active: true });
+  } catch {
+    // Best-effort: focus emulation below still makes input reachable.
+  }
   try {
     await chrome.debugger.attach(target, '1.3');
     attachedHere = true;
@@ -611,10 +620,25 @@ async function resolveVideoUrlViaDebugger(
     const editUrl = galleryUrl
       ? `${galleryUrl.replace(/\/edit\/[^/]+.*$/, '')}/edit/${mediaId}`
       : '';
+    // The download button only exists once Angular has rendered the clip tile in
+    // this editor, so wait for the real element instead of a fixed sleep.
+    const downloadBtnXY = () =>
+      evalOnPage<{ x: number; y: number } | null>(
+        `(()=>{const b=[...document.querySelectorAll('flow-video-tile button')].find((x)=>{const a=(x.getAttribute('aria-label')||'').toLowerCase();const i=x.querySelector('mat-icon,i');return /download|tải/.test(a)||(i&&i.textContent.trim()==='download')});if(!b)return null;const r=b.getBoundingClientRect();if(r.width<2)return null;return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`,
+      );
+    const waitForButton = async (ms: number) => {
+      const deadline = Date.now() + ms;
+      for (;;) {
+        const found = await downloadBtnXY();
+        if (found) return found;
+        if (Date.now() > deadline) return null;
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    };
     const here = await evalOnPage<string>('location.href');
     if (editUrl && !(here || '').includes(`/edit/${mediaId}`)) {
       await chrome.debugger.sendCommand(target, 'Page.navigate', { url: editUrl }).catch(() => {});
-      await new Promise((r) => setTimeout(r, 4000));
+      await waitForButton(20_000);
     }
 
     let signedUrl = '';
@@ -648,9 +672,7 @@ async function resolveVideoUrlViaDebugger(
     try {
       await chrome.debugger.sendCommand(target, 'Network.enable').catch(() => {});
       const openMenuAndPick = async (): Promise<boolean> => {
-        const btn = await evalOnPage<{ x: number; y: number } | null>(
-          `(()=>{const b=[...document.querySelectorAll('flow-video-tile button')].find((x)=>{const a=(x.getAttribute('aria-label')||'').toLowerCase();const i=x.querySelector('mat-icon,i');return /download|tải/.test(a)||(i&&i.textContent.trim()==='download')});if(!b)return null;const r=b.getBoundingClientRect();if(r.width<2)return null;return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`,
-        );
+        const btn = await downloadBtnXY();
         if (!btn) return false;
         await clickAt(btn.x, btn.y);
         await new Promise((r) => setTimeout(r, 1200));
@@ -669,7 +691,7 @@ async function resolveVideoUrlViaDebugger(
         if (!signedUrl && editUrl) {
           // The menu can close without firing (stale overlay); reload the editor.
           await chrome.debugger.sendCommand(target, 'Page.navigate', { url: editUrl }).catch(() => {});
-          await new Promise((r) => setTimeout(r, 3500));
+          await waitForButton(15_000);
         }
       }
     } finally {

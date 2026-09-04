@@ -19,7 +19,7 @@ import {
 } from '../../shared/bridge';
 import type { FlowSyncEvent } from '../../shared/sync/FlowSyncTypes';
 import type { SyncStateData } from '../../shared/bridge';
-import { GENERATE_BRIDGE_CEILING_MS } from '../../shared/timeouts';
+import { DOWNLOAD_BRIDGE_CEILING_MS, GENERATE_BRIDGE_CEILING_MS } from '../../shared/timeouts';
 
 export type { AccountStatus, CreditsData, FlowStatus, GeneratePayload, NormalizedMediaRef, ProjectCreateData, ProjectListData };
 
@@ -70,6 +70,10 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
   // therefore gets its own ceiling, derived in shared/timeouts.ts so it always sits
   // above every worker-side deadline.
   private readonly generateTimeoutMs = GENERATE_BRIDGE_CEILING_MS;
+  // Downloading a video reuses the same trusted-click resolve loop as generate,
+  // so it needs its own ceiling too. The generic 120s default masked a healthy
+  // but slow download as a generic TIMEOUT on live run 30c818fa.
+  private readonly downloadTimeoutMs = DOWNLOAD_BRIDGE_CEILING_MS;
 
   constructor(transport?: BridgeTransport) {
     const inExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
@@ -142,7 +146,11 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
   }
 
   async downloadMedia(payload: { mediaId: string; projectId: string; fileName?: string; mediaType?: 'IMAGE' | 'VIDEO'; url?: string }) {
-    const result = await this.call<{ ok: boolean; downloadId?: number; filename?: string; error?: string }>('FLOWGRAPH_MEDIA_DOWNLOAD', payload);
+    const result = await this.call<{ ok: boolean; downloadId?: number; filename?: string; error?: string }>(
+      'FLOWGRAPH_MEDIA_DOWNLOAD',
+      payload,
+      this.downloadTimeoutMs,
+    );
     if (!result.ok) throw makeBridgeError('MEDIA_FAILED', result.error ?? 'Download failed', false);
     return result;
   }

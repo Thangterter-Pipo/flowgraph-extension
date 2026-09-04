@@ -47,3 +47,18 @@ export const GENERATE_WORKER_BUDGET_MS =
  * real budget, and must never be the thing that ends a healthy run.
  */
 export const GENERATE_BRIDGE_CEILING_MS = GENERATE_WORKER_BUDGET_MS + 120_000;
+
+/**
+ * Ceiling the UI adapter puts on a media-download request. The worker's own
+ * worst case is the video-tile resolve loop (navigate to the editor, drive the
+ * download menu, retry on a stale overlay) plus the `chrome.downloads` transfer,
+ * which the worker bounds at 180s. Live run 30c818fa proved the generic 120s
+ * bridge default fired *while the worker was still resolving*, surfacing a
+ * healthy-but-slow download as `TIMEOUT: Provider request timed out` and
+ * discarding the real outcome. This sits above every worker-side download
+ * deadline so it is only ever a wedged-worker safety net, never the budget.
+ */
+export const DOWNLOAD_RESOLVE_BUDGET_MS = 90_000;
+export const DOWNLOAD_TRANSFER_BUDGET_MS = 180_000;
+export const DOWNLOAD_BRIDGE_CEILING_MS =
+  DOWNLOAD_RESOLVE_BUDGET_MS + DOWNLOAD_TRANSFER_BUDGET_MS + 60_000;
