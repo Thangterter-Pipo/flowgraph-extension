@@ -587,6 +587,18 @@
           const m = src.match(/getMediaUrlRedirect\\?name=([0-9a-f-]{36})/i) || src.match(/\\/media\\/([0-9a-f-]{36})/i);
           if (m && m[1]) ids.add(m[1]);
         });
+        // New Angular Flow UI video tiles (flow.google.com): a generated video is
+        // rendered as <flow-video-tile> whose thumbnail <img class="thumbnail">
+        // points at https://flow-content.google/image/<UUID>?... . These tiles do
+        // NOT expose data-media-id, so without this branch freshly generated video
+        // media is invisible to polling and the run falsely reports TIMEOUT even
+        // though the video exists on the canvas. Read the UUID from the thumbnail
+        // src so video generation is detected the same way images are.
+        document.querySelectorAll('flow-video-tile img').forEach((el) => {
+          const src = el.currentSrc || el.src || '';
+          const m = src.match(/flow-content\\.google\\/image\\/([0-9a-f-]{36})/i);
+          if (m && m[1]) ids.add(m[1]);
+        });
         return Array.from(ids);
       })()
     `);
@@ -678,7 +690,7 @@
           await clickAt(moreVert.x, moreVert.y);
           await new Promise((resolve) => setTimeout(resolve, 600));
           const motionItem = await evalOnPage(`(() => {
-          for (const menu of Array.from(document.querySelectorAll('[role="menu"][data-state="open"], [role="dialog"][data-state="open"], [data-radix-menu-content]'))) {
+          for (const menu of Array.from(document.querySelectorAll('[role="menu"][data-state="open"], [role="dialog"][data-state="open"], [data-radix-menu-content], .cdk-overlay-pane'))) {
             const item = Array.from(menu.querySelectorAll('[role="menuitem"], button'))
               .find((it) => (it.innerText || '').includes('T\u1EA1o \u1EA3nh \u0111\u1ED9ng') || (it.innerText || '').includes('motion_blur'));
             if (item) {
@@ -1007,7 +1019,7 @@
       const inspectField = async (field) => {
         const response = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
           expression: `((field, projectId) => {
-          const onProject = location.pathname.includes('/tools/flow/project/' + projectId);
+          const onProject = location.pathname.includes('/project/' + projectId);
           if (!onProject) return { onProject: false, uiReady: false, hasMedia: false };
           const swap = [...document.querySelectorAll('button')].find((button) =>
             [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
@@ -1061,7 +1073,7 @@
         }
         const activation = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
           expression: `((field, projectId) => {
-          if (!location.pathname.includes('/tools/flow/project/' + projectId)) {
+          if (!location.pathname.includes('/project/' + projectId)) {
             return { ok: false, reason: 'project-mismatch' };
           }
           const swap = [...document.querySelectorAll('button')].find((button) =>
@@ -1105,7 +1117,7 @@
       }
       const verification = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
         expression: `((fields, projectId) => {
-        const onProject = location.pathname.includes('/tools/flow/project/' + projectId);
+        const onProject = location.pathname.includes('/project/' + projectId);
         if (!onProject) return { onProject: false, uiReady: false, remaining: [] };
         const swap = [...document.querySelectorAll('button')].find((button) =>
           [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
@@ -1235,7 +1247,9 @@
         element.getAttribute?.('data-media-id'), element.getAttribute?.('src'), element.getAttribute?.('href'),
         element.currentSrc, element.src, element.href,
       ].filter(Boolean).some((value) => String(value).includes(mediaId)));
-      const card = media?.closest?.('[role="button"]') || media?.parentElement;
+      // New Angular Flow UI nests the tile actions inside a <flow-tile-container>
+      // custom element several levels above the <img>; legacy UI used [role=button].
+      const card = media?.closest?.('flow-tile-container') || media?.closest?.('[role="button"]') || media?.parentElement;
       const scopes = [card, card?.parentElement, card?.parentElement?.parentElement].filter(Boolean);
       const button = scopes.flatMap((scope) => [...scope.querySelectorAll('button')]).find((candidate) =>
         [...candidate.querySelectorAll('i.google-symbols, .google-symbols')]
@@ -1253,7 +1267,8 @@
       await clickAt(more.x, more.y);
       await new Promise((resolve) => setTimeout(resolve, 550));
       const animate = await evaluate(`(() => {
-      const item = [...document.querySelectorAll('[role="menu"][data-state="open"] [role="menuitem"], [role="menu"][data-state="open"] button')]
+      const scopes = [...document.querySelectorAll('[role="menu"][data-state="open"], [role="dialog"][data-state="open"], [data-radix-menu-content], .cdk-overlay-pane')];
+      const item = scopes.flatMap((menu) => [...menu.querySelectorAll('[role="menuitem"], [role="option"], button')])
         .find((candidate) => (candidate.textContent || '').includes('motion_blur') || /T\u1EA1o \u1EA3nh \u0111\u1ED9ng|Animate/i.test(candidate.innerText || ''));
       if (!item) return { ok: false };
       const rect = item.getBoundingClientRect();
@@ -1504,7 +1519,7 @@
       await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => void 0);
       for (let attempt = 0; attempt < 12; attempt += 1) {
         const removed = await evaluate(`((projectId) => {
-        if (!location.pathname.includes('/tools/flow/project/' + projectId)) {
+        if (!location.pathname.includes('/project/' + projectId)) {
           return { onProject: false, removed: false };
         }
         const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
