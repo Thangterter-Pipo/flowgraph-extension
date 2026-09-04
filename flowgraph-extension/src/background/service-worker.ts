@@ -1781,7 +1781,7 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
           { tokens },
           VIDEO_TILE_MAX_CANDIDATES,
         );
-        if (!verdict.grew) {
+        if (!verdict.appeared) {
           if (waitTick % 8 === 0) {
             // Record whether Flow ever started the render (tile count) and whether
             // the start slot stayed bound, instead of only reporting the deadline.
@@ -1804,7 +1804,9 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
         }
         // Record that a new tile showed up even when attribution is rate limited,
         // so a final TIMEOUT trace still says whether the render ever landed.
-        submitTrace.push(`w${Math.round(elapsed / 1000)}s:vt${tokens.length}:new`);
+        submitTrace.push(
+          `w${Math.round(elapsed / 1000)}s:vt${tokens.length}:${verdict.grew ? 'new' : 'repl'}`,
+        );
         if (elapsed - lastAttributionMs < VIDEO_TILE_RECOVERY_STEP_MS) continue;
         lastAttributionMs = elapsed;
         let matched: { mediaId: string; editorPrompt: string } | undefined;
@@ -1813,7 +1815,12 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
         // never surfaced, is unknown — failing on that produced a false
         // MEDIA_FAILED for run a82e1b01, where the clip existed but the prompt
         // was misread as the composer placeholder.
-        let everyCandidateDisproved = verdict.candidates.length > 0;
+        // Only a tile list that actually grew proves a clip is new, so that is the
+        // one case where "every candidate mismatched" may fail the node. On a
+        // same-length list an unexplained poster can also be a signed-URL rotation
+        // on an older clip, and failing there would turn a cosmetic re-sign into a
+        // false MEDIA_FAILED; keep waiting instead and let the deadline decide.
+        let everyCandidateDisproved = verdict.grew && verdict.candidates.length > 0;
         for (const index of verdict.candidates) {
           const opened = await openVideoTileAndGetId({ index });
           if (!opened) {
