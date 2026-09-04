@@ -563,6 +563,9 @@ async function resolveVideoUrlViaDebugger(
 ): Promise<string> {
   const target: chrome.debugger.Debuggee = { tabId };
   let attachedHere = false;
+  // Set once the gallery URL is known; used by the finally block to hand the
+  // tab back to the project gallery after the clip-editor detour.
+  let projectUrl = '';
   // Google Flow only lays out the editor (and therefore the tile hotbar) while
   // its tab is the visible one; a backgrounded tab reports a 0x0 viewport and
   // every coordinate click lands on nothing. Live run 30c818fa burned the whole
@@ -620,6 +623,10 @@ async function resolveVideoUrlViaDebugger(
     const editUrl = galleryUrl
       ? `${galleryUrl.replace(/\/edit\/[^/]+.*$/, '')}/edit/${mediaId}`
       : '';
+    // The clip editor has no composer, so while we are here the content script
+    // reports uiVerified=false and the next Generate is blocked by preflight.
+    // Remember the project gallery so we can hand the tab back in that state.
+    projectUrl = galleryUrl ? galleryUrl.replace(/\/edit\/[^/]+.*$/, '') : '';
     // The download button only exists once Angular has rendered the clip tile in
     // this editor, so wait for the real element instead of a fixed sleep.
     const downloadBtnXY = () =>
@@ -725,6 +732,20 @@ async function resolveVideoUrlViaDebugger(
         await chrome.debugger.detach(target);
       } catch {
         // best-effort
+      }
+    }
+    // Hand the tab back to the project gallery. Leaving it on /edit/<mediaId>
+    // strands the next run: the editor has no composer, so the content script
+    // reports uiVerified=false and preflight blocks Generate with
+    // NO_UI_COUNTERPART (observed live after the download unit test).
+    if (projectUrl) {
+      try {
+        const current = await chrome.tabs.get(tabId);
+        if ((current.url || '').includes('/edit/')) {
+          await chrome.tabs.update(tabId, { url: projectUrl });
+        }
+      } catch {
+        // best-effort: never fail the download because of the cleanup
       }
     }
   }
