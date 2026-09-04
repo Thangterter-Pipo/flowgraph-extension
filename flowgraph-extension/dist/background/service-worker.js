@@ -62,6 +62,42 @@
     }
   };
 
+  // src/background/videoTileDetection.ts
+  function decideVideoTileArrival(before, now, maxCandidates = 4) {
+    const known = new Set(before.tokens.filter(Boolean));
+    const unknownIndexes = [];
+    const rotatedIndexes = [];
+    now.tokens.forEach((token, index) => {
+      if (!token) return;
+      if (known.has(token)) return;
+      unknownIndexes.push(index);
+      if (index < before.tokens.length && before.tokens[index]) rotatedIndexes.push(index);
+    });
+    const grew = now.tokens.length > before.tokens.length;
+    const candidates = grew ? Array.from(/* @__PURE__ */ new Set([0, ...unknownIndexes, ...now.tokens.map((_, index) => index)])).slice(0, maxCandidates) : [];
+    return { grew, unknownIndexes, candidates, rotated: !grew && rotatedIndexes.length > 0 };
+  }
+  function editorPromptMatches(editorPrompt, expectedPrompt) {
+    const expected = normalizePrompt(expectedPrompt);
+    if (!expected) return false;
+    const seen = normalizePrompt(editorPrompt);
+    if (!seen) return false;
+    return seen.includes(expected.slice(0, Math.min(40, expected.length)));
+  }
+  function normalizePrompt(value) {
+    return (value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+
+  // src/shared/timeouts.ts
+  var SUBMIT_VERIFY_BUDGET_MS = 4 * 3e4;
+  var MEDIA_WAIT_IMAGE_MS = 18e4;
+  var MEDIA_WAIT_VIDEO_MS = 42e4;
+  var VIDEO_TILE_RECOVERY_STEP_MS = 15e3;
+  var VIDEO_TILE_MAX_CANDIDATES = 4;
+  var PREFLIGHT_SYNC_BUDGET_MS = 12e4;
+  var GENERATE_WORKER_BUDGET_MS = PREFLIGHT_SYNC_BUDGET_MS + SUBMIT_VERIFY_BUDGET_MS + MEDIA_WAIT_VIDEO_MS + VIDEO_TILE_RECOVERY_STEP_MS * VIDEO_TILE_MAX_CANDIDATES;
+  var GENERATE_BRIDGE_CEILING_MS = GENERATE_WORKER_BUDGET_MS + 12e4;
+
   // src/background/service-worker.ts
   var AISANDBOX_BASE = "https://aisandbox-pa.googleapis.com/v1";
   var FX_API_BASE = "https://labs.google/fx/api";
@@ -582,6 +618,7 @@
     const galleryUrl = (tab.url ?? "").replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, "");
     const target = { tabId };
     let attached = false;
+    let attachFailure = "";
     try {
       await chrome.tabs.update(tabId, { active: true });
     } catch {
@@ -591,7 +628,8 @@
       await chrome.debugger.attach(target, "1.3");
       attached = true;
       await ensureInputReachable(target);
-    } catch {
+    } catch (error) {
+      attachFailure = normalizeError(error).message;
     }
     if (attached) {
       const evalOnPage = async (expression) => {
@@ -718,53 +756,72 @@
         return Array.from(ids);
       })()
     `);
+      const POSTER_TOKEN_JS = `
+      ((el) => {
+        const s = el.currentSrc || el.src || '';
+        if (!s) return '';
+        try {
+          const u = new URL(s, location.href);
+          const asb = u.pathname.match(/\\/asb\\/([A-Za-z0-9_-]+)/);
+          if (asb) return 'asb:' + asb[1];
+          return 'p:' + u.host + u.pathname;
+        } catch { return 'r:' + s.split('?')[0].slice(-80); }
+      })`;
       const readVideoPosterTokens = () => evalOnPage(`
       (() => {
-        const toks = [];
-        document.querySelectorAll('flow-video-tile img').forEach((el) => {
-          const s = el.currentSrc || el.src || '';
-          const m = s.match(/\\/asb\\/([A-Za-z0-9_-]+)/);
-          if (m && m[1]) toks.push(m[1]);
+        const key = ${POSTER_TOKEN_JS};
+        return Array.from(document.querySelectorAll('flow-video-tile')).map((t) => {
+          const img = t.querySelector('img');
+          return img ? key(img) : '';
         });
-        return toks;
       })()
     `);
-      const openVideoTileAndGetId = async (token) => {
-        const pos = await evalOnPage(`((tok) => {
+      const openVideoTileAndGetId = async (pick) => {
+        const pos = await evalOnPage(`((sel) => {
+        const key = ${POSTER_TOKEN_JS};
         const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
-        for (const t of tiles) {
-          const img = t.querySelector('img');
-          const s = img ? (img.currentSrc || img.src || '') : '';
-          if (s.includes('/asb/' + tok)) {
-            t.scrollIntoView?.({ block: 'center', inline: 'center' });
-            const b = t.getBoundingClientRect();
-            if (b.width < 10 || b.height < 10) return null;
-            return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
-          }
+        let t = null;
+        if (sel.token !== undefined) {
+          t = tiles.find((x) => { const i = x.querySelector('img'); return i && key(i) === sel.token; }) || null;
+        } else if (sel.index !== undefined) {
+          t = tiles[sel.index] || null;
         }
-        return null;
-      })(${JSON.stringify(token)})`);
-        if (!pos) return "";
+        if (!t) return null;
+        t.scrollIntoView?.({ block: 'center', inline: 'center' });
+        const b = t.getBoundingClientRect();
+        if (b.width < 10 || b.height < 10) return null;
+        return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
+      })(${JSON.stringify(pick)})`);
+        if (!pos) return void 0;
         await clickAt(pos.x, pos.y);
         for (let k = 0; k < 15; k += 1) {
           await new Promise((r) => setTimeout(r, 400));
           const href = await evalOnPage(`location.href`);
           const m = href && href.match(/\/edit\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-          if (m && m[1]) {
-            await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
-            });
-            await new Promise((r) => setTimeout(r, 3e3));
-            return m[1];
+          if (!m || !m[1]) continue;
+          const editorPrompt = await evalOnPage(`(() => {
+          let best = '';
+          for (const s of ['[data-slate-editor="true"]', '.ProseMirror']) {
+            for (const el of document.querySelectorAll(s)) {
+              const t = (el.textContent || '').replace(/\\s+/g, ' ').trim();
+              if (t.length > best.length) best = t;
+            }
           }
+          return best.slice(0, 200);
+        })()`) ?? "";
+          await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
+          });
+          await new Promise((r) => setTimeout(r, 3e3));
+          return { mediaId: m[1], editorPrompt };
         }
         await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
         });
         await new Promise((r) => setTimeout(r, 3e3));
-        return "";
+        return void 0;
       };
       try {
         const beforeIds = await readMediaIds() ?? [];
-        const beforeVidTokens = new Set(await readVideoPosterTokens() ?? []);
+        const beforeVidTokens = await readVideoPosterTokens() ?? [];
         await setComposerMode(payload.kind);
         const exactStartAlreadyBound = payload.kind === "i2v" && payload.startImage?.mediaId ? Boolean(await evalOnPage(`((mediaId) => {
             const swap = [...document.querySelectorAll('button')].find((button) =>
@@ -1070,8 +1127,8 @@
           const bound = root ? (root.querySelector('img,video') ? 'bound' : 'empty') : 'noslot';
           return 'chip=' + chip.slice(0, 22) + ' slot=' + bound
             + ' vtiles=' + document.querySelectorAll('flow-video-tile').length
-            + ' asb=' + Array.from(document.querySelectorAll('flow-video-tile img'))
-              .filter((i) => //asb//.test(i.currentSrc || i.src || '')).length
+            + ' posters=' + Array.from(document.querySelectorAll('flow-video-tile img'))
+              .filter((i) => Boolean(i.currentSrc || i.src)).length
             + ' tiles=' + document.querySelectorAll('[data-media-id]').length;
         })()`);
         for (let attempt = 0; attempt < 4 && !submitAccepted; attempt += 1) {
@@ -1133,7 +1190,7 @@
             true
           );
         }
-        const maxWaitMs = 18e4;
+        const maxWaitMs = isVideoKind(payload.kind) ? MEDIA_WAIT_VIDEO_MS : MEDIA_WAIT_IMAGE_MS;
         const startMs = Date.now();
         let waitTick = 0;
         const initialSet = new Set(beforeIds);
@@ -1163,10 +1220,16 @@
             continue;
           }
           const tokens = await readVideoPosterTokens() ?? [];
-          const newToken = tokens.find((t) => !beforeVidTokens.has(t));
-          if (!newToken) {
+          const verdict = decideVideoTileArrival(
+            { tokens: beforeVidTokens },
+            { tokens },
+            VIDEO_TILE_MAX_CANDIDATES
+          );
+          if (!verdict.grew) {
             if (waitTick % 8 === 0) {
-              submitTrace.push(`w${Math.round(elapsed / 1e3)}s:tok${tokens.length}:${await composerDiag() ?? "noeval"}`);
+              submitTrace.push(
+                `w${Math.round(elapsed / 1e3)}s:vt${tokens.length}${verdict.rotated ? `:rot${verdict.unknownIndexes.length}` : ""}:${await composerDiag() ?? "noeval"}`
+              );
             }
             if (elapsed >= captchaGraceMs && await detectInteractiveCaptcha()) {
               throw bridgeError(
@@ -1177,10 +1240,29 @@
             }
             continue;
           }
-          const videoId = await openVideoTileAndGetId(newToken);
-          if (!videoId) continue;
-          const previewUrl2 = await resolveRedirectSafe(videoId, "VIDEO");
-          return { mediaId: videoId, type: "VIDEO", projectId: payload.projectId, previewUrl: previewUrl2, completedViaUi: true };
+          let matched;
+          for (const index of verdict.candidates) {
+            const opened = await openVideoTileAndGetId({ index });
+            if (!opened) {
+              submitTrace.push(`v${index}:noeditor`);
+              continue;
+            }
+            if (!editorPromptMatches(opened.editorPrompt, normalizedPrompt)) {
+              submitTrace.push(`v${index}:mismatch:${opened.editorPrompt.slice(0, 24)}`);
+              continue;
+            }
+            matched = opened;
+            break;
+          }
+          if (!matched) {
+            throw bridgeError(
+              "MEDIA_FAILED",
+              `New video tile(s) appeared on Flow but none had an editor prompt matching this node, so the pipeline cannot claim them. Trace ${submitTrace.slice(-6).join(" | ")}`,
+              true
+            );
+          }
+          const previewUrl2 = await resolveRedirectSafe(matched.mediaId, "VIDEO");
+          return { mediaId: matched.mediaId, type: "VIDEO", projectId: payload.projectId, previewUrl: previewUrl2, completedViaUi: true };
         }
         throw bridgeError(
           "TIMEOUT",
@@ -1201,10 +1283,17 @@
         kind: payload.kind,
         startImageMediaId: payload.startImage?.mediaId
       }),
-      18e4
+      // The content script runs its own submit + media wait, so this has to cover
+      // the longest legitimate render rather than the old flat 180s.
+      MEDIA_WAIT_VIDEO_MS
     );
     if (!reply?.ok || !reply.mediaId) {
-      throw bridgeError(reply?.code ?? "MEDIA_FAILED", reply?.message ?? "UI generation failed via content script", true);
+      const why = attached ? "" : ` [CDP unavailable${attachFailure ? `: ${attachFailure}` : ""}; used content-script fallback]`;
+      throw bridgeError(
+        reply?.code ?? "MEDIA_FAILED",
+        `${reply?.message ?? "UI generation failed via content script"}${why}`,
+        true
+      );
     }
     const previewUrl = await resolveRedirectSafe(reply.mediaId);
     return {
