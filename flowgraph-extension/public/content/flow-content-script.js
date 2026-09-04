@@ -1205,6 +1205,11 @@
     let lastStartImage = syncState.startImage;
     let lastEndImage = syncState.endImage;
     let lastReferenceMedia = syncState.referenceMedia;
+    // Studio latches Generate on uiVerified, so a composer that disappears and
+    // comes back must be announced. Without this the change was only ever
+    // reported on a project switch, which left runs blocked after a download
+    // resolve parked the tab on /edit/<mediaId>.
+    let lastUiVerified = syncState.uiVerified;
 
     const read = () => {
       timer = null;
@@ -1234,6 +1239,7 @@
         lastStartImage = snapshot.startImage;
         lastEndImage = snapshot.endImage;
         lastReferenceMedia = snapshot.referenceMedia;
+        lastUiVerified = snapshot.uiVerified;
       };
       if (projectChanged) {
         rememberSnapshot();
@@ -1245,6 +1251,10 @@
         return;
       }
       if (snapshot.mode !== lastMode) emitFlowChange('mode', snapshot.mode);
+      // Announce a composer that appeared or vanished (same project): Studio's
+      // Generate gate depends on it. rememberSnapshot() below records the new
+      // value, so this fires once per transition rather than every tick.
+      if (snapshot.uiVerified !== lastUiVerified) emitSyncState();
       if (snapshot.model && snapshot.model !== lastModel) emitFlowChange('model', snapshot.model);
       if (snapshot.prompt !== lastPrompt && !trustedPromptPending) emitFlowChange('prompt', snapshot.prompt);
       if (snapshot.aspectRatio && snapshot.aspectRatio !== lastAspectRatio) emitFlowChange('aspectRatio', snapshot.aspectRatio);

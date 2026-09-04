@@ -834,7 +834,17 @@ function Studio() {
       if (!message.requestId?.startsWith('sw:sync:')) return;
       if (message?.type === 'FLOWGRAPH_SYNC_STATE') {
         const state = message.payload as { uiVerified?: boolean } | undefined;
-        if (!state?.uiVerified) syncUiVerifiedRef.current = false;
+        // A one-way latch was observed live: a download resolve parked the tab
+        // on /edit/<mediaId> (no composer), which set the ref false, and the
+        // pill still read SYNCED after the tab came back. Every later run then
+        // died in preflight with NO_UI_COUNTERPART despite a healthy UI.
+        // Recovery is still conditional: a field that genuinely failed to apply
+        // must keep blocking Generate, so we only re-arm when nothing is failed.
+        if (state?.uiVerified && syncFailedFieldsRef.current.size === 0) {
+          syncUiVerifiedRef.current = true;
+        } else if (!state?.uiVerified) {
+          syncUiVerifiedRef.current = false;
+        }
         return;
       }
       if (message?.type === 'FLOWGRAPH_SYNC_EVENT') {
