@@ -19,6 +19,15 @@ export interface VideoTileSnapshot {
 export interface VideoTileVerdict {
   /** The tile list grew past the pre-submit snapshot, so a new clip exists. */
   grew: boolean;
+  /**
+   * Something entered the window that the pre-submit snapshot cannot explain:
+   * either the list grew, or an unknown poster took a position in a list of the
+   * same length. The second shape is the common one on flow.google because the
+   * gallery is virtualised to a fixed number of tiles, so a finished render
+   * *replaces* the oldest tile instead of appending. Without this a real clip is
+   * invisible and the node dies with a false TIMEOUT (live run 882a2552).
+   */
+  appeared: boolean;
   /** Tile indexes whose poster token the pre-submit snapshot cannot explain. */
   unknownIndexes: number[];
   /**
@@ -37,9 +46,11 @@ export interface VideoTileVerdict {
 /**
  * Compare the pre-submit and current per-tile poster tokens.
  *
- * Deliberately conservative: `candidates` is non-empty only when the tile count
- * actually grew. A same-length list with changed tokens is reported as `rotated`
- * so the caller keeps waiting instead of claiming an older clip.
+ * `candidates` is non-empty whenever a tile cannot be explained by the snapshot.
+ * That is safe because a candidate is only ever *claimed* after the editor prompt
+ * of the opened clip matches the submitted prompt, so an unrelated re-render can
+ * cost an extra click but can never produce a false success. `rotated` is still
+ * reported so a caller can tell a proven-new tile from a merely-suspicious one.
  */
 export function decideVideoTileArrival(
   before: VideoTileSnapshot,
@@ -60,16 +71,29 @@ export function decideVideoTileArrival(
   });
 
   const grew = now.tokens.length > before.tokens.length;
-  // When the list grew there is definitely a new tile, but its position is only a
-  // strong guess: newest-first (index 0), backed by any tile whose poster token the
-  // snapshot cannot explain, backed by the remaining tiles in order. Opening a
-  // wrong tile is harmless because the caller verifies the editor prompt, so the
-  // list is ordered for speed rather than for certainty.
+  // The list did not have to grow: on a virtualised gallery the new clip lands at
+  // the newest position and the window shifts, so an unexplained poster is treated
+  // as a possible arrival. Position 0 leads because the gallery is newest-first.
+  const appeared = grew || unknownIndexes.length > 0;
+  // Opening a wrong tile is harmless because the caller verifies the editor prompt,
+  // so the list is ordered for speed rather than for certainty.
+  // When the window grew, position 0 leads because the gallery is newest-first and
+  // the remaining positions are only a guess. When it did not grow, the only
+  // plausible arrival is a tile whose poster the snapshot cannot explain, so the
+  // candidate list stays tight instead of opening the whole gallery on a re-sign.
   const candidates = grew
     ? Array.from(new Set([0, ...unknownIndexes, ...now.tokens.map((_, index) => index)])).slice(0, maxCandidates)
-    : [];
+    : appeared
+      ? unknownIndexes.slice(0, maxCandidates)
+      : [];
 
-  return { grew, unknownIndexes, candidates, rotated: !grew && rotatedIndexes.length > 0 };
+  return {
+    grew,
+    appeared,
+    unknownIndexes,
+    candidates,
+    rotated: !grew && rotatedIndexes.length > 0,
+  };
 }
 
 /**
