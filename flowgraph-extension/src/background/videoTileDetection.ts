@@ -90,3 +90,28 @@ export function editorPromptMatches(editorPrompt: string, expectedPrompt: string
 function normalizePrompt(value: string): string {
   return (value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
+
+/**
+ * Leading phrases Flow uses for the *empty* video composer.
+ *
+ * Live probing on /edit/<mediaId> (2026-09-05) found the rich-text editor holds
+ * a localised placeholder — "Mô tả cách chỉnh sửa video này…" — rather than the
+ * clip's prompt. If that text is ever compared against a node prompt it produces
+ * a guaranteed mismatch, so it is filtered out wherever editor text is read.
+ * The list is injected into the page-side evaluation, hence a plain array.
+ */
+export const EDITOR_PLACEHOLDER_PREFIXES: string[] = [
+  'mô tả cách chỉnh sửa',
+  'describe how to edit',
+  'describe your edit',
+  'add a prompt',
+  'enter a prompt',
+  'nhập prompt',
+];
+
+/** Whether editor text is really Flow's empty-composer placeholder, not a prompt. */
+export function isEditorPlaceholder(text: string): boolean {
+  const seen = normalizePrompt(text);
+  if (!seen) return true;
+  return EDITOR_PLACEHOLDER_PREFIXES.some((prefix) => seen.startsWith(prefix));
+}

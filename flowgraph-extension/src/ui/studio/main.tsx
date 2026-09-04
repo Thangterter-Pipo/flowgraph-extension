@@ -75,7 +75,10 @@ function colorForTone(tone: PaletteSpec['tone']) {
 
 // FG-1101/1102 — workflow persistence with schemaVersion + project binding.
 // Auth material is never saved: only node config + media ids (no signed URLs).
-export const WORKFLOW_SCHEMA_VERSION = 3;
+// v4: the V1 graph now wires the Prompt node into the Image-to-Video node too.
+// Bumping this discards previously saved graphs that lack the edge, which is the
+// point — a stale saved graph would keep reproducing the empty-prompt bug.
+export const WORKFLOW_SCHEMA_VERSION = 4;
 
 // FG-1103 — run history (project-scoped, no secrets/signed URLs).
 const RUN_HISTORY_KEY = 'flowgraph.runHistory.v1';

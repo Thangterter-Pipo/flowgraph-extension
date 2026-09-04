@@ -33,6 +33,12 @@ export class TextToImageExecutor implements NodeExecutor {
     const projectId = context.context.activeProject.projectId;
     const modelKey = String(context.config.usageKey ?? context.config.model ?? 'NARWHAL');
 
+    // Same reason as Image-to-Video: never let an empty prompt reach the Flow UI,
+    // where it used to be silently replaced by a hard-coded placeholder.
+    if (!prompt.trim()) {
+      throw new RuntimeError('INVALID_INPUT', 'Text-to-Image received no prompt input. Connect a Prompt node to the Prompt input.', { nodeId: context.nodeId });
+    }
+
     let ref;
     try {
       ref = await this.adapter.generate({

@@ -44,11 +44,16 @@ import {
   type ProjectCreateData,
   type ProjectListData,
 } from '../shared/bridge';
-import { decideVideoTileArrival, editorPromptMatches } from './videoTileDetection';
+import {
+  decideVideoTileArrival,
+  editorPromptMatches,
+  EDITOR_PLACEHOLDER_PREFIXES,
+} from './videoTileDetection';
 import {
   MEDIA_WAIT_IMAGE_MS,
   MEDIA_WAIT_VIDEO_MS,
   VIDEO_TILE_MAX_CANDIDATES,
+  VIDEO_TILE_RECOVERY_STEP_MS,
 } from '../shared/timeouts';
 
 const AISANDBOX_BASE = 'https://aisandbox-pa.googleapis.com/v1';
@@ -849,7 +854,20 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
   const tabId = tab.id;
-  const prompt = payload.prompt ?? 'A cinematic red paper boat floating on a calm lake at sunrise, 16:9';
+  // Never invent a prompt. Live run a82e1b01 proved why: node 3 had no prompt
+  // wired in, this fallback silently submitted a hard-coded "red paper boat"
+  // line, and Flow happily rendered it — so the pipeline would have reported
+  // success with a clip that has nothing to do with the graph. A missing prompt
+  // is a graph/runtime defect and must surface as one.
+  const prompt = (payload.prompt ?? '').trim();
+  if (!prompt) {
+    throw bridgeError(
+      'INVALID_INPUT',
+      `Refusing to generate: the ${payload.kind ?? 'unknown'} node produced an empty prompt. `
+        + 'Connect a Prompt node (or set a prompt on the node) instead of letting the UI fall back to a placeholder.',
+      false,
+    );
+  }
   // Canonical gallery URL (project root, no /edit/... suffix) so the video-tile
   // recovery helper can always return to the grid after opening an editor.
   const galleryUrl = (tab.url ?? '').replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, '');
@@ -1085,21 +1103,37 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
         const href = await evalOnPage<string>(`location.href`);
         const m = href && href.match(/\/edit\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
         if (!m || !m[1]) continue;
-        // Read the editor's own prompt back so the caller can prove this tile is
+        // Read the clip's own prompt back so the caller can prove this tile is
         // *our* generation rather than an older clip that happens to sit at the
-        // same index. Verified live on /edit/<mediaId>: the clip's prompt is the
-        // composer's text, so only the rich-text editors are read — a generic
-        // contenteditable selector is deliberately avoided because it can match
-        // unrelated page text and produce a false match.
-        const editorPrompt = (await evalOnPage<string>(`(() => {
-          let best = '';
-          for (const s of ['[data-slate-editor="true"]', '.ProseMirror']) {
-            for (const el of document.querySelectorAll(s)) {
-              const t = (el.textContent || '').replace(/\\s+/g, ' ').trim();
-              if (t.length > best.length) best = t;
+        // same index.
+        //
+        // Live probing on /edit/<mediaId> (2026-09-05) showed the rich-text
+        // composer is NOT the prompt: it holds the localised placeholder
+        // "Mô tả cách chỉnh sửa video này…", which made every tile look like a
+        // mismatch and killed a node that had actually succeeded. The real
+        // prompt renders in <flow-expandable-prompt> / .prompt-text, so that is
+        // read first. The composer is only a fallback, and any text equal to a
+        // known placeholder is discarded so a placeholder can never match.
+        const editorPrompt = (await evalOnPage<string>(`(async () => {
+          const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+          const PLACEHOLDER = ${JSON.stringify(EDITOR_PLACEHOLDER_PREFIXES)};
+          const isPlaceholder = (t) => PLACEHOLDER.some((p) => t.toLowerCase().startsWith(p));
+          const read = () => {
+            for (const s of ['flow-expandable-prompt', '.prompt-text', '.expandable-prompt-container']) {
+              for (const el of document.querySelectorAll(s)) {
+                const t = norm(el.textContent);
+                if (t.length > 3 && !isPlaceholder(t)) return t;
+              }
             }
+            return '';
+          };
+          // The editor hydrates asynchronously after navigation; give it a beat.
+          for (let k = 0; k < 10; k += 1) {
+            const t = read();
+            if (t) return t.slice(0, 200);
+            await new Promise((r) => setTimeout(r, 500));
           }
-          return best.slice(0, 200);
+          return '';
         })()`)) ?? '';
         await chrome.debugger.sendCommand(target, 'Page.navigate', { url: galleryUrl }).catch(() => {});
         await new Promise((r) => setTimeout(r, 3000));
@@ -1557,6 +1591,9 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       const maxWaitMs = isVideoKind(payload.kind) ? MEDIA_WAIT_VIDEO_MS : MEDIA_WAIT_IMAGE_MS;
       const startMs = Date.now();
       let waitTick = 0;
+      // Attribution costs a real click plus two navigations per candidate, so it
+      // is rate limited instead of running on every 4s poll tick.
+      let lastAttributionMs = 0;
       const initialSet = new Set(beforeIds);
       const wantVideo = isVideoKind(payload.kind);
       // Google Flow can answer a real Generate click with an interactive
@@ -1630,14 +1667,27 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
           }
           continue;
         }
+        // Record that a new tile showed up even when attribution is rate limited,
+        // so a final TIMEOUT trace still says whether the render ever landed.
+        submitTrace.push(`w${Math.round(elapsed / 1000)}s:vt${tokens.length}:new`);
+        if (elapsed - lastAttributionMs < VIDEO_TILE_RECOVERY_STEP_MS) continue;
+        lastAttributionMs = elapsed;
         let matched: { mediaId: string; editorPrompt: string } | undefined;
+        // Only a candidate whose real prompt was actually read can *disprove*
+        // attribution. A tile that would not open, or whose prompt the editor
+        // never surfaced, is unknown — failing on that produced a false
+        // MEDIA_FAILED for run a82e1b01, where the clip existed but the prompt
+        // was misread as the composer placeholder.
+        let everyCandidateDisproved = verdict.candidates.length > 0;
         for (const index of verdict.candidates) {
           const opened = await openVideoTileAndGetId({ index });
           if (!opened) {
+            everyCandidateDisproved = false;
             submitTrace.push(`v${index}:noeditor`);
             continue;
           }
           if (!editorPromptMatches(opened.editorPrompt, normalizedPrompt)) {
+            if (!opened.editorPrompt) everyCandidateDisproved = false;
             // Not our clip — keep looking instead of claiming someone else's media.
             submitTrace.push(`v${index}:mismatch:${opened.editorPrompt.slice(0, 24)}`);
             continue;
@@ -1645,7 +1695,7 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
           matched = opened;
           break;
         }
-        if (!matched) {
+        if (!matched && everyCandidateDisproved) {
           // Every candidate was explainable as an older clip. Surface that honestly
           // rather than returning a mediaId we cannot attribute to this node.
           throw bridgeError(
@@ -1654,6 +1704,11 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
               + `Trace ${submitTrace.slice(-6).join(' | ')}`,
             true,
           );
+        }
+        if (!matched) {
+          // A new tile exists but could not be attributed yet; keep waiting so a
+          // late-hydrating editor gets another chance before the deadline.
+          continue;
         }
         const previewUrl = await resolveRedirectSafe(matched.mediaId, 'VIDEO');
         // The tile only appears once Flow finishes rendering the clip, its id was

@@ -37,6 +37,14 @@ export class ImageToVideoExecutor implements NodeExecutor {
     const prompt = asText(context.inputs.prompt) ?? String(context.config.prompt ?? '');
     const modelKey = String(context.config.usageKey ?? context.config.model ?? 'abra_i2v_8s');
 
+    // Fail before touching the Flow UI. An empty prompt used to be replaced by a
+    // hard-coded placeholder inside the service worker, so the run "succeeded"
+    // with a clip nobody asked for. Attribution of the finished video tile also
+    // depends on knowing the prompt we submitted.
+    if (!prompt.trim()) {
+      throw new RuntimeError('INVALID_INPUT', 'Image-to-Video received no prompt input. Connect a Prompt node to the Prompt input.', { nodeId: context.nodeId });
+    }
+
     if (image.projectId !== projectId) {
       throw new RuntimeError('PROJECT_ISOLATION', `Input image belongs to project ${image.projectId}, not the active project ${projectId}.`, { nodeId: context.nodeId });
     }
