@@ -356,3 +356,44 @@ live successes** on a real Google Flow session, with:
 
 Release caveats carried forward (documented above, not blocking the V1 gate): fresh cold-session
 full E2E, live credit-delta verification, and live retry/cancel/error runs.
+
+---
+
+# ADDENDUM — 2026-09-05 05:45 (+07:00): three clean full-chain passes
+
+Since the report above was written, the pipeline was re-run **three times end to end with the
+cache bypassed**, on the live project `729eaa19-1c85-4cfc-89c3-5f86de2dffc5`, each pass producing
+brand-new image and video `mediaId`s and a real MP4 on disk:
+
+| Pass | Run | T2I image | I2V video | Download | Bytes | Wall time |
+|---|---|---|---|---|---|---|
+| 1 | `38e0eda0` | `c8253b91…` | `7f06b147…` | id 33 `flowgraph-output (10).mp4` | 8,380,117 | 125 s |
+| 2 | `6f9e6355` | `54207841…` | `b47ecddd…` | id 34 `flowgraph-output (11).mp4` | 8,089,921 | 123 s |
+| 3 | `3bf976c5` | `fb3650ad…` | `b8db27b9…` | id 35 `flowgraph-output (12).mp4` | 7,933,254 | 113 s |
+
+All three files start with a real `ftypisom` box header
+(`00 00 00 20 66 74 79 70 69 73 6f 6d`), and the Studio node cards render the actual media
+(`img` natural size 1376×768 for the Run 7 image). Evidence:
+`evidence/flowgraph_v1/e2e/run[5-7]_*.json` plus the matching per-node `t2i/`, `i2v/`,
+`download/` files.
+
+Five defects were found and fixed on the way, each committed and live-verified:
+
+1. `856b6d7` — `Fetch.enable` + `failRequest` on `flow-content.google/video/*` stops the app making
+   a duplicate copy while the signed URL is captured.
+2. `8b05820` — the Flow tab returns to the project gallery after a download resolves.
+3. `6e20ccb` — `downloadMedia()` polls `chrome.downloads.search({id})` instead of trusting
+   `onChanged` deltas; resolve/transfer budgets split 90 s / 180 s.
+4. `66b110d` — content script emits `SYNC_STATE` when `uiVerified` flips, so Generate is not
+   latched off after a composer swap.
+5. `ba8d31d` — the Flow gallery is virtualised to a fixed 8 `<flow-video-tile>`, so a finished
+   render *replaces* the oldest tile. `decideVideoTileArrival()` now also accepts an unknown tile
+   index, which removes a false `Timed out waiting for generated media` (runs `882a2552`,
+   `0d64e93e`) that occurred while Flow had already rendered the video.
+
+Automated state after the fixes: **104/104 tests PASS (15 files)**, `npx tsc --noEmit` clean,
+`npm run build` PASS.
+
+**Verdict unchanged and strengthened: READY** for FLOWGRAPH Real Runtime V1. The remaining
+caveats above still stand (fresh cold-session login is a manual user step, credit-delta is not
+measurable from the UI, retry/cancel exercised only by automated tests).
