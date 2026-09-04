@@ -105,6 +105,9 @@
   var PREFLIGHT_SYNC_BUDGET_MS = 12e4;
   var GENERATE_WORKER_BUDGET_MS = PREFLIGHT_SYNC_BUDGET_MS + SUBMIT_VERIFY_BUDGET_MS + MEDIA_WAIT_VIDEO_MS + VIDEO_TILE_RECOVERY_STEP_MS * VIDEO_TILE_MAX_CANDIDATES;
   var GENERATE_BRIDGE_CEILING_MS = GENERATE_WORKER_BUDGET_MS + 12e4;
+  var DOWNLOAD_RESOLVE_BUDGET_MS = 9e4;
+  var DOWNLOAD_TRANSFER_BUDGET_MS = 18e4;
+  var DOWNLOAD_BRIDGE_CEILING_MS = DOWNLOAD_RESOLVE_BUDGET_MS + DOWNLOAD_TRANSFER_BUDGET_MS + 6e4;
 
   // src/background/service-worker.ts
   var AISANDBOX_BASE = "https://aisandbox-pa.googleapis.com/v1";
@@ -352,6 +355,10 @@
     const target = { tabId };
     let attachedHere = false;
     try {
+      await chrome.tabs.update(tabId, { active: true });
+    } catch {
+    }
+    try {
       await chrome.debugger.attach(target, "1.3");
       attachedHere = true;
     } catch (error) {
@@ -394,31 +401,82 @@
           clickCount: 1
         });
       };
-      const findVideo = () => evalOnPage(
-        `(()=>{const v=Array.from(document.querySelectorAll('video')).find((el)=>((el.currentSrc||el.src||'').includes(${JSON.stringify(mediaId)})));return v?(v.currentSrc||v.src||''):''})()`
+      const editUrl = galleryUrl ? `${galleryUrl.replace(/\/edit\/[^/]+.*$/, "")}/edit/${mediaId}` : "";
+      const downloadBtnXY = () => evalOnPage(
+        `(()=>{const b=[...document.querySelectorAll('flow-video-tile button')].find((x)=>{const a=(x.getAttribute('aria-label')||'').toLowerCase();const i=x.querySelector('mat-icon,i');return /download|t\u1EA3i/.test(a)||(i&&i.textContent.trim()==='download')});if(!b)return null;const r=b.getBoundingClientRect();if(r.width<2)return null;return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`
       );
-      const already = await findVideo();
-      if (already) return already;
-      const tileCount = await evalOnPage(`document.querySelectorAll('flow-video-tile').length`) ?? 0;
-      for (let i = 0; i < Math.min(tileCount, 24); i += 1) {
-        const pos = await evalOnPage(
-          `(()=>{const t=document.querySelectorAll('flow-video-tile')[${i}];if(!t)return null;const b=t.getBoundingClientRect();if(b.width<10)return null;return{x:Math.round(b.left+b.width/2),y:Math.round(b.top+b.height/2)}})()`
-        );
-        if (!pos) continue;
-        await clickAt(pos.x, pos.y);
-        let url = "";
-        for (let k = 0; k < 12; k += 1) {
-          await new Promise((r) => setTimeout(r, 400));
-          url = await findVideo() ?? "";
-          if (url) break;
+      const waitForButton = async (ms) => {
+        const deadline = Date.now() + ms;
+        for (; ; ) {
+          const found = await downloadBtnXY();
+          if (found) return found;
+          if (Date.now() > deadline) return null;
+          await new Promise((r) => setTimeout(r, 500));
         }
-        if (url) return url;
-        if (galleryUrl) {
-          await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
-          });
-          await new Promise((r) => setTimeout(r, 4e3));
-        }
+      };
+      const here = await evalOnPage("location.href");
+      if (editUrl && !(here || "").includes(`/edit/${mediaId}`)) {
+        await chrome.debugger.sendCommand(target, "Page.navigate", { url: editUrl }).catch(() => {
+        });
+        await waitForButton(2e4);
       }
+      let signedUrl = "";
+      const isSignedVideo = (url) => /\/video\/[0-9a-f-]{20,}\?/i.test(url) && !/\.gif/i.test(url);
+      const onDebuggerEvent = (source, method, params) => {
+        if (signedUrl || source.tabId !== tabId || method !== "Network.requestWillBeSent") return;
+        const url = params?.request?.url ?? "";
+        if (isSignedVideo(url)) signedUrl = url;
+      };
+      chrome.debugger.onEvent.addListener(onDebuggerEvent);
+      const pausedCopy = (source, method, params) => {
+        if (source.tabId !== tabId || method !== "Fetch.requestPaused") return;
+        const p = params;
+        const requestId = p?.requestId;
+        if (!requestId) return;
+        const url = p?.request?.url ?? "";
+        if (isSignedVideo(url)) signedUrl = url;
+        void chrome.debugger.sendCommand(target, "Fetch.failRequest", { requestId, errorReason: "Aborted" }).catch(() => void 0);
+      };
+      chrome.debugger.onEvent.addListener(pausedCopy);
+      try {
+        await chrome.debugger.sendCommand(target, "Network.enable").catch(() => {
+        });
+        await chrome.debugger.sendCommand(target, "Fetch.enable", {
+          patterns: [{ urlPattern: "https://flow-content.google/video/*", requestStage: "Request" }]
+        }).catch(() => {
+        });
+        const openMenuAndPick = async () => {
+          const btn = await downloadBtnXY();
+          if (!btn) return false;
+          await clickAt(btn.x, btn.y);
+          await new Promise((r) => setTimeout(r, 1200));
+          const item = await evalOnPage(
+            `(()=>{const its=[...document.querySelectorAll('mat-menu-item,[role="menuitem"]')].filter((x)=>x.getBoundingClientRect().width>2);const pick=its.find((x)=>/720p/i.test(x.textContent))||its.find((x)=>!/gif/i.test(x.textContent))||its[0];if(!pick)return null;const r=pick.getBoundingClientRect();return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`
+          );
+          if (!item) return false;
+          await clickAt(item.x, item.y);
+          return true;
+        };
+        for (let attempt = 0; attempt < 3 && !signedUrl; attempt += 1) {
+          await openMenuAndPick();
+          for (let k = 0; k < 15 && !signedUrl; k += 1) {
+            await new Promise((r) => setTimeout(r, 400));
+          }
+          if (!signedUrl && editUrl) {
+            await chrome.debugger.sendCommand(target, "Page.navigate", { url: editUrl }).catch(() => {
+            });
+            await waitForButton(15e3);
+          }
+        }
+      } finally {
+        chrome.debugger.onEvent.removeListener(onDebuggerEvent);
+        chrome.debugger.onEvent.removeListener(pausedCopy);
+        await chrome.debugger.sendCommand(target, "Fetch.disable").catch(() => {
+        });
+        await chrome.debugger.sendCommand(target, "Network.disable").catch(() => {
+        });
+      }
+      if (signedUrl) return signedUrl;
       throw bridgeError("MEDIA_FAILED", "Could not resolve a signed video URL for this media on the Flow page.", false);
     } finally {
       if (attachedHere) {
