@@ -642,6 +642,9 @@ async function resolveVideoUrlViaDebugger(
     }
 
     let signedUrl = '';
+    // Video only — the same asset id also appears under /image/ for the poster.
+    const isSignedVideo = (url: string): boolean =>
+      /\/video\/[0-9a-f-]{20,}\?/i.test(url) && !/\.gif/i.test(url);
     const onDebuggerEvent = (
       source: chrome.debugger.Debuggee,
       method: string,
@@ -649,28 +652,42 @@ async function resolveVideoUrlViaDebugger(
     ): void => {
       if (signedUrl || source.tabId !== tabId || method !== 'Network.requestWillBeSent') return;
       const url = (params as { request?: { url?: string } } | undefined)?.request?.url ?? '';
-      // Video only — the same asset id also appears under /image/ for the poster.
-      if (/\/video\/[0-9a-f-]{20,}\?/i.test(url) && !/\.gif/i.test(url)) signedUrl = url;
+      if (isSignedVideo(url)) signedUrl = url;
     };
     chrome.debugger.onEvent.addListener(onDebuggerEvent);
-    // Picking a resolution makes the app start its own browser download. We only
-    // want the signed URL, so cancel that copy; the real artifact is written by
-    // downloadMedia() after this function returns. The app fetches the signed
-    // CDN URL itself and then saves it through a blob: object URL, so the
-    // download item never shows flow-content.google — match both shapes. This
-    // listener only lives for the few seconds of the resolve window.
-    const onCancelCopy = (item: chrome.downloads.DownloadItem): void => {
-      const url = item.url ?? '';
-      const looksLikeOurCopy =
-        /flow-content\.google\/video\//i.test(url)
-        || (url.startsWith('blob:') && (item.mime === 'video/mp4' || /\.mp4$/i.test(item.filename ?? '')));
-      if (looksLikeOurCopy) {
-        void chrome.downloads.cancel(item.id).catch(() => undefined);
-      }
+    // Picking a resolution makes the app fetch the signed CDN URL and save it as
+    // its own blob download. We only want the URL — the real artifact is written
+    // by downloadMedia() once this returns — so pause that one request and abort
+    // it. Cancelling after the fact proved useless: an 8 MB clip finishes before
+    // onCreated is delivered, and leaving a duplicate in the user's Downloads on
+    // every run is not acceptable. The pattern is scoped to the video asset host,
+    // so nothing else the user is downloading can be touched.
+    const pausedCopy = (
+      source: chrome.debugger.Debuggee,
+      method: string,
+      params?: object,
+    ): void => {
+      if (source.tabId !== tabId || method !== 'Fetch.requestPaused') return;
+      const p = params as { requestId?: string; request?: { url?: string } } | undefined;
+      const requestId = p?.requestId;
+      if (!requestId) return;
+      // Read the URL off the paused request itself: under interception this is the
+      // authoritative signal, and it removes any ordering race with the Network
+      // domain. Then abort so the app never writes its own copy.
+      const url = p?.request?.url ?? '';
+      if (isSignedVideo(url)) signedUrl = url;
+      void chrome.debugger
+        .sendCommand(target, 'Fetch.failRequest', { requestId, errorReason: 'Aborted' })
+        .catch(() => undefined);
     };
-    chrome.downloads.onCreated.addListener(onCancelCopy);
+    chrome.debugger.onEvent.addListener(pausedCopy);
     try {
       await chrome.debugger.sendCommand(target, 'Network.enable').catch(() => {});
+      await chrome.debugger
+        .sendCommand(target, 'Fetch.enable', {
+          patterns: [{ urlPattern: 'https://flow-content.google/video/*', requestStage: 'Request' }],
+        })
+        .catch(() => {});
       const openMenuAndPick = async (): Promise<boolean> => {
         const btn = await downloadBtnXY();
         if (!btn) return false;
@@ -696,7 +713,8 @@ async function resolveVideoUrlViaDebugger(
       }
     } finally {
       chrome.debugger.onEvent.removeListener(onDebuggerEvent);
-      chrome.downloads.onCreated.removeListener(onCancelCopy);
+      chrome.debugger.onEvent.removeListener(pausedCopy);
+      await chrome.debugger.sendCommand(target, 'Fetch.disable').catch(() => {});
       await chrome.debugger.sendCommand(target, 'Network.disable').catch(() => {});
     }
     if (signedUrl) return signedUrl;
