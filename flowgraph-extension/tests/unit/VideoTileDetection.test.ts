@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decideVideoTileArrival,
   editorPromptMatches,
+  isEditorPlaceholder,
 } from '../../src/background/videoTileDetection';
 
 // Token shapes copied from live flow.google gallery probing: same-origin /asb/
@@ -64,5 +65,25 @@ describe('editor prompt attribution', () => {
   it('cannot be satisfied by an empty prompt on either side', () => {
     expect(editorPromptMatches('', prompt)).toBe(false);
     expect(editorPromptMatches(prompt, '   ')).toBe(false);
+  });
+});
+
+// Live bug (run a82e1b01): the /edit/<mediaId> composer holds a localised
+// placeholder, not the clip prompt, so every tile compared as a mismatch.
+describe('editor placeholder filtering', () => {
+  it('recognises the Vietnamese composer placeholder', () => {
+    expect(isEditorPlaceholder('Mô tả cách chỉnh sửa video này…')).toBe(true);
+  });
+
+  it('recognises the English composer placeholder', () => {
+    expect(isEditorPlaceholder('Describe how to edit this video')).toBe(true);
+  });
+
+  it('treats blank text as unusable rather than as a prompt', () => {
+    expect(isEditorPlaceholder('   ')).toBe(true);
+  });
+
+  it('keeps a real clip prompt', () => {
+    expect(isEditorPlaceholder('A cinematic red paper boat floating on a calm lake')).toBe(false);
   });
 });

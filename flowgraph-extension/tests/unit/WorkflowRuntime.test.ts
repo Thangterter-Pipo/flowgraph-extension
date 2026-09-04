@@ -19,7 +19,10 @@ function spec(kind: string, id: string, config: Record<string, string> = {}): No
       outputs: [{ id: 'image', label: 'Image', type: 'IMAGE' as const }],
     },
     i2v: {
-      inputs: [{ id: 'image', label: 'Start', type: 'IMAGE' as const, required: true }],
+      inputs: [
+        { id: 'image', label: 'Start', type: 'IMAGE' as const, required: true },
+        { id: 'prompt', label: 'Prompt', type: 'PROMPT' as const },
+      ],
       outputs: [{ id: 'video', label: 'Video', type: 'VIDEO' as const }],
     },
     t2v: {
@@ -44,6 +47,10 @@ const V1_EDGES = [
   { id: 'e1', source: '1', sourceHandle: 'prompt', target: '2', targetHandle: 'prompt' },
   { id: 'e2', source: '2', sourceHandle: 'image', target: '3', targetHandle: 'image' },
   { id: 'e3', source: '3', sourceHandle: 'video', target: '4', targetHandle: 'media' },
+  // Mirrors the real V1 graph: the I2V node's prompt must be wired too. Live run
+  // a82e1b01 failed because this edge was missing and the service worker then
+  // invented a placeholder prompt.
+  { id: 'e4', source: '1', sourceHandle: 'prompt', target: '3', targetHandle: 'prompt' },
 ];
 
 const T2V_NODES = [
@@ -108,6 +115,9 @@ describe('WorkflowRuntime', () => {
     expect(events.some((event) => event.type === 'run' && event.state === 'success')).toBe(true);
     expect(adapter.generate).toHaveBeenCalledWith(expect.objectContaining({ kind: 't2i', projectId: 'p-1' }));
     expect(adapter.generate).toHaveBeenCalledWith(expect.objectContaining({ kind: 'i2v', startImage: { mediaId: 'img-1' } }));
+    // The node prompt must reach the adapter: an empty prompt used to be silently
+    // replaced by a hard-coded placeholder inside the service worker.
+    expect(adapter.generate).toHaveBeenCalledWith(expect.objectContaining({ kind: 'i2v', prompt: 'A paper boat on a lake' }));
     expect(adapter.downloadMedia).toHaveBeenCalledWith(expect.objectContaining({ mediaId: 'vid-i2v' }));
   });
 

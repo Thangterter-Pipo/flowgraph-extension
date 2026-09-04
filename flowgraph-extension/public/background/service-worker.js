@@ -87,6 +87,14 @@
   function normalizePrompt(value) {
     return (value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
   }
+  var EDITOR_PLACEHOLDER_PREFIXES = [
+    "m\xF4 t\u1EA3 c\xE1ch ch\u1EC9nh s\u1EEDa",
+    "describe how to edit",
+    "describe your edit",
+    "add a prompt",
+    "enter a prompt",
+    "nh\u1EADp prompt"
+  ];
 
   // src/shared/timeouts.ts
   var SUBMIT_VERIFY_BUDGET_MS = 4 * 3e4;
@@ -614,7 +622,14 @@
     const tab = await findFlowTab();
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
     const tabId = tab.id;
-    const prompt = payload.prompt ?? "A cinematic red paper boat floating on a calm lake at sunrise, 16:9";
+    const prompt = (payload.prompt ?? "").trim();
+    if (!prompt) {
+      throw bridgeError(
+        "INVALID_INPUT",
+        `Refusing to generate: the ${payload.kind ?? "unknown"} node produced an empty prompt. Connect a Prompt node (or set a prompt on the node) instead of letting the UI fall back to a placeholder.`,
+        false
+      );
+    }
     const galleryUrl = (tab.url ?? "").replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, "");
     const target = { tabId };
     let attached = false;
@@ -799,15 +814,26 @@
           const href = await evalOnPage(`location.href`);
           const m = href && href.match(/\/edit\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
           if (!m || !m[1]) continue;
-          const editorPrompt = await evalOnPage(`(() => {
-          let best = '';
-          for (const s of ['[data-slate-editor="true"]', '.ProseMirror']) {
-            for (const el of document.querySelectorAll(s)) {
-              const t = (el.textContent || '').replace(/\\s+/g, ' ').trim();
-              if (t.length > best.length) best = t;
+          const editorPrompt = await evalOnPage(`(async () => {
+          const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+          const PLACEHOLDER = ${JSON.stringify(EDITOR_PLACEHOLDER_PREFIXES)};
+          const isPlaceholder = (t) => PLACEHOLDER.some((p) => t.toLowerCase().startsWith(p));
+          const read = () => {
+            for (const s of ['flow-expandable-prompt', '.prompt-text', '.expandable-prompt-container']) {
+              for (const el of document.querySelectorAll(s)) {
+                const t = norm(el.textContent);
+                if (t.length > 3 && !isPlaceholder(t)) return t;
+              }
             }
+            return '';
+          };
+          // The editor hydrates asynchronously after navigation; give it a beat.
+          for (let k = 0; k < 10; k += 1) {
+            const t = read();
+            if (t) return t.slice(0, 200);
+            await new Promise((r) => setTimeout(r, 500));
           }
-          return best.slice(0, 200);
+          return '';
         })()`) ?? "";
           await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
           });
@@ -1193,6 +1219,7 @@
         const maxWaitMs = isVideoKind(payload.kind) ? MEDIA_WAIT_VIDEO_MS : MEDIA_WAIT_IMAGE_MS;
         const startMs = Date.now();
         let waitTick = 0;
+        let lastAttributionMs = 0;
         const initialSet = new Set(beforeIds);
         const wantVideo = isVideoKind(payload.kind);
         const captchaGraceMs = 25e3;
@@ -1240,26 +1267,35 @@
             }
             continue;
           }
+          submitTrace.push(`w${Math.round(elapsed / 1e3)}s:vt${tokens.length}:new`);
+          if (elapsed - lastAttributionMs < VIDEO_TILE_RECOVERY_STEP_MS) continue;
+          lastAttributionMs = elapsed;
           let matched;
+          let everyCandidateDisproved = verdict.candidates.length > 0;
           for (const index of verdict.candidates) {
             const opened = await openVideoTileAndGetId({ index });
             if (!opened) {
+              everyCandidateDisproved = false;
               submitTrace.push(`v${index}:noeditor`);
               continue;
             }
             if (!editorPromptMatches(opened.editorPrompt, normalizedPrompt)) {
+              if (!opened.editorPrompt) everyCandidateDisproved = false;
               submitTrace.push(`v${index}:mismatch:${opened.editorPrompt.slice(0, 24)}`);
               continue;
             }
             matched = opened;
             break;
           }
-          if (!matched) {
+          if (!matched && everyCandidateDisproved) {
             throw bridgeError(
               "MEDIA_FAILED",
               `New video tile(s) appeared on Flow but none had an editor prompt matching this node, so the pipeline cannot claim them. Trace ${submitTrace.slice(-6).join(" | ")}`,
               true
             );
+          }
+          if (!matched) {
+            continue;
           }
           const previewUrl2 = await resolveRedirectSafe(matched.mediaId, "VIDEO");
           return { mediaId: matched.mediaId, type: "VIDEO", projectId: payload.projectId, previewUrl: previewUrl2, completedViaUi: true };
