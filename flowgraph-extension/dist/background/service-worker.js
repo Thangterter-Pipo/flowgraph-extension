@@ -300,6 +300,10 @@
     if (!reply?.ok || !reply.url) throw bridgeError("MEDIA_FAILED", reply?.message ?? "Could not resolve media url", false);
     return reply.url;
   }
+  async function ensureInputReachable(target) {
+    await chrome.debugger.sendCommand(target, "Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => void 0);
+    await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => void 0);
+  }
   async function resolveVideoUrlViaDebugger(tabId, galleryUrl, mediaId) {
     const target = { tabId };
     let attachedHere = false;
@@ -313,8 +317,7 @@
       }
     }
     try {
-      await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => {
-      });
+      await ensureInputReachable(target);
       const evalOnPage = async (expression) => {
         try {
           const res = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
@@ -587,8 +590,7 @@
     try {
       await chrome.debugger.attach(target, "1.3");
       attached = true;
-      await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => {
-      });
+      await ensureInputReachable(target);
     } catch {
     }
     if (attached) {
@@ -998,30 +1000,142 @@
             true
           );
         }
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mouseMoved",
-          x: generateButton.x,
-          y: generateButton.y
-        });
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mousePressed",
-          x: generateButton.x,
-          y: generateButton.y,
-          button: "left",
-          buttons: 1,
-          clickCount: 1
-        });
-        await new Promise((resolve) => setTimeout(resolve, 80));
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mouseReleased",
-          x: generateButton.x,
-          y: generateButton.y,
-          button: "left",
-          buttons: 0,
-          clickCount: 1
-        });
+        const measureGenerateButton = () => evalOnPage(`(() => {
+          const gen = Array.from(document.querySelectorAll('button')).find((b) =>
+            b.classList.contains('generate-icon-button'));
+          if (!gen) return {};
+          const rect = gen.getBoundingClientRect();
+          if (!rect.width || !rect.height) return {};
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          const hit = document.elementFromPoint(x, y);
+          const hitOk = Boolean(hit && (hit === gen || gen.contains(hit)));
+          return { x, y, disabled: Boolean(gen.disabled), hitOk };
+        })()`);
+        const clickAtCenter = async (x, y) => {
+          await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+            type: "mouseMoved",
+            x,
+            y
+          });
+          await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+            type: "mousePressed",
+            x,
+            y,
+            button: "left",
+            buttons: 1,
+            clickCount: 1
+          });
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+            type: "mouseReleased",
+            x,
+            y,
+            button: "left",
+            buttons: 0,
+            clickCount: 1
+          });
+        };
+        const promptConsumed = () => evalOnPage(`((expected) => {
+          const ed = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+            || document.querySelector('.ProseMirror[contenteditable="true"]')
+            || document.querySelector('[role="textbox"][contenteditable="true"]');
+          if (!ed) return false;
+          const text = (ed.textContent || '').replace(/\\s+/g, ' ').trim();
+          return text.length === 0 || !text.includes(expected);
+        })(${JSON.stringify(normalizedPrompt)})`);
+        let submitAccepted = false;
+        const submitTrace = [];
+        const composerSnapshot = () => evalOnPage(`(() => {
+          const gen = Array.from(document.querySelectorAll('button')).find((b) =>
+            b.classList.contains('generate-icon-button'));
+          const ed = document.querySelector('.ProseMirror[contenteditable="true"]')
+            || document.querySelector('[data-slate-editor="true"][contenteditable="true"]');
+          const ae = document.activeElement;
+          const chip = Array.from(document.querySelectorAll('.agent-mode-chip')).map((c) =>
+            (c.getAttribute('aria-pressed') || c.className.includes('active') ? 'on' : 'off'))[0] || 'none';
+          return 'focus=' + (ae ? ae.tagName + '.' + (typeof ae.className === 'string' ? ae.className.trim().split(/\\s+/)[0] : '') : 'null')
+            + ' btn=' + (gen ? (gen.disabled ? 'dis' : 'en') : 'none')
+            + ' tiles=' + document.querySelectorAll('[data-media-id]').length
+            + ' agent=' + chip
+            + ' ed=' + ((ed && ed.textContent) || '').replace(/\\s+/g, ' ').slice(0, 24);
+        })()`);
+        const composerDiag = () => evalOnPage(`(() => {
+          const chip = Array.from(document.querySelectorAll('button'))
+            .map((b) => (b.innerText || '').replace(/\\s+/g, ' ').trim())
+            .find((t) => t.includes('Video \xB7') || t.includes('Nano Banana')) || 'nochip';
+          const swap = Array.from(document.querySelectorAll('button')).find((b) =>
+            Array.from(b.querySelectorAll('i,span')).some((i) => (i.textContent || '').trim() === 'swap_horiz'));
+          const root = swap?.previousElementSibling;
+          const bound = root ? (root.querySelector('img,video') ? 'bound' : 'empty') : 'noslot';
+          return 'chip=' + chip.slice(0, 22) + ' slot=' + bound
+            + ' vtiles=' + document.querySelectorAll('flow-video-tile').length
+            + ' asb=' + Array.from(document.querySelectorAll('flow-video-tile img'))
+              .filter((i) => //asb//.test(i.currentSrc || i.src || '')).length
+            + ' tiles=' + document.querySelectorAll('[data-media-id]').length;
+        })()`);
+        for (let attempt = 0; attempt < 4 && !submitAccepted; attempt += 1) {
+          if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1500));
+          const measured = await measureGenerateButton();
+          submitTrace.push(`a${attempt}:${measured === void 0 ? "EVAL_UNDEF" : `x${Math.round(measured.x ?? -1)}y${Math.round(measured.y ?? -1)}d${measured.disabled ? 1 : 0}h${measured.hitOk ? 1 : 0}`}`);
+          const fresh = measured ?? {};
+          if (fresh.x === void 0 || fresh.y === void 0) {
+            continue;
+          }
+          if (fresh.disabled) {
+            if (await promptConsumed()) {
+              submitAccepted = true;
+              break;
+            }
+            continue;
+          }
+          if (!fresh.hitOk) {
+            continue;
+          }
+          await clickAtCenter(fresh.x, fresh.y);
+          for (let settle = 0; settle < 12 && !submitAccepted; settle += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            const consumed = await promptConsumed();
+            if (settle === 2 || settle === 11) {
+              const snap = await composerSnapshot();
+              submitTrace.push(`a${attempt}s${settle}:${consumed === void 0 ? "EVAL_UNDEF" : consumed ? "CONSUMED" : "TYPED"}{${snap ?? "noeval"}}`);
+            }
+            if (consumed) submitAccepted = true;
+          }
+          if (!submitAccepted) {
+            await clickAtCenter(fresh.x, fresh.y - 60);
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+              type: "keyDown",
+              key: "Enter",
+              code: "Enter",
+              windowsVirtualKeyCode: 13,
+              nativeVirtualKeyCode: 13
+            });
+            await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+              type: "keyUp",
+              key: "Enter",
+              code: "Enter",
+              windowsVirtualKeyCode: 13,
+              nativeVirtualKeyCode: 13
+            });
+            for (let settle = 0; settle < 8 && !submitAccepted; settle += 1) {
+              await new Promise((resolve) => setTimeout(resolve, 500));
+              if (await promptConsumed()) submitAccepted = true;
+            }
+            submitTrace.push(`a${attempt}enter:${submitAccepted ? "CONSUMED" : "TYPED"}`);
+          }
+        }
+        if (!submitAccepted) {
+          throw bridgeError(
+            "PROVIDER_ERROR",
+            `Google Flow did not accept the Generate click: the prompt editor never cleared. Trace ${submitTrace.join(" | ")}`,
+            true
+          );
+        }
         const maxWaitMs = 18e4;
         const startMs = Date.now();
+        let waitTick = 0;
         const initialSet = new Set(beforeIds);
         const wantVideo = isVideoKind(payload.kind);
         const captchaGraceMs = 25e3;
@@ -1031,6 +1145,7 @@
         while (Date.now() - startMs < maxWaitMs) {
           await new Promise((r) => setTimeout(r, 4e3));
           const elapsed = Date.now() - startMs;
+          waitTick += 1;
           if (!wantVideo) {
             const current = await readMediaIds() ?? [];
             const newId = current.find((id) => !initialSet.has(id));
@@ -1050,6 +1165,9 @@
           const tokens = await readVideoPosterTokens() ?? [];
           const newToken = tokens.find((t) => !beforeVidTokens.has(t));
           if (!newToken) {
+            if (waitTick % 8 === 0) {
+              submitTrace.push(`w${Math.round(elapsed / 1e3)}s:tok${tokens.length}:${await composerDiag() ?? "noeval"}`);
+            }
             if (elapsed >= captchaGraceMs && await detectInteractiveCaptcha()) {
               throw bridgeError(
                 "CAPTCHA_REQUIRED",
@@ -1064,7 +1182,11 @@
           const previewUrl2 = await resolveRedirectSafe(videoId, "VIDEO");
           return { mediaId: videoId, type: "VIDEO", projectId: payload.projectId, previewUrl: previewUrl2, completedViaUi: true };
         }
-        throw bridgeError("TIMEOUT", "Timed out waiting for generated media to appear on Flow page via CDP.", true);
+        throw bridgeError(
+          "TIMEOUT",
+          `Timed out waiting for generated media to appear on Flow page via CDP. Trace ${submitTrace.join(" | ")} | ${await composerDiag()}`,
+          true
+        );
       } finally {
         try {
           await chrome.debugger.detach(target);
@@ -1201,7 +1323,7 @@
     try {
       await chrome.debugger.attach(target, "1.3");
       attached = true;
-      await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => void 0);
+      await ensureInputReachable(target);
       const inspectField = async (field) => {
         const response = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
           expression: `((field, projectId) => {
@@ -1418,7 +1540,7 @@
     try {
       await chrome.debugger.attach(target, "1.3");
       attached = true;
-      await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => void 0);
+      await ensureInputReachable(target);
       if (await evaluate(boundExpression)) return { ok: true, mediaId };
       const tile = await evaluate(`((mediaId) => {
       const matches = [...document.querySelectorAll('img, video, a, [data-media-id]')]
@@ -1546,7 +1668,7 @@
     try {
       await chrome.debugger.attach(target, "1.3");
       attached = true;
-      await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => void 0);
+      await ensureInputReachable(target);
       if (await evaluate(endBoundExpression)) return { ok: true, mediaId };
       const endSlot = await evaluate(`(() => {
       const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]');
@@ -1718,7 +1840,7 @@
     try {
       await chrome.debugger.attach(target, "1.3");
       attached = true;
-      await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => void 0);
+      await ensureInputReachable(target);
       for (let attempt = 0; attempt < 12; attempt += 1) {
         const removed = await evaluate(`((projectId) => {
         if (!location.pathname.includes('/project/' + projectId)) {

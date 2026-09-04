@@ -520,6 +520,26 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
   return reply.url as string;
 }
 
+// Chrome stops delivering `Input.dispatchMouseEvent` / `dispatchKeyEvent` to a
+// renderer whose document is hidden, which happens whenever the Chrome window
+// is minimized or fully occluded — `Page.bringToFront` alone does not fix it
+// because it cannot raise an OS-level window that another app covers. Verified
+// live on 2026-09-02: with `document.visibilityState === 'hidden'` the Generate
+// click was silently dropped (prompt stayed in the composer, no new media),
+// and the identical click landed as soon as focus emulation was enabled.
+// `Emulation.setFocusEmulationEnabled` makes the renderer report itself as
+// visible/focused so the real CDP input events are processed. It only affects
+// what the page is *told* about focus; it does not forge user activation,
+// bypass any challenge, or touch auth state.
+async function ensureInputReachable(
+  target: chrome.debugger.Debuggee,
+): Promise<void> {
+  await chrome.debugger
+    .sendCommand(target, 'Emulation.setFocusEmulationEnabled', { enabled: true })
+    .catch(() => undefined);
+  await chrome.debugger.sendCommand(target, 'Page.bringToFront').catch(() => undefined);
+}
+
 // Open a flow-video-tile in the editor with a real pointer click and read the
 // signed CDN <video> src that embeds the mediaId. Reuses an already-attached
 // debugger (e.g. while generate is in flight) and only detaches if it attached
@@ -541,7 +561,7 @@ async function resolveVideoUrlViaDebugger(
     }
   }
   try {
-    await chrome.debugger.sendCommand(target, 'Page.bringToFront').catch(() => {});
+    await ensureInputReachable(target);
     const evalOnPage = async <T = unknown>(expression: string): Promise<T | undefined> => {
       try {
         const res = (await chrome.debugger.sendCommand(target, 'Runtime.evaluate', {
@@ -854,7 +874,7 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
     // produces a real layout (non-zero viewport) that Input.dispatchMouseEvent
     // coordinates can target. Without this the tab can stay backgrounded even
     // after chrome.tabs.update across a debugger session.
-    await chrome.debugger.sendCommand(target, 'Page.bringToFront').catch(() => {});
+    await ensureInputReachable(target);
   } catch {
     // debugger may be unavailable (DevTools open / remote port in use) — fall back to content script UI path
   }
@@ -1316,32 +1336,172 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       // Click the actual visible arrow button through the DevTools Input domain.
       // Do not force-enable the control or synthesize a reCAPTCHA token; Google Flow
       // remains responsible for its normal UI/security checks.
-      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
-        type: 'mouseMoved',
-        x: generateButton.x,
-        y: generateButton.y,
-      });
-      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
-        type: 'mousePressed',
-        x: generateButton.x,
-        y: generateButton.y,
-        button: 'left',
-        buttons: 1,
-        clickCount: 1,
-      });
-      // Keep the button depressed briefly so Flow receives a complete pointer click.
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
-        type: 'mouseReleased',
-        x: generateButton.x,
-        y: generateButton.y,
-        button: 'left',
-        buttons: 0,
-        clickCount: 1,
-      });
+      //
+      // The coordinates measured above are already stale by the time the debugger
+      // attaches: committing a long prompt makes Flow's ProseMirror editor grow from
+      // one line to several, which pushes the whole composer band (and the Generate
+      // button with it) down by tens of pixels. A click at the pre-growth coordinate
+      // silently lands inside the prompt editor instead, so Flow never starts the
+      // render and we burn the full wait window. Re-measure and hit-test immediately
+      // before every attempt, then confirm the click actually registered — the real
+      // submit both clears the prompt editor and disables the button.
+      const measureGenerateButton = () =>
+        evalOnPage<{ x?: number; y?: number; disabled?: boolean; hitOk?: boolean }>(`(() => {
+          const gen = Array.from(document.querySelectorAll('button')).find((b) =>
+            b.classList.contains('generate-icon-button'));
+          if (!gen) return {};
+          const rect = gen.getBoundingClientRect();
+          if (!rect.width || !rect.height) return {};
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          const hit = document.elementFromPoint(x, y);
+          const hitOk = Boolean(hit && (hit === gen || gen.contains(hit)));
+          return { x, y, disabled: Boolean(gen.disabled), hitOk };
+        })()`);
+
+      const clickAtCenter = async (x: number, y: number) => {
+        await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
+          type: 'mouseMoved',
+          x,
+          y,
+        });
+        await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
+          type: 'mousePressed',
+          x,
+          y,
+          button: 'left',
+          buttons: 1,
+          clickCount: 1,
+        });
+        // Keep the button depressed briefly so Flow receives a complete pointer click.
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
+          type: 'mouseReleased',
+          x,
+          y,
+          button: 'left',
+          buttons: 0,
+          clickCount: 1,
+        });
+      };
+
+      // A real submit consumes the prompt: Flow clears the editor back to its
+      // placeholder. Treat "the typed prompt is gone" as the acceptance signal
+      // instead of trusting that a dispatched click landed on the button.
+      const promptConsumed = () =>
+        evalOnPage<boolean>(`((expected) => {
+          const ed = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+            || document.querySelector('.ProseMirror[contenteditable="true"]')
+            || document.querySelector('[role="textbox"][contenteditable="true"]');
+          if (!ed) return false;
+          const text = (ed.textContent || '').replace(/\\s+/g, ' ').trim();
+          return text.length === 0 || !text.includes(expected);
+        })(${JSON.stringify(normalizedPrompt)})`);
+
+      let submitAccepted = false;
+      const submitTrace: string[] = [];
+      // Snapshot the composer after a click so a rejected submit is diagnosable from
+      // the run record alone: which node had focus, whether the button is still live,
+      // and whether the gallery actually grew (a growing gallery means the submit did
+      // land and only the prompt-clear signal was wrong).
+      const composerSnapshot = () =>
+        evalOnPage<string>(`(() => {
+          const gen = Array.from(document.querySelectorAll('button')).find((b) =>
+            b.classList.contains('generate-icon-button'));
+          const ed = document.querySelector('.ProseMirror[contenteditable="true"]')
+            || document.querySelector('[data-slate-editor="true"][contenteditable="true"]');
+          const ae = document.activeElement;
+          const chip = Array.from(document.querySelectorAll('.agent-mode-chip')).map((c) =>
+            (c.getAttribute('aria-pressed') || c.className.includes('active') ? 'on' : 'off'))[0] || 'none';
+          return 'focus=' + (ae ? ae.tagName + '.' + (typeof ae.className === 'string' ? ae.className.trim().split(/\\s+/)[0] : '') : 'null')
+            + ' btn=' + (gen ? (gen.disabled ? 'dis' : 'en') : 'none')
+            + ' tiles=' + document.querySelectorAll('[data-media-id]').length
+            + ' agent=' + chip
+            + ' ed=' + ((ed && ed.textContent) || '').replace(/\\s+/g, ' ').slice(0, 24);
+        })()`);
+
+      // Compact end-of-run composer state so a TIMEOUT says whether the submit
+      // ever left the composer: mode chip, start-slot binding, and how many
+      // video tiles/posters the page currently exposes.
+      const composerDiag = () =>
+        evalOnPage<string>(`(() => {
+          const chip = Array.from(document.querySelectorAll('button'))
+            .map((b) => (b.innerText || '').replace(/\\s+/g, ' ').trim())
+            .find((t) => t.includes('Video \u00b7') || t.includes('Nano Banana')) || 'nochip';
+          const swap = Array.from(document.querySelectorAll('button')).find((b) =>
+            Array.from(b.querySelectorAll('i,span')).some((i) => (i.textContent || '').trim() === 'swap_horiz'));
+          const root = swap?.previousElementSibling;
+          const bound = root ? (root.querySelector('img,video') ? 'bound' : 'empty') : 'noslot';
+          return 'chip=' + chip.slice(0, 22) + ' slot=' + bound
+            + ' vtiles=' + document.querySelectorAll('flow-video-tile').length
+            + ' asb=' + Array.from(document.querySelectorAll('flow-video-tile img'))
+              .filter((i) => /\/asb\//.test(i.currentSrc || i.src || '')).length
+            + ' tiles=' + document.querySelectorAll('[data-media-id]').length;
+        })()`);
+
+      for (let attempt = 0; attempt < 4 && !submitAccepted; attempt += 1) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1_500));
+        const measured = await measureGenerateButton();
+        submitTrace.push(`a${attempt}:${measured === undefined ? 'EVAL_UNDEF' : `x${Math.round(measured.x ?? -1)}y${Math.round(measured.y ?? -1)}d${measured.disabled ? 1 : 0}h${measured.hitOk ? 1 : 0}`}`);
+        const fresh = measured ?? {};
+        if (fresh.x === undefined || fresh.y === undefined) {
+          // The composer may still be settling after the prompt commit.
+          continue;
+        }
+        if (fresh.disabled) {
+          // Either the previous attempt already submitted, or Flow is not ready.
+          if (await promptConsumed()) {
+            submitAccepted = true;
+            break;
+          }
+          continue;
+        }
+        if (!fresh.hitOk) {
+          // Something overlaps the button (mid-animation layout). Wait and re-measure
+          // rather than dispatching a click that would land on the overlapping node.
+          continue;
+        }
+        await clickAtCenter(fresh.x, fresh.y);
+        for (let settle = 0; settle < 12 && !submitAccepted; settle += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          const consumed = await promptConsumed();
+          if (settle === 2 || settle === 11) {
+            const snap = await composerSnapshot();
+            submitTrace.push(`a${attempt}s${settle}:${consumed === undefined ? 'EVAL_UNDEF' : consumed ? 'CONSUMED' : 'TYPED'}{${snap ?? 'noeval'}}`);
+          }
+          if (consumed) submitAccepted = true;
+        }
+        // Pointer click landed on a live, hit-testable button but Flow did not take
+        // the prompt. Flow's composer also submits on Enter, so try that as a second
+        // legitimate UI gesture before giving the attempt up.
+        if (!submitAccepted) {
+          await clickAtCenter(fresh.x, fresh.y - 60);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          await chrome.debugger.sendCommand(target, 'Input.dispatchKeyEvent', {
+            type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+          });
+          await chrome.debugger.sendCommand(target, 'Input.dispatchKeyEvent', {
+            type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13,
+          });
+          for (let settle = 0; settle < 8 && !submitAccepted; settle += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            if (await promptConsumed()) submitAccepted = true;
+          }
+          submitTrace.push(`a${attempt}enter:${submitAccepted ? 'CONSUMED' : 'TYPED'}`);
+        }
+      }
+      if (!submitAccepted) {
+        throw bridgeError(
+          'PROVIDER_ERROR',
+          'Google Flow did not accept the Generate click: the prompt editor never cleared. '
+            + `Trace ${submitTrace.join(' | ')}`,
+          true,
+        );
+      }
 
       const maxWaitMs = 180_000;
       const startMs = Date.now();
+      let waitTick = 0;
       const initialSet = new Set(beforeIds);
       const wantVideo = isVideoKind(payload.kind);
       // Google Flow can answer a real Generate click with an interactive
@@ -1364,6 +1524,7 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       while (Date.now() - startMs < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 4000));
         const elapsed = Date.now() - startMs;
+        waitTick += 1;
         if (!wantVideo) {
           // Images still expose their raw UUID via [data-media-id] in the gallery.
           const current = (await readMediaIds()) ?? [];
@@ -1387,6 +1548,12 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
         const tokens = (await readVideoPosterTokens()) ?? [];
         const newToken = tokens.find((t) => !beforeVidTokens.has(t));
         if (!newToken) {
+          // Periodic composer snapshot so a video TIMEOUT records whether Flow
+          // ever started the render (poster count) and whether the start slot
+          // stayed bound, instead of only reporting the final deadline.
+          if (waitTick % 8 === 0) {
+            submitTrace.push(`w${Math.round(elapsed / 1000)}s:tok${tokens.length}:${(await composerDiag()) ?? 'noeval'}`);
+          }
           if (elapsed >= captchaGraceMs && (await detectInteractiveCaptcha())) {
             throw bridgeError(
               'CAPTCHA_REQUIRED',
@@ -1404,7 +1571,12 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
         // the real UI. Mark it so the video executor skips the dead bearer poll.
         return { mediaId: videoId, type: 'VIDEO', projectId: payload.projectId, previewUrl, completedViaUi: true };
       }
-      throw bridgeError('TIMEOUT', 'Timed out waiting for generated media to appear on Flow page via CDP.', true);
+      throw bridgeError(
+        'TIMEOUT',
+        'Timed out waiting for generated media to appear on Flow page via CDP. '
+          + `Trace ${submitTrace.join(' | ')} | ${await composerDiag()}`,
+        true,
+      );
     } finally {
       try { await chrome.debugger.detach(target); } catch { /* best-effort */ }
     }
@@ -1563,7 +1735,7 @@ async function clearRealtimeFrameBindings(
   try {
     await chrome.debugger.attach(target, '1.3');
     attached = true;
-    await chrome.debugger.sendCommand(target, 'Page.bringToFront').catch(() => undefined);
+    await ensureInputReachable(target);
     const inspectField = async (field: 'startImage' | 'endImage') => {
       const response = await chrome.debugger.sendCommand(target, 'Runtime.evaluate', {
         expression: `((field, projectId) => {
@@ -1790,7 +1962,7 @@ async function bindRealtimeStartImage(
   try {
     await chrome.debugger.attach(target, '1.3');
     attached = true;
-    await chrome.debugger.sendCommand(target, 'Page.bringToFront').catch(() => undefined);
+    await ensureInputReachable(target);
     if (await evaluate<boolean>(boundExpression)) return { ok: true, mediaId };
 
     const tile = await evaluate<{ ok: boolean; x?: number; y?: number; reason?: string }>(`((mediaId) => {
@@ -1916,7 +2088,7 @@ async function bindRealtimeEndImage(
   try {
     await chrome.debugger.attach(target, '1.3');
     attached = true;
-    await chrome.debugger.sendCommand(target, 'Page.bringToFront').catch(() => undefined);
+    await ensureInputReachable(target);
     if (await evaluate<boolean>(endBoundExpression)) return { ok: true, mediaId };
 
     const endSlot = await evaluate<{ ok: boolean; x?: number; y?: number; reason?: string }>(`(() => {
@@ -2088,7 +2260,7 @@ async function bindRealtimeReferenceMedia(
   try {
     await chrome.debugger.attach(target, '1.3');
     attached = true;
-    await chrome.debugger.sendCommand(target, 'Page.bringToFront').catch(() => undefined);
+    await ensureInputReachable(target);
 
     // Remove existing component chips one at a time. Re-query after each React
     // update so stale nodes cannot remove an adjacent frame slot.
