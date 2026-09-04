@@ -1344,9 +1344,21 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       const startMs = Date.now();
       const initialSet = new Set(beforeIds);
       const wantVideo = isVideoKind(payload.kind);
+      // Google Flow can answer a real Generate click with an interactive
+      // reCAPTCHA Enterprise "I am not a robot" challenge instead of starting the
+      // render. We must surface that honestly and let the human solve it — never
+      // bypass it. The anchor iframe is only visible when a real challenge is on
+      // screen, so a visible widget after a render grace window with no new media
+      // is a genuine CAPTCHA_REQUIRED signal rather than a misleading timeout.
+      const captchaGraceMs = 25_000;
+      const detectInteractiveCaptcha = () =>
+        evalOnPage<boolean>(
+          `(()=>{const f=[...document.querySelectorAll('iframe')].find((el)=>/recaptcha/i.test(el.src||''));if(!f)return false;const r=f.getBoundingClientRect();return !!f.offsetParent&&r.width>=120&&r.height>=40})()`,
+        );
 
       while (Date.now() - startMs < maxWaitMs) {
         await new Promise((r) => setTimeout(r, 4000));
+        const elapsed = Date.now() - startMs;
         if (!wantVideo) {
           // Images still expose their raw UUID via [data-media-id] in the gallery.
           const current = (await readMediaIds()) ?? [];
@@ -1355,6 +1367,13 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
             const previewUrl = await resolveRedirectSafe(newId, 'IMAGE');
             return { mediaId: newId, type: 'IMAGE', projectId: payload.projectId, previewUrl, completedViaUi: true };
           }
+          if (elapsed >= captchaGraceMs && (await detectInteractiveCaptcha())) {
+            throw bridgeError(
+              'CAPTCHA_REQUIRED',
+              'Google Flow presented an interactive reCAPTCHA challenge for this generation. Solve it in the Flow tab, then run the workflow again.',
+              true,
+            );
+          }
           continue;
         }
         // Videos: detect a new poster token, then open that exact tile to recover
@@ -1362,7 +1381,16 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
         // Flow finishes rendering the clip, so this is a genuine completion signal.
         const tokens = (await readVideoPosterTokens()) ?? [];
         const newToken = tokens.find((t) => !beforeVidTokens.has(t));
-        if (!newToken) continue;
+        if (!newToken) {
+          if (elapsed >= captchaGraceMs && (await detectInteractiveCaptcha())) {
+            throw bridgeError(
+              'CAPTCHA_REQUIRED',
+              'Google Flow presented an interactive reCAPTCHA challenge for this generation. Solve it in the Flow tab, then run the workflow again.',
+              true,
+            );
+          }
+          continue;
+        }
         const videoId = await openVideoTileAndGetId(newToken);
         if (!videoId) continue;
         const previewUrl = await resolveRedirectSafe(videoId, 'VIDEO');

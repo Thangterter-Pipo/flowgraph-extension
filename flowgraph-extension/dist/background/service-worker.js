@@ -1024,8 +1024,13 @@
         const startMs = Date.now();
         const initialSet = new Set(beforeIds);
         const wantVideo = isVideoKind(payload.kind);
+        const captchaGraceMs = 25e3;
+        const detectInteractiveCaptcha = () => evalOnPage(
+          `(()=>{const f=[...document.querySelectorAll('iframe')].find((el)=>/recaptcha/i.test(el.src||''));if(!f)return false;const r=f.getBoundingClientRect();return !!f.offsetParent&&r.width>=120&&r.height>=40})()`
+        );
         while (Date.now() - startMs < maxWaitMs) {
           await new Promise((r) => setTimeout(r, 4e3));
+          const elapsed = Date.now() - startMs;
           if (!wantVideo) {
             const current = await readMediaIds() ?? [];
             const newId = current.find((id) => !initialSet.has(id));
@@ -1033,11 +1038,27 @@
               const previewUrl3 = await resolveRedirectSafe(newId, "IMAGE");
               return { mediaId: newId, type: "IMAGE", projectId: payload.projectId, previewUrl: previewUrl3, completedViaUi: true };
             }
+            if (elapsed >= captchaGraceMs && await detectInteractiveCaptcha()) {
+              throw bridgeError(
+                "CAPTCHA_REQUIRED",
+                "Google Flow presented an interactive reCAPTCHA challenge for this generation. Solve it in the Flow tab, then run the workflow again.",
+                true
+              );
+            }
             continue;
           }
           const tokens = await readVideoPosterTokens() ?? [];
           const newToken = tokens.find((t) => !beforeVidTokens.has(t));
-          if (!newToken) continue;
+          if (!newToken) {
+            if (elapsed >= captchaGraceMs && await detectInteractiveCaptcha()) {
+              throw bridgeError(
+                "CAPTCHA_REQUIRED",
+                "Google Flow presented an interactive reCAPTCHA challenge for this generation. Solve it in the Flow tab, then run the workflow again.",
+                true
+              );
+            }
+            continue;
+          }
           const videoId = await openVideoTileAndGetId(newToken);
           if (!videoId) continue;
           const previewUrl2 = await resolveRedirectSafe(videoId, "VIDEO");
