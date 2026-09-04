@@ -1,0 +1,552 @@
+
+> flowgraph-extension@0.1.0 dev
+> vite --host 127.0.0.1 --host 127.0.0.1 --port 5173
+
+
+  VITE v6.4.3  ready in 823 ms
+
+  ➜  Local:   http://127.0.0.1:5173/
+  ➜  press h + enter to show help
+00:08:50 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+00:09:12 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:09:12 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:09:12 [vite] (client) page reload src/ui/studio/main.tsx
+00:09:36 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:09:36 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:09:36 [vite] (client) page reload src/ui/studio/main.tsx
+00:09:48 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:09:49 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:09:49 [vite] (client) page reload src/ui/studio/main.tsx
+00:10:10 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:10:10 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:10:10 [vite] (client) page reload src/ui/studio/main.tsx
+00:10:36 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:10:36 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:10:36 [vite] (client) page reload src/ui/studio/main.tsx
+00:10:58 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:10:58 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:10:58 [vite] (client) page reload src/ui/studio/main.tsx
+00:11:24 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:11:24 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:11:24 [vite] (client) page reload src/ui/studio/main.tsx
+00:11:41 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:11:41 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:11:41 [vite] (client) page reload src/ui/studio/main.tsx
+00:12:25 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:12:25 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:12:25 [vite] (client) page reload src/ui/studio/main.tsx
+00:12:37 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:12:37 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:12:37 [vite] (client) page reload src/ui/studio/main.tsx
+00:13:18 [vite] (client) hmr update /src/ui/theme.css
+00:13:56 [vite] (client) hmr update /src/ui/studio/main.tsx
+00:13:56 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:13:56 [vite] (client) page reload src/ui/studio/main.tsx
+00:18:55 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+00:19:13 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+00:19:25 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+00:24:39 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+00:25:37 [vite] (client) hmr update /src/ui/theme.css
+00:34:10 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+00:34:34 [vite] (client) hmr update /src/ui/theme.css
+00:50:58 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx, /src/ui/studio/main.tsx
+00:50:59 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:50:59 [vite] (client) page reload src/ui/studio/main.tsx
+00:51:12 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx, /src/ui/studio/main.tsx
+00:51:12 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:51:12 [vite] (client) page reload src/ui/studio/main.tsx
+00:51:28 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx, /src/ui/studio/main.tsx
+00:51:29 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:51:29 [vite] (client) page reload src/ui/studio/main.tsx
+00:51:45 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx, /src/ui/studio/main.tsx
+00:51:45 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:51:45 [vite] (client) page reload src/ui/studio/main.tsx
+00:52:05 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx, /src/ui/studio/main.tsx
+00:52:05 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+00:52:05 [vite] (client) page reload src/ui/studio/main.tsx
+00:52:27 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+01:39:56 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:39:57 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+01:39:57 [vite] (client) page reload src/ui/studio/main.tsx
+01:40:09 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:40:09 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+01:40:09 [vite] (client) page reload src/ui/studio/main.tsx
+01:40:27 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:40:27 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+01:40:27 [vite] (client) page reload src/ui/studio/main.tsx
+01:40:52 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:40:52 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+01:40:52 [vite] (client) page reload src/ui/studio/main.tsx
+01:41:16 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:41:16 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+01:41:16 [vite] (client) page reload src/ui/studio/main.tsx
+01:41:44 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:41:44 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+01:41:44 [vite] (client) page reload src/ui/studio/main.tsx
+01:42:04 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:42:04 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+01:42:04 [vite] (client) page reload src/ui/studio/main.tsx
+01:42:18 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:42:18 [vite] Internal server error: E:\Flow_veo\flowgraph-extension\src\ui\studio\main.tsx: Unexpected token, expected "," (580:6)
+
+  578 |       </main>
+  579 |
+> 580 |       {experimentalGate.open && (
+      |       ^
+  581 |         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Experimental capability warning">
+  582 |           <div className="experimental-modal">
+  583 |             <div className="experimental-modal-icon">!</div>
+  Plugin: vite:react-babel
+  File: E:/Flow_veo/flowgraph-extension/src/ui/studio/main.tsx:580:6
+  585|                <span className="capability-badge experimental">RUNTIME_PARTIAL</span>
+  586|                <h3>Experimental Google Flow capability</h3>
+  587|                <p>The current workflow contains provider capabilities that are not runtime-stable. Their request shape may be known, but a successful end-to-end execution is not guaranteed for the current Flow session.</p>
+     |                                                                                                                                 ^
+  588|                <div className="experimental-node-list">
+  589|                  {nodes.filter((node) => node.data.experimental).map((node) => (
+      at constructor (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:369:19)
+      at TypeScriptParserMixin.raise (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:6620:19)
+      at TypeScriptParserMixin.unexpected (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:6640:16)
+      at TypeScriptParserMixin.expect (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:6920:12)
+      at TypeScriptParserMixin.parseParenAndDistinguishExpression (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11687:14)
+      at TypeScriptParserMixin.parseExprAtom (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11357:23)
+      at TypeScriptParserMixin.parseExprAtom (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:4780:20)
+      at TypeScriptParserMixin.parseExprSubscripts (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11102:23)
+      at TypeScriptParserMixin.parseUpdate (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11087:21)
+      at TypeScriptParserMixin.parseMaybeUnary (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11067:23)
+      at TypeScriptParserMixin.parseMaybeUnary (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:9858:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10920:61)
+      at TypeScriptParserMixin.parseExprOps (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10925:23)
+      at TypeScriptParserMixin.parseMaybeConditional (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10902:23)
+      at TypeScriptParserMixin.parseMaybeAssign (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10852:21)
+      at TypeScriptParserMixin.parseMaybeAssign (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:9807:20)
+      at E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10821:39
+      at TypeScriptParserMixin.allowInAnd (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:12455:12)
+      at TypeScriptParserMixin.parseMaybeAssignAllowIn (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10821:17)
+      at TypeScriptParserMixin.parseConditional (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10912:30)
+      at TypeScriptParserMixin.parseConditional (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:9624:18)
+      at TypeScriptParserMixin.parseMaybeConditional (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10906:17)
+      at TypeScriptParserMixin.parseMaybeAssign (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10852:21)
+      at TypeScriptParserMixin.parseMaybeAssign (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:9807:20)
+      at TypeScriptParserMixin.parseExpressionBase (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10805:23)
+      at E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10801:39
+      at TypeScriptParserMixin.allowInAnd (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:12455:12)
+      at TypeScriptParserMixin.parseExpression (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10801:17)
+      at TypeScriptParserMixin.jsxParseExpressionContainer (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:4648:31)
+      at TypeScriptParserMixin.jsxParseElementAt (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:4727:36)
+      at TypeScriptParserMixin.jsxParseElement (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:4765:17)
+      at TypeScriptParserMixin.parseExprAtom (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:4775:19)
+      at TypeScriptParserMixin.parseExprSubscripts (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11102:23)
+      at TypeScriptParserMixin.parseUpdate (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11087:21)
+      at TypeScriptParserMixin.parseMaybeUnary (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11067:23)
+      at TypeScriptParserMixin.parseMaybeUnary (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:9858:18)
+      at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10920:61)
+      at TypeScriptParserMixin.parseExprOps (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10925:23)
+      at TypeScriptParserMixin.parseMaybeConditional (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10902:23)
+      at TypeScriptParserMixin.parseMaybeAssign (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10852:21)
+      at E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:9796:39
+      at TypeScriptParserMixin.tryParse (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:6928:20)
+      at TypeScriptParserMixin.parseMaybeAssign (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:9796:18)
+      at E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10821:39
+      at TypeScriptParserMixin.allowInAnd (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:12455:12)
+      at TypeScriptParserMixin.parseMaybeAssignAllowIn (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:10821:17)
+      at TypeScriptParserMixin.parseMaybeAssignAllowInOrVoidPattern (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:12522:17)
+      at TypeScriptParserMixin.parseParenAndDistinguishExpression (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11701:28)
+      at TypeScriptParserMixin.parseExprAtom (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:11357:23)
+      at TypeScriptParserMixin.parseExprAtom (E:\Flow_veo\flowgraph-extension\node_modules\@babel\parser\lib\index.js:4780:20)
+01:42:34 [vite] (client) hmr update /src/ui/studio/main.tsx
+01:42:35 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+01:42:35 [vite] (client) page reload src/ui/studio/main.tsx
+01:43:52 [vite] (client) hmr update /src/ui/theme.css
+08:26:08 [vite] (client) hmr update /src/ui/studio/main.tsx, /src/ui/studio/FilmWorkspace.tsx
+08:26:08 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:26:08 [vite] (client) page reload src/ui/studio/main.tsx
+08:26:35 [vite] (client) hmr update /src/ui/studio/main.tsx, /src/ui/studio/FilmWorkspace.tsx
+08:26:35 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:26:35 [vite] (client) page reload src/ui/studio/main.tsx
+08:26:53 [vite] (client) hmr update /src/ui/studio/main.tsx, /src/ui/studio/FilmWorkspace.tsx
+08:26:53 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:26:53 [vite] (client) page reload src/ui/studio/main.tsx
+08:28:27 [vite] (client) hmr update /src/ui/studio/FilmWorkspace.tsx
+08:28:44 [vite] (client) hmr update /src/ui/studio/FilmWorkspace.tsx
+08:29:00 [vite] (client) hmr update /src/ui/studio/FilmWorkspace.tsx
+08:29:18 [vite] (client) hmr update /src/ui/studio/FilmWorkspace.tsx
+08:29:34 [vite] (client) hmr update /src/ui/studio/FilmWorkspace.tsx
+08:30:13 [vite] (client) hmr update /src/ui/studio/main.tsx
+08:30:13 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:30:13 [vite] (client) page reload src/ui/studio/main.tsx
+08:30:31 [vite] (client) hmr update /src/ui/studio/main.tsx
+08:30:31 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:30:31 [vite] (client) page reload src/ui/studio/main.tsx
+08:30:46 [vite] (client) hmr update /src/ui/studio/main.tsx
+08:30:46 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:30:46 [vite] (client) page reload src/ui/studio/main.tsx
+08:31:08 [vite] (client) hmr update /src/ui/studio/main.tsx
+08:31:08 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:31:08 [vite] (client) page reload src/ui/studio/main.tsx
+08:31:27 [vite] (client) hmr update /src/ui/studio/main.tsx
+08:31:27 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:31:27 [vite] (client) page reload src/ui/studio/main.tsx
+08:31:51 [vite] (client) hmr update /src/ui/studio/main.tsx
+08:31:52 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+08:31:52 [vite] (client) page reload src/ui/studio/main.tsx
+08:33:14 [vite] (client) hmr update /src/ui/theme.css
+09:02:39 [vite] (client) hmr update /src/ui/theme.css
+09:10:22 [vite] (client) hmr update /src/ui/studio/main.tsx
+09:10:22 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+09:10:22 [vite] (client) page reload src/ui/studio/main.tsx
+09:10:50 [vite] (client) hmr update /src/ui/theme.css
+11:30:42 [vite] (client) hmr update /src/ui/studio/TimelineWorkspace.tsx
+11:31:14 [vite] (client) hmr update /src/ui/studio/main.tsx
+11:31:14 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+11:31:14 [vite] (client) page reload src/ui/studio/main.tsx
+11:32:24 [vite] (client) hmr update /src/ui/theme.css
+11:53:15 [vite] (client) hmr update /src/ui/studio/main.tsx
+11:53:16 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+11:53:16 [vite] (client) page reload src/ui/studio/main.tsx
+12:02:40 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:02:40 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:03:57 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:03:57 [vite] (client) page reload src/ui/studio/main.tsx
+12:36:27 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:36:27 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:36:36 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:36:36 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:36:36 [vite] (client) page reload src/ui/studio/main.tsx
+12:36:57 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:36:58 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:36:58 [vite] (client) page reload src/ui/studio/main.tsx
+12:37:07 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:37:09 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:37:09 [vite] (client) page reload src/ui/studio/main.tsx
+12:37:18 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:37:19 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:37:19 [vite] (client) page reload src/ui/studio/main.tsx
+12:38:10 [vite] (client) hmr update /src/ui/theme.css
+12:40:12 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:40:13 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:40:13 [vite] (client) page reload src/ui/studio/main.tsx
+12:41:36 [vite] (client) hmr update /src/ui/studio/TimelineWorkspace.tsx
+12:41:36 [vite] (client) hmr update /src/ui/studio/TimelineWorkspace.tsx
+12:43:01 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:43:01 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:43:01 [vite] (client) page reload src/ui/studio/main.tsx
+12:49:14 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:49:14 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:49:15 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:49:15 [vite] (client) page reload src/ui/studio/main.tsx
+12:49:23 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:49:23 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:49:23 [vite] (client) page reload src/ui/studio/main.tsx
+12:49:36 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:49:36 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:49:36 [vite] (client) page reload src/ui/studio/main.tsx
+12:49:47 [vite] (client) hmr update /src/ui/studio/main.tsx
+12:49:47 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+12:49:47 [vite] (client) page reload src/ui/studio/main.tsx
+12:50:20 [vite] (client) hmr update /src/ui/studio/RenderWorkspace.tsx
+12:50:34 [vite] (client) hmr update /src/ui/studio/RenderWorkspace.tsx
+12:50:34 [vite] (client) hmr update /src/ui/studio/RenderWorkspace.tsx
+12:50:45 [vite] (client) hmr update /src/ui/studio/RenderWorkspace.tsx
+12:51:00 [vite] (client) hmr update /src/ui/studio/RenderWorkspace.tsx
+12:51:13 [vite] (client) hmr update /src/ui/studio/RenderWorkspace.tsx
+12:51:27 [vite] (client) hmr update /src/ui/studio/ProductionWorkspace.tsx
+12:51:59 [vite] (client) hmr update /src/ui/studio/ProductionWorkspace.tsx
+12:54:12 [vite] (client) hmr update /src/ui/theme.css
+12:56:51 [vite] (client) hmr update /src/ui/studio/ContinuityWorkspace.tsx, /src/ui/studio/RenderWorkspace.tsx, /src/ui/studio/ProductionWorkspace.tsx
+12:56:51 [vite] (client) hmr update /src/ui/studio/ContinuityWorkspace.tsx, /src/ui/studio/RenderWorkspace.tsx, /src/ui/studio/ProductionWorkspace.tsx
+13:01:12 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:01:12 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:01:13 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:01:13 [vite] (client) page reload src/ui/studio/main.tsx
+13:01:34 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:01:34 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:01:34 [vite] (client) page reload src/ui/studio/main.tsx
+13:01:48 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:01:48 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:01:48 [vite] (client) page reload src/ui/studio/main.tsx
+13:02:06 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:02:10 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:02:10 [vite] (client) page reload src/ui/studio/main.tsx
+13:02:26 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:02:26 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:02:31 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:02:31 [vite] (client) page reload src/ui/studio/main.tsx
+13:02:48 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:02:48 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:02:49 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:02:49 [vite] (client) page reload src/ui/studio/main.tsx
+13:03:12 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:03:12 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:03:12 [vite] (client) page reload src/ui/studio/main.tsx
+13:04:08 [vite] (client) hmr update /src/ui/theme.css
+13:04:33 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:04:33 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:04:33 [vite] (client) page reload src/ui/studio/main.tsx
+13:06:43 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:06:58 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:06:59 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:07:30 [vite] (client) hmr update /src/ui/studio/main.tsx
+13:07:35 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+13:07:35 [vite] (client) page reload src/ui/studio/main.tsx
+13:07:46 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:19:07 [vite] changed tsconfig file detected: E:/Flow_veo/flowgraph-extension/tsconfig.app.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
+14:26:18 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:26:19 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:26:19 [vite] (client) page reload src/ui/studio/main.tsx
+14:26:30 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:26:30 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:26:30 [vite] (client) page reload src/ui/studio/main.tsx
+14:30:24 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:30:24 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:30:24 [vite] (client) page reload src/ui/studio/main.tsx
+14:30:33 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:30:33 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:30:33 [vite] (client) page reload src/ui/studio/main.tsx
+14:30:49 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:30:49 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:30:49 [vite] (client) page reload src/ui/studio/main.tsx
+14:30:58 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:30:58 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:30:58 [vite] (client) page reload src/ui/studio/main.tsx
+14:31:06 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:31:06 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:31:06 [vite] (client) page reload src/ui/studio/main.tsx
+14:31:13 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:31:13 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:31:13 [vite] (client) page reload src/ui/studio/main.tsx
+14:31:18 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:31:19 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:31:19 [vite] (client) page reload src/ui/studio/main.tsx
+14:31:34 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:31:34 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:31:34 [vite] (client) page reload src/ui/studio/main.tsx
+14:31:40 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:31:40 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:31:40 [vite] (client) page reload src/ui/studio/main.tsx
+14:31:45 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:31:45 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:31:45 [vite] (client) page reload src/ui/studio/main.tsx
+14:31:53 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:31:53 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:31:53 [vite] (client) page reload src/ui/studio/main.tsx
+14:31:59 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:31:59 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:31:59 [vite] (client) page reload src/ui/studio/main.tsx
+14:32:09 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:32:09 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:32:09 [vite] (client) page reload src/ui/studio/main.tsx
+14:32:14 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:32:14 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:32:14 [vite] (client) page reload src/ui/studio/main.tsx
+14:32:19 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:32:19 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:32:19 [vite] (client) page reload src/ui/studio/main.tsx
+14:33:15 [vite] (client) hmr update /src/ui/theme.css
+14:33:34 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+14:33:40 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+14:33:47 [vite] (client) hmr update /src/ui/theme.css
+14:34:14 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:34:14 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:34:14 [vite] (client) page reload src/ui/studio/main.tsx
+14:35:05 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:35:05 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:35:05 [vite] (client) page reload src/ui/studio/main.tsx
+14:38:13 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:38:14 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:38:14 [vite] (client) page reload src/ui/studio/main.tsx
+14:39:41 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:39:43 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:39:43 [vite] (client) page reload src/ui/studio/main.tsx
+14:43:09 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:43:10 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:43:10 [vite] (client) page reload src/ui/studio/main.tsx
+14:57:19 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:57:20 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:57:20 [vite] (client) page reload src/ui/studio/main.tsx
+14:57:27 [vite] (client) hmr update /src/ui/studio/main.tsx
+14:57:27 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+14:57:27 [vite] (client) page reload src/ui/studio/main.tsx
+15:04:17 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:04:18 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:04:18 [vite] (client) page reload src/ui/studio/main.tsx
+15:07:48 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:07:48 [vite] (client) Pre-transform error: Transform failed with 1 error:
+E:/Flow_veo/flowgraph-extension/src/runtime/WorkflowRuntime.ts:156:129: ERROR: Unexpected "as"
+  Plugin: vite:esbuild
+  File: E:/Flow_veo/flowgraph-extension/src/runtime/WorkflowRuntime.ts:156:129
+  
+  Unexpected "as"
+  154|                nodeId,
+  155|                state: 'success',
+  156|                result: (cached.output as Record<string, RuntimeValue>).result as void extends never ? undefined : { type: 'image' as const, mediaId: '', previewUrl: '' },
+     |                                                                                                                                   ^
+  157|                creditsUsed: 0,
+  158|                cacheHit: true,
+  
+15:07:48 [vite] Internal server error: Transform failed with 1 error:
+E:/Flow_veo/flowgraph-extension/src/runtime/WorkflowRuntime.ts:156:129: ERROR: Unexpected "as"
+  Plugin: vite:esbuild
+  File: E:/Flow_veo/flowgraph-extension/src/runtime/WorkflowRuntime.ts:156:129
+  
+  Unexpected "as"
+  154|                nodeId,
+  155|                state: 'success',
+  156|                result: (cached.output as Record<string, RuntimeValue>).result as void extends never ? undefined : { type: 'image' as const, mediaId: '', previewUrl: '' },
+     |                                                                                                                                   ^
+  157|                creditsUsed: 0,
+  158|                cacheHit: true,
+  
+      at failureErrorWithLog (E:\Flow_veo\flowgraph-extension\node_modules\esbuild\lib\main.js:1467:15)
+      at E:\Flow_veo\flowgraph-extension\node_modules\esbuild\lib\main.js:736:50
+      at responseCallbacks.<computed> (E:\Flow_veo\flowgraph-extension\node_modules\esbuild\lib\main.js:603:9)
+      at handleIncomingPacket (E:\Flow_veo\flowgraph-extension\node_modules\esbuild\lib\main.js:658:12)
+      at Socket.readFromStdout (E:\Flow_veo\flowgraph-extension\node_modules\esbuild\lib\main.js:581:7)
+      at Socket.emit (node:events:508:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)
+15:07:56 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:07:56 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:07:56 [vite] (client) page reload src/ui/studio/main.tsx
+15:08:05 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:08:05 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:08:05 [vite] (client) page reload src/ui/studio/main.tsx
+15:08:14 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:08:14 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:08:14 [vite] (client) page reload src/ui/studio/main.tsx
+15:08:21 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:08:21 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:08:21 [vite] (client) page reload src/ui/studio/main.tsx
+15:08:51 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:08:51 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:08:51 [vite] (client) page reload src/ui/studio/main.tsx
+15:08:59 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:08:59 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:08:59 [vite] (client) page reload src/ui/studio/main.tsx
+15:09:06 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:09:06 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:09:06 [vite] (client) page reload src/ui/studio/main.tsx
+15:09:52 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:09:52 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:09:52 [vite] (client) page reload src/ui/studio/main.tsx
+15:09:57 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:09:57 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:09:57 [vite] (client) page reload src/ui/studio/main.tsx
+15:10:07 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:10:07 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:10:07 [vite] (client) page reload src/ui/studio/main.tsx
+15:10:32 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:10:32 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:10:32 [vite] (client) page reload src/ui/studio/main.tsx
+15:10:55 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:10:55 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:10:55 [vite] (client) page reload src/ui/studio/main.tsx
+15:11:03 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:11:03 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:11:03 [vite] (client) page reload src/ui/studio/main.tsx
+15:11:32 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:11:32 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:11:32 [vite] (client) page reload src/ui/studio/main.tsx
+15:11:38 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:11:38 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:11:38 [vite] (client) page reload src/ui/studio/main.tsx
+15:11:44 [vite] (client) hmr update /src/ui/theme.css
+15:13:34 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:13:34 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:13:34 [vite] (client) page reload src/ui/studio/main.tsx
+15:14:01 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:14:01 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:14:01 [vite] (client) page reload src/ui/studio/main.tsx
+15:14:08 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:14:08 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:14:08 [vite] (client) page reload src/ui/studio/main.tsx
+15:14:41 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:14:41 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:14:41 [vite] (client) page reload src/ui/studio/main.tsx
+15:14:47 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:14:47 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:14:47 [vite] (client) page reload src/ui/studio/main.tsx
+15:14:55 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:14:55 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:14:55 [vite] (client) page reload src/ui/studio/main.tsx
+15:15:01 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:15:01 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:15:01 [vite] (client) page reload src/ui/studio/main.tsx
+15:15:08 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:15:08 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:15:08 [vite] (client) page reload src/ui/studio/main.tsx
+15:15:30 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:15:30 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:15:30 [vite] (client) page reload src/ui/studio/main.tsx
+15:16:49 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:16:49 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:16:49 [vite] (client) page reload src/ui/studio/main.tsx
+15:18:12 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:18:12 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:18:12 [vite] (client) page reload src/ui/studio/main.tsx
+15:18:22 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:18:22 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:18:22 [vite] (client) page reload src/ui/studio/main.tsx
+15:18:46 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:18:46 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:18:46 [vite] (client) page reload src/ui/studio/main.tsx
+15:18:55 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+15:19:01 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+15:19:10 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+15:19:18 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+15:19:26 [vite] (client) hmr update /src/ui/studio/WorkflowNode.tsx
+15:19:41 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:19:41 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:19:41 [vite] (client) page reload src/ui/studio/main.tsx
+15:19:48 [vite] (client) hmr update /src/ui/theme.css
+15:20:00 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:20:00 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:20:00 [vite] (client) page reload src/ui/studio/main.tsx
+15:20:09 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:20:09 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:20:09 [vite] (client) page reload src/ui/studio/main.tsx
+15:20:22 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:20:22 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:20:22 [vite] (client) page reload src/ui/studio/main.tsx
+15:20:31 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:20:31 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:20:31 [vite] (client) page reload src/ui/studio/main.tsx
+15:20:38 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:20:38 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:20:38 [vite] (client) page reload src/ui/studio/main.tsx
+15:20:45 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:20:45 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:20:45 [vite] (client) page reload src/ui/studio/main.tsx
+15:20:53 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:20:53 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:20:53 [vite] (client) page reload src/ui/studio/main.tsx
+15:21:00 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:21:00 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:21:00 [vite] (client) page reload src/ui/studio/main.tsx
+15:21:08 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:21:08 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:21:08 [vite] (client) page reload src/ui/studio/main.tsx
+15:21:21 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:21:21 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:21:21 [vite] (client) page reload src/ui/studio/main.tsx
+15:21:31 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:21:31 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:21:31 [vite] (client) page reload src/ui/studio/main.tsx
+15:21:41 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:21:41 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh ("true" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react#consistent-components-exports
+15:21:41 [vite] (client) page reload src/ui/studio/main.tsx
+15:22:14 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:22:14 [vite] (client) hmr invalidate /src/ui/studio/main.tsx Could not Fast Refresh (new export)
+15:22:14 [vite] (client) page reload src/ui/studio/main.tsx
+15:22:28 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:22:39 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:24:12 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:24:25 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:32:48 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:38:00 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:38:36 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:38:52 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:39:05 [vite] (client) hmr update /src/ui/studio/main.tsx
+15:39:26 [vite] (client) hmr update /src/ui/studio/main.tsx

@@ -1,0 +1,8 @@
+[data-np-input-autofilled] {
+  background-color: rgba(0, 207, 182, 0.15) !important;
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+
+  &:focus {
+    background-color: rgba(0, 207, 182, 0.08) !important;
+  }
+}

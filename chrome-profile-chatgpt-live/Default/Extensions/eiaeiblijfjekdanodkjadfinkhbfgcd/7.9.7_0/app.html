@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; font-src &#39;self&#39;; style-src &#39;self&#39;; script-src &#39;self&#39; &#39;wasm-unsafe-eval&#39;; child-src &#39;none&#39;; frame-src &#39;none&#39;; connect-src &#39;self&#39; data: https://*.nordpass.com https://*.npass.app https://*.nordbusinessaccount.com https://*.nordsec.com https://api.cloudstorage.global.nordlocker.com https://api-contentstorage.us.nordlocker.com https://nl-cs-production-cloud-storage.s3.amazonaws.com https://nl-cs-production-cloud-storage.s3.us-east-1.amazonaws.com https://nl-cs-production-cloud-storage-eu.s3.eu-central-1.amazonaws.com https://nl-cs-production-cloud-storage-unit1.s3.amazonaws.com https://nl-cs-production-cloud-storage-unit2.s3.amazonaws.com https://nl-cs-production-cloud-storage-unit3.s3.amazonaws.com https://nl-cs-production-cloud-storage-unit4.s3.amazonaws.com https://nl-cs-production-cloud-storage-unit1.s3.us-east-1.amazonaws.com https://nl-cs-production-cloud-storage-unit2.s3.us-east-1.amazonaws.com https://nl-cs-production-cloud-storage-unit3.s3.us-east-1.amazonaws.com https://nl-cs-production-cloud-storage-unit4.s3.us-east-1.amazonaws.com https://staging.api.cloudstorage.global.nordlocker.com https://api-contentstorage.stag.us.nordlocker.com https://nl-cs-staging-cloud-storage.s3.amazonaws.com https://nl-cs-staging-cloud-storage.s3.us-east-1.amazonaws.com https://nl-cs-staging-cloud-storage-eu.s3.eu-central-1.amazonaws.com https://nl-cs-staging-cloud-storage-unit1.s3.amazonaws.com https://nl-cs-staging-cloud-storage-unit2.s3.amazonaws.com https://nl-cs-staging-cloud-storage-unit3.s3.amazonaws.com https://nl-cs-staging-cloud-storage-unit4.s3.amazonaws.com https://nl-cs-staging-cloud-storage-unit1.s3.us-east-1.amazonaws.com https://nl-cs-staging-cloud-storage-unit2.s3.us-east-1.amazonaws.com https://nl-cs-staging-cloud-storage-unit3.s3.us-east-1.amazonaws.com https://nl-cs-staging-cloud-storage-unit4.s3.us-east-1.amazonaws.com https://np-prod-blobvaults-production.s3.us-east-1.amazonaws.com https://np-prod-eu-blobvaults-production.s3.eu-central-1.amazonaws.com https://np-stag-blobvaults-staging.s3.us-east-1.amazonaws.com https://np-stag-eu-blobvaults-staging.s3.eu-central-1.amazonaws.com https://lastpass.com/ https://login.microsoftonline.com/ https://graph.microsoft.com/oidc/userinfo https://graph.microsoft.com/v1.0/me https://accounts.lastpass.com/federatedlogin/api/v1/getkey wss://*.nordpass.com:8884/ wss://*.nordpass.com:8885/mqtt wss://*.mismatch.site:8895/mqtt wss://*.nonmountain.net:8885/mqtt; worker-src &#39;none&#39;; img-src &#39;self&#39; data: https://*.nordpass.com https://*.npass.app https://*.nordbusinessaccount.com https://*.nordsec.com blob: https://assets-static-np.s3.amazonaws.com">
+
+    <title>NordPass Password Manager</title>
+    <meta
+      name="description"
+      content="NordPass is your freedom from password stress. Generate and securely store strong passwords and autofill them with a single click."
+    />
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="dns-prefetch" href="https://s1.npass.app" />
+    <link rel="icon" type="image/png" href="/favicon.png">
+    <script type="module" crossorigin src="/js/app.js"></script>
+    <link rel="modulepreload" crossorigin href="/js/platformEnv.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/modulepreload-polyfill.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/dist.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/redux-toolkit.modern.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/appSlice.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/browser.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/ContentError.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/errorsSerialization.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/authSlice.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/subMonths.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/import-wrapper-prod.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/passkeysConstants.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/mfa.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/v4.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/modalReducer-BkPjNQPw.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/format.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/classnames.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/hooks.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/constants.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/function.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/contracts.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/getApiMethods.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/intl.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/react-intl.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/GlobalContext.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/ToastNotificationUtils.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/size.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/proxy.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/useRovingGridFocus.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/routes.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/getActionLogPlatform.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/ItemTypeIcon.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/unstable.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/getShouldIndicateLinkShare.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/FileSaver.min.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/downloadFile.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/dateTimeFormatter.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/biometrics.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/FullscreenLoader.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/useAppTheme.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/modalsConstants.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/DialogHeader.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/getErrorMessage.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/useAction.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/utils.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/react.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/Avatar.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/timeoutTimer.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/PendingItemBase.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/logStorageService.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/extension.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/proxyStore.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/en.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/devLog.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/loggingFactory.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/ignoredErrorsList.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/useFeature.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/campaignUrl.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/TruncateTextWithTooltip.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/useIsOnline.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/styles.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/downloadLogs.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/store.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/currentScopes.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/breadcrumbs.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/logging.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/api.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/preserveQuery.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/withPermissions.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/copyValue.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/ConfirmActionModal.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/ConfirmAction.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/passwordGeneratorContracts.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/getIsUpgradingToPremiumDisabled.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/PasswordGeneratorHistory.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/useAccountSwitch.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/useOnAccountSwitching.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/frequencyList.chunk.js">
+    <link rel="modulepreload" crossorigin href="/js/PasswordGenerator.chunk.js">
+    <link rel="stylesheet" crossorigin href="/css/styles.css">
+  </head>
+  <body class="bg-(--sys-color-bg-primary) h-full overflow-hidden text-grey-darkest dark:text-white" spellcheck="false">
+    <div id="app" class="isolate h-full overflow-x-auto overflow-y-hidden"></div>
+  </body>
+</html>

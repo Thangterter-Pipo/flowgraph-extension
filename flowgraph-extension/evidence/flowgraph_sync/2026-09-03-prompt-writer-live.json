@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-09-03T00:00:00Z",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "tabId": 2027945274,
+  "checks": [
+    {
+      "name": "FLOWGRAPH_PING_FLOW",
+      "result": "PASS",
+      "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+      "page": "Google Flow - FlowGraph V1 Live 2026-09-02"
+    },
+    {
+      "name": "FLOWGRAPH_SYNC_SET_PROMPT",
+      "result": "PASS",
+      "value": "Sync patch live test 4",
+      "originEventId": "live-prompt-patch-4"
+    },
+    {
+      "name": "FLOWGRAPH_SYNC_SET_MODE_VIDEO",
+      "result": "PASS",
+      "value": "VIDEO",
+      "originEventId": "live-mode-video"
+    },
+    {
+      "name": "FLOWGRAPH_SYNC_SET_PROMPT_REPEAT",
+      "result": "PASS",
+      "value": "Sync patch live final verified",
+      "originEventId": "live-prompt-final"
+    },
+    {
+      "name": "FLOWGRAPH_SYNC_SET_MODE_IMAGE",
+      "result": "PASS",
+      "value": "IMAGE",
+      "originEventId": "live-mode-final"
+    }
+  ],
+  "rootCause": "Slate placeholder and zero-width text span require recursive text-node anchoring plus a second selectAll before insertText.",
+  "security": {
+    "tokensStored": false,
+    "cookiesStored": false,
+    "captchaBypass": false
+  }
+}

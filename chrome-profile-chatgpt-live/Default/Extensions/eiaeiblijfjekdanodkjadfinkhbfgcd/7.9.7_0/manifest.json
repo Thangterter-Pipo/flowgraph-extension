@@ -1,0 +1,82 @@
+{
+   "action": {
+      "default_icon": "assets/manifestIcons/icon-48.png"
+   },
+   "background": {
+      "service_worker": "js/background.js"
+   },
+   "browser_specific_settings": {
+      "gecko": {
+         "data_collection_permissions": {
+            "optional": [ "technicalAndInteraction" ],
+            "required": [ "personallyIdentifyingInfo", "browsingActivity" ]
+         },
+         "id": "nordpassStandalone@nordsecurity.com",
+         "strict_min_version": "142.0"
+      },
+      "safari": {
+         "strict_min_version": "18.0"
+      }
+   },
+   "content_scripts": [ {
+      "all_frames": true,
+      "css": [ "css/autofill.css" ],
+      "exclude_matches": [ "*://nobodyone.dev/*", "*://nonone.dev/*", "*://nordaccount.com/*", "*://app.stag.global.nordpass.com/*", "*://app.nordpass.com/*", "*://panel.nordpass.com/*", "*://nordpass.com/secure-password/", "*://nordbusinessaccount.com/*", "*://auth.stag.global.nordpass.com/*", "*://data.nordpoolgroup.com/*", "*://*/*.svg" ],
+      "js": [ "js/classifier.js", "js/content.js" ],
+      "matches": [ "http://*/*", "https://*/*" ],
+      "run_at": "document_end"
+   }, {
+      "exclude_matches": [ "*://*/*.svg" ],
+      "js": [ "js/redirectContent.js" ],
+      "matches": [ "https://nordpass.com/app/*", "https://nordpass.com/*/app/*", "https://rockycliff.net/app/*", "https://rockycliff.net/*/app/*" ],
+      "run_at": "document_start"
+   }, {
+      "all_frames": true,
+      "exclude_matches": [ "*://nobodyone.dev/*", "*://nonone.dev/*", "*://nordaccount.com/*", "*://app.stag.global.nordpass.com/*", "*://app.nordpass.com/*", "*://panel.nordpass.com/*", "*://nordpass.com/secure-password/", "*://nordbusinessaccount.com/*", "*://auth.stag.global.nordpass.com/*", "*://data.nordpoolgroup.com/*", "*://*/*.svg" ],
+      "js": [ "js/passkeys.js" ],
+      "matches": [ "http://*/*", "https://*/*" ],
+      "run_at": "document_start",
+      "world": "MAIN"
+   }, {
+      "all_frames": false,
+      "exclude_matches": [ "*://*/*.svg" ],
+      "js": [ "js/nordpass-script.js" ],
+      "matches": [ "http://*/*", "https://*/*" ],
+      "run_at": "document_start",
+      "world": "MAIN"
+   }, {
+      "exclude_matches": [ "*://*/*.svg" ],
+      "js": [ "js/ecp-extension-detection.js" ],
+      "matches": [ "https://panel.nordpass.com/*", "https://ecp.stag.global.nordpass.com/*", "https://ecp-core.dev.global.nordpass.com/*" ],
+      "run_at": "document_start"
+   } ],
+   "content_security_policy": {
+      "extension_pages": "default-src 'none'; font-src 'self'; style-src 'self'; script-src 'self' 'wasm-unsafe-eval'; child-src 'none'; frame-src 'none'; connect-src 'self' data: https://*.nordpass.com https://*.npass.app https://*.nordbusinessaccount.com https://*.nordsec.com https://api.cloudstorage.global.nordlocker.com https://api-contentstorage.us.nordlocker.com https://nl-cs-production-cloud-storage.s3.amazonaws.com https://nl-cs-production-cloud-storage.s3.us-east-1.amazonaws.com https://nl-cs-production-cloud-storage-eu.s3.eu-central-1.amazonaws.com https://nl-cs-production-cloud-storage-unit1.s3.amazonaws.com https://nl-cs-production-cloud-storage-unit2.s3.amazonaws.com https://nl-cs-production-cloud-storage-unit3.s3.amazonaws.com https://nl-cs-production-cloud-storage-unit4.s3.amazonaws.com https://nl-cs-production-cloud-storage-unit1.s3.us-east-1.amazonaws.com https://nl-cs-production-cloud-storage-unit2.s3.us-east-1.amazonaws.com https://nl-cs-production-cloud-storage-unit3.s3.us-east-1.amazonaws.com https://nl-cs-production-cloud-storage-unit4.s3.us-east-1.amazonaws.com https://staging.api.cloudstorage.global.nordlocker.com https://api-contentstorage.stag.us.nordlocker.com https://nl-cs-staging-cloud-storage.s3.amazonaws.com https://nl-cs-staging-cloud-storage.s3.us-east-1.amazonaws.com https://nl-cs-staging-cloud-storage-eu.s3.eu-central-1.amazonaws.com https://nl-cs-staging-cloud-storage-unit1.s3.amazonaws.com https://nl-cs-staging-cloud-storage-unit2.s3.amazonaws.com https://nl-cs-staging-cloud-storage-unit3.s3.amazonaws.com https://nl-cs-staging-cloud-storage-unit4.s3.amazonaws.com https://nl-cs-staging-cloud-storage-unit1.s3.us-east-1.amazonaws.com https://nl-cs-staging-cloud-storage-unit2.s3.us-east-1.amazonaws.com https://nl-cs-staging-cloud-storage-unit3.s3.us-east-1.amazonaws.com https://nl-cs-staging-cloud-storage-unit4.s3.us-east-1.amazonaws.com https://np-prod-blobvaults-production.s3.us-east-1.amazonaws.com https://np-prod-eu-blobvaults-production.s3.eu-central-1.amazonaws.com https://np-stag-blobvaults-staging.s3.us-east-1.amazonaws.com https://np-stag-eu-blobvaults-staging.s3.eu-central-1.amazonaws.com https://lastpass.com/ https://login.microsoftonline.com/ https://graph.microsoft.com/oidc/userinfo https://graph.microsoft.com/v1.0/me https://accounts.lastpass.com/federatedlogin/api/v1/getkey wss://*.nordpass.com:8884/ wss://*.nordpass.com:8885/mqtt wss://*.mismatch.site:8895/mqtt wss://*.nonmountain.net:8885/mqtt; worker-src 'none'; img-src 'self' data: https://*.nordpass.com https://*.npass.app https://*.nordbusinessaccount.com https://*.nordsec.com blob: https://assets-static-np.s3.amazonaws.com"
+   },
+   "default_locale": "en",
+   "description": "__MSG_extDescription__",
+   "host_permissions": [ "http://*/*", "https://*/*" ],
+   "icons": {
+      "128": "assets/manifestIcons/icon-128.png",
+      "16": "assets/manifestIcons/icon-16.png",
+      "32": "assets/manifestIcons/icon-32.png",
+      "48": "assets/manifestIcons/icon-48.png",
+      "96": "assets/manifestIcons/icon-96.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjzR2hhphvvLPIno5KHTo7k+T4k1abkRwQ6f62LM+7QgCaRRAJ4Ht6lA5y4MdC+a3uMsYdWlDzzjKF2s80uFKPVHAOiPmKuS8fdeOGORfq+BC635CjS0bIpo0PSuOglZ4g7qLY5JBRKUYIsFsTcjPLH8TKyomjEp/Un82khffktKr5eQr8FFSKyjVaeNC14zy/zV6cnXusH59jLN4yEp1UOunewTpeD3rDIKgkBQfBDhf/uk8MoUbIdNeVG3YZ0VB7lFN9j+Tf80w2dtzJ6rxVEfJ2RbGUVlIq1HxVS5Y75cA7rhtBCSofK2B5U3mfzXRdt6m1QzQ3zn4bFuvjSdOJQIDAQAB",
+   "manifest_version": 3,
+   "minimum_chrome_version": "116.0",
+   "name": "__MSG_extName__",
+   "optional_permissions": [ "clipboardRead", "clipboardWrite" ],
+   "permissions": [ "alarms", "contextMenus", "idle", "privacy", "storage", "tabs", "webNavigation", "webRequest", "offscreen", "scripting" ],
+   "short_name": "NordPass",
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "7.9.7",
+   "web_accessible_resources": [ {
+      "matches": [ "https://*/*", "http://*/*" ],
+      "resources": [ "assets/*.svg", "assets/*.woff2", "assets/lang/*.json", "biometrics.html", "css/content.css", "englishWords.json" ]
+   }, {
+      "matches": [ "https://*.nordaccount.com/*", "https://*.nordpass.com/*", "https://*.nordbusinessaccount.com/*", "https://*.nobodyone.dev/*", "https://*.apple.com/*", "https://*.google.com/*", "https://*.google.ad/*", "https://*.google.ae/*", "https://*.google.com.af/*", "https://*.google.com.ag/*", "https://*.google.com.ai/*", "https://*.google.al/*", "https://*.google.am/*", "https://*.google.co.ao/*", "https://*.google.com.ar/*", "https://*.google.as/*", "https://*.google.at/*", "https://*.google.com.au/*", "https://*.google.az/*", "https://*.google.ba/*", "https://*.google.com.bd/*", "https://*.google.be/*", "https://*.google.bf/*", "https://*.google.bg/*", "https://*.google.com.bh/*", "https://*.google.bi/*", "https://*.google.bj/*", "https://*.google.com.bn/*", "https://*.google.com.bo/*", "https://*.google.com.br/*", "https://*.google.bs/*", "https://*.google.bt/*", "https://*.google.co.bw/*", "https://*.google.by/*", "https://*.google.com.bz/*", "https://*.google.ca/*", "https://*.google.cd/*", "https://*.google.cf/*", "https://*.google.cg/*", "https://*.google.ch/*", "https://*.google.ci/*", "https://*.google.co.ck/*", "https://*.google.cl/*", "https://*.google.cm/*", "https://*.google.cn/*", "https://*.google.com.co/*", "https://*.google.co.cr/*", "https://*.google.com.cu/*", "https://*.google.cv/*", "https://*.google.com.cy/*", "https://*.google.cz/*", "https://*.google.de/*", "https://*.google.dj/*", "https://*.google.dk/*", "https://*.google.dm/*", "https://*.google.com.do/*", "https://*.google.dz/*", "https://*.google.com.ec/*", "https://*.google.ee/*", "https://*.google.com.eg/*", "https://*.google.es/*", "https://*.google.com.et/*", "https://*.google.fi/*", "https://*.google.com.fj/*", "https://*.google.fm/*", "https://*.google.fr/*", "https://*.google.ga/*", "https://*.google.ge/*", "https://*.google.gg/*", "https://*.google.com.gh/*", "https://*.google.com.gi/*", "https://*.google.gl/*", "https://*.google.gm/*", "https://*.google.gr/*", "https://*.google.com.gt/*", "https://*.google.gy/*", "https://*.google.com.hk/*", "https://*.google.hn/*", "https://*.google.hr/*", "https://*.google.ht/*", "https://*.google.hu/*", "https://*.google.co.id/*", "https://*.google.ie/*", "https://*.google.co.il/*", "https://*.google.im/*", "https://*.google.co.in/*", "https://*.google.iq/*", "https://*.google.is/*", "https://*.google.it/*", "https://*.google.je/*", "https://*.google.com.jm/*", "https://*.google.jo/*", "https://*.google.co.jp/*", "https://*.google.co.ke/*", "https://*.google.com.kh/*", "https://*.google.ki/*", "https://*.google.kg/*", "https://*.google.co.kr/*", "https://*.google.com.kw/*", "https://*.google.kz/*", "https://*.google.la/*", "https://*.google.com.lb/*", "https://*.google.li/*", "https://*.google.lk/*", "https://*.google.co.ls/*", "https://*.google.lt/*", "https://*.google.lu/*", "https://*.google.lv/*", "https://*.google.com.ly/*", "https://*.google.co.ma/*", "https://*.google.md/*", "https://*.google.me/*", "https://*.google.mg/*", "https://*.google.mk/*", "https://*.google.ml/*", "https://*.google.com.mm/*", "https://*.google.mn/*", "https://*.google.ms/*", "https://*.google.com.mt/*", "https://*.google.mu/*", "https://*.google.mv/*", "https://*.google.mw/*", "https://*.google.com.mx/*", "https://*.google.com.my/*", "https://*.google.co.mz/*", "https://*.google.com.na/*", "https://*.google.com.ng/*", "https://*.google.com.ni/*", "https://*.google.ne/*", "https://*.google.nl/*", "https://*.google.no/*", "https://*.google.com.np/*", "https://*.google.nr/*", "https://*.google.nu/*", "https://*.google.co.nz/*", "https://*.google.com.om/*", "https://*.google.com.pa/*", "https://*.google.com.pe/*", "https://*.google.com.pg/*", "https://*.google.com.ph/*", "https://*.google.com.pk/*", "https://*.google.pl/*", "https://*.google.pn/*", "https://*.google.com.pr/*", "https://*.google.ps/*", "https://*.google.pt/*", "https://*.google.com.py/*", "https://*.google.com.qa/*", "https://*.google.ro/*", "https://*.google.ru/*", "https://*.google.rw/*", "https://*.google.com.sa/*", "https://*.google.com.sb/*", "https://*.google.sc/*", "https://*.google.se/*", "https://*.google.com.sg/*", "https://*.google.sh/*", "https://*.google.si/*", "https://*.google.sk/*", "https://*.google.com.sl/*", "https://*.google.sn/*", "https://*.google.so/*", "https://*.google.sm/*", "https://*.google.sr/*", "https://*.google.st/*", "https://*.google.com.sv/*", "https://*.google.td/*", "https://*.google.tg/*", "https://*.google.co.th/*", "https://*.google.com.tj/*", "https://*.google.tl/*", "https://*.google.tm/*", "https://*.google.tn/*", "https://*.google.to/*", "https://*.google.com.tr/*", "https://*.google.tt/*", "https://*.google.com.tw/*", "https://*.google.co.tz/*", "https://*.google.com.ua/*", "https://*.google.co.ug/*", "https://*.google.co.uk/*", "https://*.google.com.uy/*", "https://*.google.co.uz/*", "https://*.google.com.vc/*", "https://*.google.co.ve/*", "https://*.google.vg/*", "https://*.google.co.vi/*", "https://*.google.com.vn/*", "https://*.google.vu/*", "https://*.google.ws/*", "https://*.google.rs/*", "https://*.google.co.za/*", "https://*.google.co.zm/*", "https://*.google.co.zw/*", "https://*.google.cat/*" ],
+      "resources": [ "app.html" ]
+   } ]
+}

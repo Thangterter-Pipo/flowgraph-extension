@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import fnmatch
+import json
 import os
 import secrets
 from contextlib import asynccontextmanager
@@ -46,8 +47,13 @@ from starlette.types import ASGIApp
 
 ROOT = Path(os.environ.get("FLOW_VEO_MCP_ROOT", r"E:\Flow_veo")).resolve()
 API_KEY = os.environ.get("FLOW_VEO_MCP_API_KEY", "")
-HOST = os.environ.get("FLOW_VEO_MCP_HOST", "0.0.0.0")
+HOST = os.environ.get("FLOW_VEO_MCP_HOST", "127.0.0.1")
 PORT = int(os.environ.get("FLOW_VEO_MCP_PORT", "3080"))
+RUNTIME_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "FlowVeoMCP"
+RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+ACTIVE_REQUEST_FILE = RUNTIME_DIR / "active_request.json"
+_ACTIVE_REQUESTS = 0
+_ACTIVE_REQUEST_STARTED_AT: str | None = None
 
 # Public HTTPS base URL. Required for OAuth — the server must be reachable at
 # this URL for /authorize, /token, DCR and .well-known discovery to work.
@@ -68,8 +74,56 @@ TEXT_EXTENSIONS = {
 
 
 # ---------------------------------------------------------------------------
-# Bearer API-key auth (ASGI middleware)
+# Request activity + Bearer API-key auth (ASGI middleware)
 # ---------------------------------------------------------------------------
+
+def _write_request_activity() -> None:
+    """Publish MCP request activity for the external supervisor.
+
+    The MCP server intentionally permits long-running tools. Those tools can
+    occupy the asyncio loop, so /health may time out even though a valid tool is
+    still running. The supervisor reads this marker and never kills legitimate
+    work merely because the HTTP health probe is temporarily blocked.
+    """
+    try:
+        if _ACTIVE_REQUESTS <= 0:
+            ACTIVE_REQUEST_FILE.unlink(missing_ok=True)
+            return
+        payload = {
+            "pid": os.getpid(),
+            "active_requests": _ACTIVE_REQUESTS,
+            "started_at": _ACTIVE_REQUEST_STARTED_AT,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        tmp = ACTIVE_REQUEST_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload), encoding="utf-8")
+        tmp.replace(ACTIVE_REQUEST_FILE)
+    except OSError:
+        # Activity reporting must never break an MCP request.
+        pass
+
+
+class RequestActivityMiddleware(BaseHTTPMiddleware):
+    """Mark in-flight MCP requests so the watchdog preserves long tool calls."""
+
+    async def dispatch(self, request, call_next):
+        global _ACTIVE_REQUESTS, _ACTIVE_REQUEST_STARTED_AT
+
+        if not request.url.path.startswith("/mcp"):
+            return await call_next(request)
+
+        if _ACTIVE_REQUESTS == 0:
+            _ACTIVE_REQUEST_STARTED_AT = datetime.now(timezone.utc).isoformat()
+        _ACTIVE_REQUESTS += 1
+        _write_request_activity()
+        try:
+            return await call_next(request)
+        finally:
+            _ACTIVE_REQUESTS = max(0, _ACTIVE_REQUESTS - 1)
+            if _ACTIVE_REQUESTS == 0:
+                _ACTIVE_REQUEST_STARTED_AT = None
+            _write_request_activity()
+
 
 def _check_auth(request) -> bool:
     """Compare the Authorization header against FLOW_VEO_MCP_API_KEY."""
@@ -752,7 +806,12 @@ def main() -> None:
     mcp_app = mcp.http_app(transport="http", host_origin_protection=False)
 
     async def health(request):
-        return JSONResponse({"status": "ok", "root": str(ROOT)})
+        return JSONResponse({
+            "status": "ok",
+            "root": str(ROOT),
+            "pid": os.getpid(),
+            "active_requests": _ACTIVE_REQUESTS,
+        })
 
     from fastmcp.server.lifespan import Lifespan
 
@@ -766,20 +825,27 @@ def main() -> None:
             finally:
                 PROCESS_MANAGER.shutdown()
 
-    # Parent app: serves /health, and carries the FastMCP lifespan (required for
-    # the StreamableHTTPSessionManager task group). The API-key middleware is the
-    # outermost layer so every route except /health requires the key.
+    # Parent app: serves /health and carries the FastMCP lifespan. Activity
+    # tracking is outermost so the supervisor can distinguish a busy server from
+    # a wedged one; API-key enforcement remains in front of the MCP app.
     app = Starlette(
         routes=[Route("/health", health), Mount("/", app=mcp_app)],
-        middleware=[Middleware(APIKeyMiddleware)],
+        middleware=[
+            Middleware(RequestActivityMiddleware),
+            Middleware(APIKeyMiddleware),
+        ],
         lifespan=_lifespan,
     )
-    # Keep-alive high so long-running tool calls (pytest, exec) aren't cut off
-    # mid-stream. Request handling itself is unbounded; this only affects idle
-    # connection reuse between MCP messages.
+    # Keep-alive balance: request handling itself is unbounded, this only
+    # affects idle connection reuse between MCP messages. A too-long idle
+    # keep-alive (120s) let Cloudflare/proxies hold a socket open past their
+    # own timeout, then reset it abruptly — flooding asyncio with
+    # ConnectionResetError [WinError 10054] callbacks that, under CPU-heavy
+    # builds, backlogged the event loop and wedged the server. 20s recycles
+    # idle connections cleanly before proxies drop them.
     uvicorn.run(
         app, host=HOST, port=PORT, log_level="info",
-        timeout_keep_alive=int(os.environ.get("UVICORN_KEEP_ALIVE", "120")),
+        timeout_keep_alive=int(os.environ.get("UVICORN_KEEP_ALIVE", "20")),
         timeout_graceful_shutdown=30,
     )
 

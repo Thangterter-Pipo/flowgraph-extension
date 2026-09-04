@@ -1,20 +1,52 @@
-"""End-to-end test against the live server on 0.0.0.0:3080 (real HTTP)."""
-import json
-import re
-import urllib.request
-import urllib.error
-import http.client
+"""End-to-end test against the live local MCP server over real HTTP.
 
-BASE = "http://127.0.0.1:3080/mcp"
-KEY = "XLeEPAdY1CQWHgzJ0Ngph2CYj748iSywUSiuVuw4KWE"
+The test intentionally loads authentication from the environment or the local
+``.env`` file. It must never embed or print the API key.
+"""
+
+from __future__ import annotations
+
+import http.client
+import json
+import os
+from pathlib import Path
+import re
+
+
+HOST = os.environ.get("FLOW_VEO_MCP_HOST", "127.0.0.1")
+PORT = int(os.environ.get("FLOW_VEO_MCP_PORT", "3080"))
+MCP_PATH = "/mcp"
 PASS = 0
 FAIL = 0
-SESSION = {"id": None}
+SESSION: dict[str, str | None] = {"id": None}
 
 
-def check(label, cond, extra=""):
+def load_api_key() -> str:
+    configured = os.environ.get("FLOW_VEO_MCP_API_KEY", "").strip()
+    if configured:
+        return configured
+
+    env_path = Path(__file__).with_name(".env")
+    if env_path.is_file():
+        for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            name, value = line.split("=", 1)
+            if name.strip() == "FLOW_VEO_MCP_API_KEY":
+                return value.strip().strip('"').strip("'")
+
+    raise SystemExit(
+        "FLOW_VEO_MCP_API_KEY is not configured in the environment or mcp_server/.env"
+    )
+
+
+KEY = load_api_key()
+
+
+def check(label: str, condition: bool, extra: object = "") -> None:
     global PASS, FAIL
-    if cond:
+    if condition:
         PASS += 1
         print(f"  PASS  {label}")
     else:
@@ -22,8 +54,18 @@ def check(label, cond, extra=""):
         print(f"  FAIL  {label}  {extra}")
 
 
-def call(method, params=None, key=KEY):
-    body = {"jsonrpc": "2.0", "id": 7, "method": method}
+def parse_response(raw: str, content_type: str) -> dict | None:
+    if "text/event-stream" in content_type:
+        match = re.search(r"data:\s*(\{.*\})", raw, re.S)
+        return json.loads(match.group(1)) if match else None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def call(method: str, params: dict | None = None, key: str = KEY):
+    body: dict[str, object] = {"jsonrpc": "2.0", "id": 7, "method": method}
     if params is not None:
         body["params"] = params
     headers = {
@@ -32,71 +74,84 @@ def call(method, params=None, key=KEY):
         "Authorization": f"Bearer {key}",
     }
     if SESSION["id"]:
-        headers["Mcp-Session-Id"] = SESSION["id"]
-    req = urllib.request.Request(BASE, data=json.dumps(body).encode(), headers=headers)
-    conn = http.client.HTTPConnection("127.0.0.1", 3080, timeout=15)
-    conn.request("POST", "/mcp", json.dumps(body), headers)
-    resp = conn.getresponse()
-    status = resp.status
-    raw = resp.read().decode()
-    sid = resp.getheader("mcp-session-id")
-    if sid:
-        SESSION["id"] = sid
-    conn.close()
-    obj = None
-    if "text/event-stream" in resp.getheader("content-type", ""):
-        m = re.search(r'data:\s*(\{.*\})', raw, re.S)
-        if m:
-            obj = json.loads(m.group(1))
-    else:
-        try:
-            obj = json.loads(raw)
-        except Exception:
-            pass
-    return status, obj, raw
+        headers["Mcp-Session-Id"] = str(SESSION["id"])
+
+    connection = http.client.HTTPConnection(HOST, PORT, timeout=15)
+    connection.request("POST", MCP_PATH, json.dumps(body), headers)
+    response = connection.getresponse()
+    status = response.status
+    raw = response.read().decode()
+    session_id = response.getheader("mcp-session-id")
+    content_type = response.getheader("content-type", "")
+    if session_id:
+        SESSION["id"] = session_id
+    connection.close()
+    return status, parse_response(raw, content_type), raw
 
 
 print("== E2E over real HTTP ==")
-# health
-conn = http.client.HTTPConnection("127.0.0.1", 3080, timeout=10)
-conn.request("GET", "/health")
-r = conn.getresponse()
-check("health 200", r.status == 200, r.status)
-check("health body ok", "ok" in r.read().decode())
-conn.close()
 
-# no auth
-conn = http.client.HTTPConnection("127.0.0.1", 3080, timeout=10)
-conn.request("POST", "/mcp", json.dumps({}), {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"})
-r = conn.getresponse()
-check("no-auth 401", r.status == 401, r.status)
-conn.close()
+connection = http.client.HTTPConnection(HOST, PORT, timeout=10)
+connection.request("GET", "/health")
+response = connection.getresponse()
+check("health 200", response.status == 200, response.status)
+check("health body ok", "ok" in response.read().decode())
+connection.close()
 
-# handshake
-s, obj, raw = call("initialize", {"protocolVersion": "2025-03-26", "capabilities": {}, "clientInfo": {"name": "e2e", "version": "1"}})
-check("init 200", s == 200, s)
-check("session id set", bool(SESSION["id"]), SESSION["id"])
+connection = http.client.HTTPConnection(HOST, PORT, timeout=10)
+connection.request(
+    "POST",
+    MCP_PATH,
+    json.dumps({}),
+    {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
+)
+response = connection.getresponse()
+check("no-auth 401", response.status == 401, response.status)
+response.read()
+connection.close()
 
-s, obj, raw = call("tools/list")
-names = [t["name"] for t in obj["result"]["tools"]]
-check("tools/list", len(names) == 12, names)
+status, obj, _ = call(
+    "initialize",
+    {
+        "protocolVersion": "2025-03-26",
+        "capabilities": {},
+        "clientInfo": {"name": "e2e", "version": "1"},
+    },
+)
+check("init 200", status == 200, status)
+check("session id set", bool(SESSION["id"]))
 
-# call a real tool over the wire
-s, obj, raw = call("tools/call", {"name": "list_tree", "arguments": {"path": "docs", "max_depth": 2}})
-ct = obj["result"]["content"][0]["text"]
-data = json.loads(ct)
-check("list_tree docs ok", data.get("ok") is True, ct[:200])
+status, obj, raw = call("tools/list")
+tools = (obj or {}).get("result", {}).get("tools", [])
+names = [tool.get("name") for tool in tools]
+check("tools/list", status == 200 and len(names) >= 12, f"status={status}, count={len(names)}")
+
+status, obj, raw = call(
+    "tools/call", {"name": "list_tree", "arguments": {"path": "docs", "max_depth": 2}}
+)
+content_text = (obj or {}).get("result", {}).get("content", [{}])[0].get("text", "{}")
+data = json.loads(content_text)
+check("list_tree docs ok", data.get("ok") is True, content_text[:200])
 print("  docs entries:", data.get("count"))
 
-s, obj, raw = call("tools/call", {"name": "write_file", "arguments": {"path": "_e2e/tmp.txt", "content": "e2e"}})
-data = json.loads(obj["result"]["content"][0]["text"])
+status, obj, raw = call(
+    "tools/call",
+    {"name": "write_file", "arguments": {"path": "_e2e/tmp.txt", "content": "e2e"}},
+)
+data = json.loads((obj or {}).get("result", {}).get("content", [{}])[0].get("text", "{}"))
 check("write over wire", data.get("ok") is True, raw[:200])
-s, obj, raw = call("tools/call", {"name": "read_file", "arguments": {"path": "_e2e/tmp.txt"}})
-data = json.loads(obj["result"]["content"][0]["text"])
+
+status, obj, raw = call(
+    "tools/call", {"name": "read_file", "arguments": {"path": "_e2e/tmp.txt"}}
+)
+data = json.loads((obj or {}).get("result", {}).get("content", [{}])[0].get("text", "{}"))
 check("read over wire", "e2e" in data.get("content", ""), raw[:200])
-s, obj, raw = call("tools/call", {"name": "delete_file", "arguments": {"path": "_e2e/tmp.txt"}})
-s, obj, raw = call("tools/call", {"name": "delete_file", "arguments": {"path": "_e2e"}})
-data = json.loads(obj["result"]["content"][0]["text"])
+
+call("tools/call", {"name": "delete_file", "arguments": {"path": "_e2e/tmp.txt"}})
+status, obj, raw = call(
+    "tools/call", {"name": "delete_file", "arguments": {"path": "_e2e"}}
+)
+data = json.loads((obj or {}).get("result", {}).get("content", [{}])[0].get("text", "{}"))
 check("cleanup", data.get("message") == "deleted", raw[:200])
 
 print(f"\n== RESULT: {PASS} passed, {FAIL} failed ==")

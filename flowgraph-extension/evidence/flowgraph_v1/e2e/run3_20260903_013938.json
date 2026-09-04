@@ -1,0 +1,42 @@
+{
+  "runId": "acf02d1c-3a6e-43f4-80f0-f259dd7844d7",
+  "runLabel": "Run 3",
+  "status": "success",
+  "startedAt": "2026-09-02T18:38:09.424Z",
+  "finishedAt": "2026-09-02T18:39:38.258Z",
+  "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+  "projectName": "FlowGraph V1 Live 2026-09-02",
+  "account": "nhom8digitalmarketing1@gmail.com",
+  "nodes": [
+    {
+      "kind": "prompt",
+      "status": "success",
+      "nodeId": "1"
+    },
+    {
+      "kind": "t2i",
+      "status": "success",
+      "nodeId": "2",
+      "mediaId": "fa406712-fa78-4154-8112-cb66c2909a29",
+      "mimeType": "image/jpeg"
+    },
+    {
+      "kind": "i2v",
+      "status": "success",
+      "nodeId": "3",
+      "mediaId": "290f881c-54b6-4f36-bace-365129f76783",
+      "upstreamMediaId": "fa406712-fa78-4154-8112-cb66c2909a29",
+      "mimeType": "video/mp4"
+    },
+    {
+      "kind": "download",
+      "status": "success",
+      "nodeId": "4",
+      "mediaId": "290f881c-54b6-4f36-bace-365129f76783",
+      "downloadId": "4",
+      "filename": "flowgraph-output (2).mp4",
+      "bytes": "2868029"
+    }
+  ],
+  "evidenceCapturedAt": "2026-09-03T01:39:38.2580000+07:00"
+}

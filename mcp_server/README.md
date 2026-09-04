@@ -36,7 +36,7 @@ Dán kết quả vào `.env`:
 ```ini
 FLOW_VEO_MCP_API_KEY=<key vừa sinh>
 FLOW_VEO_MCP_ROOT=E:\Flow_veo
-FLOW_VEO_MCP_HOST=0.0.0.0
+FLOW_VEO_MCP_HOST=127.0.0.1
 FLOW_VEO_MCP_PORT=3080
 ```
 
@@ -96,7 +96,7 @@ Cloudflare edge (flowveo.thangterter.online)
 VPS Contabo (cloudflared.service) → 127.0.0.1:3080
         │  SSH reverse tunnel (tunnel.bat)
         ▼
-Máy local (server.py, 0.0.0.0:3080)
+Máy local (server.py, 127.0.0.1:3080)
 ```
 
 **Yêu cầu (thiết lập 1 lần):**

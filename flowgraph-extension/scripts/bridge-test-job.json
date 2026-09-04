@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "projectId": "bridge-test",
+  "projectTitle": "Bridge Test",
+  "timeline": [
+    {
+      "id": "timeline-video-main",
+      "projectId": "bridge-test",
+      "type": "VIDEO",
+      "name": "Picture Lock",
+      "clips": [
+        {
+          "id": "clip-1",
+          "trackId": "timeline-video-main",
+          "takeId": "take-1",
+          "startSeconds": 0,
+          "durationSeconds": 2,
+          "trimInSeconds": 0,
+          "source": {
+            "takeId": "take-1",
+            "localPath": "E:\\Flow_veo\\flowgraph-extension\\scripts\\bridge-test-source.mp4",
+            "fileName": "bridge-test-source.mp4",
+            "mimeType": "video/mp4"
+          }
+        }
+      ]
+    }
+  ],
+  "settings": {
+    "width": 1280,
+    "height": 720,
+    "frameRate": 24,
+    "codec": "H264",
+    "bitrate": "4M",
+    "includeAudio": false,
+    "burnSubtitles": false,
+    "container": "mp4"
+  }
+}

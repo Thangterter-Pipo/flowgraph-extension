@@ -1,0 +1,186 @@
+.wps-buttons-container {
+  display: flex;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  position: relative;
+  width: 300px;
+}
+.wps-buttons-container .wps-pdf-text {
+  font-size: 14px;
+  color: #1A0DAB;
+  margin-right: 4px;
+  display: inline-flex;
+}
+.wps-buttons-container .wps-pdf-text:hover {
+  cursor: pointer;
+}
+.wps-pdf-button {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14x;
+  color: #1A0DAB;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: inherit !important;
+  margin-right: 10px;
+}
+.wps-pdf-button span {
+  color: #1A0DAB;
+}
+
+.wps-pdf-button:hover {
+  /* border-color: #c6c6c6;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); */
+}
+
+.icon-dropdown img {
+  width: 16px;
+  height: 16px;
+  position: absolute;
+  bottom: -2px;
+  /* margin-left: 6px; */
+}
+.icon-dropdown img:hover {
+  cursor: pointer;
+}
+
+.wps-pdf-button span {
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* 特定按钮样式 */
+.wps-pdf-button.chat-pdf {
+  /* color: #188038;
+  border-color: #ceead6;
+  background-color: #f4faf6; */
+}
+
+.wps-pdf-button.chat-pdf:hover {
+  /* background-color: #e6f4ea;
+  border-color: #a8dab5; */
+}
+
+/* .wps-pdf-button.translate {
+  color: #c5221f;
+  border-color: #f8d9d9;
+  background-color: #fef7f7;
+}
+
+.wps-pdf-button.translate:hover {
+  background-color: #fce8e6;
+  border-color: #f6aeab;
+} */
+
+/* 适配暗色模式 */
+@media (prefers-color-scheme: dark) {
+  .wps-pdf-button {
+    background-color: #292a2d;
+    border-color: #5f6368;
+    color: #8ab4f8;
+  }
+  
+  .wps-pdf-button:hover {
+    background-color: #3c4043;
+    border-color: #8ab4f8;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+  
+  .wps-pdf-button.chat-pdf {
+    color: #81c995;
+    background-color: #0f1f14;
+    border-color: #2d503c;
+  }
+  
+  .wps-pdf-button.chat-pdf:hover {
+    background-color: #162d1e;
+    border-color: #3e6a50;
+  }
+  
+  .wps-pdf-button.translate {
+    color: #f28b82;
+    background-color: #2a1515;
+    border-color: #5d2e2d;
+  }
+  
+  .wps-pdf-button.translate:hover {
+    background-color: #3a1d1c;
+    border-color: #7e3e3d;
+  }
+}
+
+/* 图标下拉菜单样式 */
+.icon-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  &:hover {
+    cursor: pointer;
+  }
+}
+
+/* 修改hover逻辑，同时处理icon-dropdown和下拉内容的hover状态 */
+.icon-dropdown:hover .icon-dropdown-content,
+.icon-dropdown-content:hover {
+  display: block;
+}
+
+.icon-dropdown-content {
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 5px;
+  background-color: #fff;
+  min-width: 120px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  border-radius: 4px;
+  z-index: 1000;
+  padding: 4px 0;
+}
+
+/* 添加一个透明的连接区域，防止鼠标移动时失去hover状态 */
+.icon-dropdown-content::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 0;
+  right: 0;
+  height: 10px;
+  background: transparent;
+}
+
+.icon-dropdown-item {
+  padding: 8px 12px;
+  display: block;
+  color: #1A0DAB;
+  text-decoration: none;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.icon-dropdown-item:hover {
+  background-color: #f5f5f5;
+}
+
+/* 暗色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .icon-dropdown-content {
+    background-color: #292a2d;
+    border: 1px solid #5f6368;
+  }
+
+  .icon-dropdown-item {
+    color: #8ab4f8;
+  }
+
+  .icon-dropdown-item:hover {
+    background-color: #3c4043;
+  }
+} 

@@ -1,0 +1,24 @@
+/*!
+ * 
+ *     MCAFEE RESTRICTED CONFIDENTIAL
+ *     Copyright (c) 2026 McAfee, LLC
+ *
+ *     The source code contained or described herein and all documents related
+ *     to the source code ("Material") are owned by McAfee or its
+ *     suppliers or licensors. Title to the Material remains with McAfee
+ *     or its suppliers and licensors. The Material contains trade
+ *     secrets and proprietary and confidential information of McAfee or its
+ *     suppliers and licensors. The Material is protected by worldwide copyright
+ *     and trade secret laws and treaty provisions. No part of the Material may
+ *     be used, copied, reproduced, modified, published, uploaded, posted,
+ *     transmitted, distributed, or disclosed in any way without McAfee's prior
+ *     express written permission.
+ *
+ *     No license under any patent, copyright, trade secret or other intellectual
+ *     property right is granted to or conferred upon you by disclosure or
+ *     delivery of the Materials, either expressly, by implication, inducement,
+ *     estoppel or otherwise. Any license under such intellectual property rights
+ *     must be expressed and approved by McAfee in writing.
+ *
+ */(()=>{"use strict";const e={NONE:0,INFO:1,ERROR:2,WARN:3,DEBUG:4,ALL_IN_BACKGROUND:99},t={BACKGROUND:"BACKGROUND",CONTENT:"CONTENT",TELEMETRY:"TELEMETRY"},o={DEFAULT:"color: #000000; font-weight: normal; font-style:normal; background: #FFFFFF;",BACKGROUND:"color: #8D0DBA; font-weight: bold; background: #FFFFFF;",CONTENT:"color: #F54A26; font-weight: bold; background: #FFFFFF;",TELEMETRY:"color: #147831; font-weight: bold; background: #FFFFFF;"},s=new class{constructor(){this.storageChecked=!1,this.logLevel=null,this.queue=[];const t="MCLOGLEVEL",o=!("undefined"==typeof chrome||"function"!=typeof chrome?.storage?.local?.get),s="undefined"!=typeof localStorage&&"function"==typeof localStorage.getItem;if(o)chrome?.storage?.local.get([t]).then((o=>{const s=Object.values(e).includes(o[t]);this.logLevel=s?o[t]:0,this.logLevel!==e.NONE&&this.queue.forEach((({callback:e,message:t,processType:o})=>{e(t,o)})),this.queue=[],this.storageChecked=!0}));else if(s){const o=parseInt(localStorage.getItem(t),10),s=Object.values(e).includes(o);this.logLevel=s?o:0,this.storageChecked=!0}}log(e,t=null){this.storageChecked?this.processLog(e,1,t,this.logLevel):this.queue.push({callback:this.log.bind(this),message:e,processType:t})}error(e,t=null){this.storageChecked?this.processLog(e,2,t,this.logLevel):this.queue.push({callback:this.error.bind(this),message:e,processType:t})}warn(e,t=null){this.storageChecked?this.processLog(e,3,t,this.logLevel):this.queue.push({callback:this.warn.bind(this),message:e,processType:t})}debug(e,t=null){this.storageChecked?this.processLog(e,4,t,this.logLevel):this.queue.push({callback:this.debug.bind(this),message:e,processType:t})}processLog(o,s,r,c){if(c===e.NONE)return;let a="chrome-extension:"===location.protocol?t.BACKGROUND:t.CONTENT;r&&t[r]&&(a=r);const n=this.formatDateWithMilliseconds(new Date),i=2===s?o:`%c[${a} ${n} ]: %c${o}`;a===t.CONTENT&&this.logLevel===e.ALL_IN_BACKGROUND&&chrome.runtime.sendMessage({command:"PRINT_IN_BACKGROUND",logMessage:i,processType:a,logType:s,logLevel:c}),this.printLog(i,a,s,c)}formatDateWithMilliseconds(e){return`${new Intl.DateTimeFormat("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:!0}).format(e)}.${e.getMilliseconds().toString().padStart(3,"0")}`}printLog(t,s,r,c){const a=o.DEFAULT,n=o[s]||a;if(c>=e.ERROR&&2===r&&console.error(t),c>=e.INFO&&1===r&&console.log(t,n,a),c>=e.WARN&&3===r){const e="color: #FFA500; font-family: sans-serif; font-weight: bolder; text-shadow: #000 1px 1px;";console.log(`%cWARN - ${t}`,e,n,a)}if(c>=e.DEBUG&&4===r){const e="color: #FF33D7; font-family: sans-serif; font-weight: bolder; text-shadow: #000 1px 1px;";console.log(`%cDEBUG - ${t}`,e,n,a)}}},r=(e,t={},o)=>(async(e,t,o={},r={})=>{try{if(r?.tabId){const{tabId:s,frameId:c}=r;return await((e,t,o,s,r=null)=>{if(!chrome.tabs)throw new Error('"tabs" permission not set in manifest.');const c={};return"number"==typeof r&&(c.frameId=r),chrome.tabs.sendMessage(s,{ipcId:e,command:t,...o},c)})(e,t,o,s,c)}if(r?.broadcast){const c=await chrome.tabs.query({}),{broadcastIgnoreId:a=[]}=r;return c.filter((({id:e})=>!a.includes(e))).forEach((({id:r})=>{(async(e,t,o,r)=>{try{chrome.tabs.sendMessage(r,{ipcId:e,command:t,...o},{},(()=>{chrome.runtime.lastError}))}catch(e){s.warn(`[broadcast] Unexpected error when calling command: "${t}", err: ${e.message}`)}})(e,t,o,r)})),!0}return await chrome.runtime.sendMessage({ipcId:e,command:t,...o})}catch(e){return s.warn(`Unexpected error when calling command: "${t}", err: ${e.message}`),null}})("WA",e,t,o);(class{static start(){try{r("NAVIGATE_COMPLETE")}catch(e){}}}).start()})();
+//# sourceMappingURL=../sourceMap/chrome/scripts/content_navigate_complete.js.map

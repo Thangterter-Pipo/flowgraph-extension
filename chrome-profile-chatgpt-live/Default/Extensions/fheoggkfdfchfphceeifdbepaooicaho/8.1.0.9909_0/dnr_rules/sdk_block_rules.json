@@ -1,0 +1,28 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||sadownload.mcafee.com/products/SA/Win/sdks/annotation/dist/mcafee-annotation-sdk.min.js",
+      "resourceTypes": ["script"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||sadownload.mcafee.com/products/SA/Win/sdks/annotation/dist/mcafee-annotation-sdk-main.min.js",
+      "resourceTypes": ["script"]
+    }
+  },
+  {
+    "id": 3,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "urlFilter": "||sadownload.mcafee.com/products/SA/Win/sdks/annotation/dist/wasm_lib.wasm"
+    }
+  }
+]

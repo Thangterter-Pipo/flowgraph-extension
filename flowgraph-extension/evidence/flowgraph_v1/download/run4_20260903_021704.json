@@ -1,0 +1,19 @@
+{
+  "runId": "47d5da9b-763a-4771-919c-5ef85dbe1564",
+  "runLabel": "Run 4",
+  "kind": "download",
+  "status": "success",
+  "startedAt": "2026-09-02T19:12:23.959Z",
+  "finishedAt": "2026-09-02T19:13:45.885Z",
+  "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+  "account": "nhom8digitalmarketing1@gmail.com",
+  "mediaId": "31e26cf9-dbf3-4538-ad96-acb39a8f4f94",
+  "nodeId": "4",
+  "filename": "flowgraph-output (3).mp4",
+  "filePath": "C:\\Users\\thang\\Downloads\\flowgraph-output (3).mp4",
+  "bytes": "2355932",
+  "mimeType": "video/mp4",
+  "previewUrl": "https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=31e26cf9-dbf3-4538-ad96-acb39a8f4f94",
+  "previewRendered": true,
+  "evidenceCapturedAt": "2026-09-03T02:17:04.0000000+07:00"
+}

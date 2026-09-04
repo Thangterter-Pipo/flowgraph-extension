@@ -1,0 +1,23 @@
+{
+  "stamp": "2026-09-02T20:15:26.880Z",
+  "account": {
+    "state": "CONNECTED",
+    "email": "nhom8digitalmarketing1@gmail.com",
+    "name": "Môn Digital Qua",
+    "expiresAt": "2026-09-03T13:42:22.000Z"
+  },
+  "flow": {
+    "state": "READY",
+    "url": "https://labs.google/fx/vi/tools/flow/project/23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+    "title": "Google Flow - FlowGraph V1 Live 2026-09-02",
+    "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32"
+  },
+  "activeProject": {
+    "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+    "projectName": "FlowGraph V1 Live 2026-09-02",
+    "selectedAt": "2026-09-02T18:32:07.003Z"
+  },
+  "source": "google-flow /auth/session + extension bridge healthCheck",
+  "sanitized": true,
+  "secretsPresent": false
+}

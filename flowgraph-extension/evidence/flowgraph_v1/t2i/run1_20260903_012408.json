@@ -1,0 +1,10 @@
+{
+  "runId": "571e1673-9f39-42aa-88bd-dfbeca4bf506",
+  "kind": "text_to_image",
+  "status": "success",
+  "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+  "mediaId": "169262ae-c984-4b38-8cf4-a9c6e386c3ec",
+  "mimeType": "image/jpeg",
+  "alt": "Hình ảnh được tạo",
+  "evidenceCapturedAt": "2026-09-03T01:24:08.8216088+07:00"
+}

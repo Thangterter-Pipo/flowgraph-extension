@@ -1,0 +1,1 @@
+({url:location.href,title:document.title,ready:document.readyState,text:(document.body?.innerText||'').slice(0,12000),hasChromeRuntime:!!chrome?.runtime?.id,runtimeId:chrome?.runtime?.id||null})

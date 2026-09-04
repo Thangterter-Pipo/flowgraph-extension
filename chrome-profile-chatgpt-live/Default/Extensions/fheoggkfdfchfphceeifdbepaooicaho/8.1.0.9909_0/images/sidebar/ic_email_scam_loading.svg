@@ -1,0 +1,14 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+<style>.spinner_ajPY{transform-origin:center;animation:spinner_AtaB .75s infinite linear}@keyframes spinner_AtaB{100%{transform:rotate(360deg)}}</style>
+<circle cx="64" cy="64" r="60" transform="matrix(1 0 0 -1 0 128)" stroke="#DBDBDB" stroke-width="8"/>
+<path d="M64 124C71.8793 124 79.6815 122.448 86.961 119.433C94.2405 116.417 100.855 111.998 106.426 106.426C111.998 100.855 116.417 94.2405 119.433 86.961C122.448 79.6815 124 71.8793 124 64" stroke="#454545" stroke-width="8" stroke-linecap="round" class="spinner_ajPY"/>
+<path d="M27 64C27 43.5655 43.5655 27 64 27C84.4345 27 101 43.5655 101 64C101 84.4345 84.4345 101 64 101C43.5655 101 27 84.4345 27 64Z" fill="url(#paint0_linear_8866_11467)" />
+<path d="M54.351 56.3047V71.5968L64.0011 76.0603V83.4395L47.6484 75.8735V45.8281L64.0011 53.3874V60.7658L54.351 56.3047Z" fill="white"/>
+<path d="M73.6512 56.3053V71.5974L64.0011 76.0603V83.4395L80.3538 75.8741V45.8287L64.0011 53.3874V60.7658L73.6512 56.3053Z" fill="white"/>
+<defs>
+<linearGradient id="paint0_linear_8866_11467" x1="27" y1="27" x2="101" y2="101" gradientUnits="userSpaceOnUse">
+<stop offset="0.322476" stop-color="#ED1717"/>
+<stop offset="1" stop-color="#C90063"/>
+</linearGradient>
+</defs>
+</svg>

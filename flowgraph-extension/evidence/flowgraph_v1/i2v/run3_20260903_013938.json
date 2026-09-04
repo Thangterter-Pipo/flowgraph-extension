@@ -1,0 +1,15 @@
+{
+  "runId": "acf02d1c-3a6e-43f4-80f0-f259dd7844d7",
+  "runLabel": "Run 3",
+  "kind": "i2v",
+  "status": "success",
+  "startedAt": "2026-09-02T18:38:09.424Z",
+  "finishedAt": "2026-09-02T18:39:38.258Z",
+  "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+  "account": "nhom8digitalmarketing1@gmail.com",
+  "upstreamMediaId": "fa406712-fa78-4154-8112-cb66c2909a29",
+  "mediaId": "290f881c-54b6-4f36-bace-365129f76783",
+  "mimeType": "video/mp4",
+  "nodeId": "3",
+  "evidenceCapturedAt": "2026-09-03T01:39:38.2580000+07:00"
+}

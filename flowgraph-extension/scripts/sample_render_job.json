@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "projectId": "film-demo-001",
+  "projectTitle": "Neon Run",
+  "timeline": [
+    {
+      "id": "timeline-video-main",
+      "projectId": "film-demo-001",
+      "type": "VIDEO",
+      "name": "Picture Lock",
+      "clips": []
+    }
+  ],
+  "settings": {
+    "width": 1920,
+    "height": 1080,
+    "frameRate": 24,
+    "codec": "H264",
+    "bitrate": "18M",
+    "includeAudio": true,
+    "burnSubtitles": true,
+    "container": "mp4"
+  }
+}
