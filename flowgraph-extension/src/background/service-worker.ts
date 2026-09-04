@@ -487,9 +487,10 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
   // <video> in the editor, and the editor only opens in response to a genuine
   // pointer event — a synthetic element.click() is ignored by the Angular host,
   // and chrome.windows.update({focused}) does not reliably OS-foreground the
-  // window when Chrome is occluded. We therefore drive the tile open with the
-  // DevTools Input domain over chrome.debugger (the same trusted-click
-  // mechanism the generate path uses) and read the rendered <video> src.
+  // window when Chrome is occluded. We therefore drive the clip's own download
+  // button with the DevTools Input domain over chrome.debugger (the same
+  // trusted-click mechanism the generate path uses) and capture the signed URL
+  // the app itself fetches.
   if (mediaType === 'VIDEO') {
     return resolveVideoUrlViaDebugger(tab.id, tab.url, mediaId);
   }
@@ -595,33 +596,88 @@ async function resolveVideoUrlViaDebugger(
         type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
       });
     };
-    const findVideo = () =>
-      evalOnPage<string>(
-        `(()=>{const v=Array.from(document.querySelectorAll('video')).find((el)=>((el.currentSrc||el.src||'').includes(${JSON.stringify(mediaId)})));return v?(v.currentSrc||v.src||''):''})()`,
-      );
-    // Already rendered (e.g. we are already in the editor for this clip)?
-    const already = await findVideo();
-    if (already) return already;
-    const tileCount = (await evalOnPage<number>(`document.querySelectorAll('flow-video-tile').length`)) ?? 0;
-    for (let i = 0; i < Math.min(tileCount, 24); i += 1) {
-      const pos = await evalOnPage<{ x: number; y: number } | null>(
-        `(()=>{const t=document.querySelectorAll('flow-video-tile')[${i}];if(!t)return null;const b=t.getBoundingClientRect();if(b.width<10)return null;return{x:Math.round(b.left+b.width/2),y:Math.round(b.top+b.height/2)}})()`,
-      );
-      if (!pos) continue;
-      await clickAt(pos.x, pos.y);
-      let url = '';
-      for (let k = 0; k < 12; k += 1) {
-        await new Promise((r) => setTimeout(r, 400));
-        url = (await findVideo()) ?? '';
-        if (url) break;
-      }
-      if (url) return url;
-      // Wrong clip opened: return to the gallery before trying the next tile.
-      if (galleryUrl) {
-        await chrome.debugger.sendCommand(target, 'Page.navigate', { url: galleryUrl }).catch(() => {});
-        await new Promise((r) => setTimeout(r, 4000));
-      }
+    // Live probing on flow.google.com (2026-09-05) proved two things that break
+    // any mediaId-in-the-URL strategy:
+    //   1. The /edit/<mediaId> page renders ZERO <video> elements until the clip
+    //      is actually played, so reading a <video> src never resolves.
+    //   2. The signed CDN object id is NOT the clip mediaId — e.g. media
+    //      8c4a2b72-… downloads as flow-content.google/video/3d18515b-…. So we
+    //      cannot match the mediaId inside the URL at all.
+    // The only reliable, non-fakeable source of the signed URL is the app's own
+    // download action: the clip tile exposes a `download` button that opens a
+    // resolution menu ("720p Kích thước gốc" = the real generated MP4). We drive
+    // that genuine pointer interaction over the debugger and capture the exact
+    // request the app fires. We never forge activation or bypass security.
+    const editUrl = galleryUrl
+      ? `${galleryUrl.replace(/\/edit\/[^/]+.*$/, '')}/edit/${mediaId}`
+      : '';
+    const here = await evalOnPage<string>('location.href');
+    if (editUrl && !(here || '').includes(`/edit/${mediaId}`)) {
+      await chrome.debugger.sendCommand(target, 'Page.navigate', { url: editUrl }).catch(() => {});
+      await new Promise((r) => setTimeout(r, 4000));
     }
+
+    let signedUrl = '';
+    const onDebuggerEvent = (
+      source: chrome.debugger.Debuggee,
+      method: string,
+      params?: object,
+    ): void => {
+      if (signedUrl || source.tabId !== tabId || method !== 'Network.requestWillBeSent') return;
+      const url = (params as { request?: { url?: string } } | undefined)?.request?.url ?? '';
+      // Video only — the same asset id also appears under /image/ for the poster.
+      if (/\/video\/[0-9a-f-]{20,}\?/i.test(url) && !/\.gif/i.test(url)) signedUrl = url;
+    };
+    chrome.debugger.onEvent.addListener(onDebuggerEvent);
+    // Picking a resolution makes the app start its own browser download. We only
+    // want the signed URL, so cancel that copy; the real artifact is written by
+    // downloadMedia() after this function returns. The app fetches the signed
+    // CDN URL itself and then saves it through a blob: object URL, so the
+    // download item never shows flow-content.google — match both shapes. This
+    // listener only lives for the few seconds of the resolve window.
+    const onCancelCopy = (item: chrome.downloads.DownloadItem): void => {
+      const url = item.url ?? '';
+      const looksLikeOurCopy =
+        /flow-content\.google\/video\//i.test(url)
+        || (url.startsWith('blob:') && (item.mime === 'video/mp4' || /\.mp4$/i.test(item.filename ?? '')));
+      if (looksLikeOurCopy) {
+        void chrome.downloads.cancel(item.id).catch(() => undefined);
+      }
+    };
+    chrome.downloads.onCreated.addListener(onCancelCopy);
+    try {
+      await chrome.debugger.sendCommand(target, 'Network.enable').catch(() => {});
+      const openMenuAndPick = async (): Promise<boolean> => {
+        const btn = await evalOnPage<{ x: number; y: number } | null>(
+          `(()=>{const b=[...document.querySelectorAll('flow-video-tile button')].find((x)=>{const a=(x.getAttribute('aria-label')||'').toLowerCase();const i=x.querySelector('mat-icon,i');return /download|tải/.test(a)||(i&&i.textContent.trim()==='download')});if(!b)return null;const r=b.getBoundingClientRect();if(r.width<2)return null;return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`,
+        );
+        if (!btn) return false;
+        await clickAt(btn.x, btn.y);
+        await new Promise((r) => setTimeout(r, 1200));
+        const item = await evalOnPage<{ x: number; y: number } | null>(
+          `(()=>{const its=[...document.querySelectorAll('mat-menu-item,[role="menuitem"]')].filter((x)=>x.getBoundingClientRect().width>2);const pick=its.find((x)=>/720p/i.test(x.textContent))||its.find((x)=>!/gif/i.test(x.textContent))||its[0];if(!pick)return null;const r=pick.getBoundingClientRect();return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`,
+        );
+        if (!item) return false;
+        await clickAt(item.x, item.y);
+        return true;
+      };
+      for (let attempt = 0; attempt < 3 && !signedUrl; attempt += 1) {
+        await openMenuAndPick();
+        for (let k = 0; k < 15 && !signedUrl; k += 1) {
+          await new Promise((r) => setTimeout(r, 400));
+        }
+        if (!signedUrl && editUrl) {
+          // The menu can close without firing (stale overlay); reload the editor.
+          await chrome.debugger.sendCommand(target, 'Page.navigate', { url: editUrl }).catch(() => {});
+          await new Promise((r) => setTimeout(r, 3500));
+        }
+      }
+    } finally {
+      chrome.debugger.onEvent.removeListener(onDebuggerEvent);
+      chrome.downloads.onCreated.removeListener(onCancelCopy);
+      await chrome.debugger.sendCommand(target, 'Network.disable').catch(() => {});
+    }
+    if (signedUrl) return signedUrl;
     throw bridgeError('MEDIA_FAILED', 'Could not resolve a signed video URL for this media on the Flow page.', false);
   } finally {
     if (attachedHere) {
