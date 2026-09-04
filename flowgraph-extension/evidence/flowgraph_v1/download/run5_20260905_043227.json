@@ -1,0 +1,20 @@
+{
+  "runId": "38e0eda0",
+  "runLabel": "Run 5 (clean full E2E pass 1 of 3)",
+  "status": "success",
+  "startedAt": "2026-09-04T21:30:22.564Z",
+  "finishedAt": "2026-09-04T21:32:27.970Z",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "account": "nhom8digitalmarketing1@gmail.com",
+  "evidenceCapturedAt": "2026-09-05T04:32:27+07:00",
+  "kind": "download",
+  "nodeId": "4",
+  "mediaId": "7f06b147-2fa5-458a-a89a-014f2f4488d7",
+  "downloadId": 33,
+  "filename": "flowgraph-output (10).mp4",
+  "bytes": "8380117",
+  "artifactPath": "C:\\Users\\thang\\Downloads\\flowgraph-output (10).mp4",
+  "state": "complete",
+  "ftypBox": "00 00 00 20 66 74 79 70 69 73 6f 6d",
+  "method": "chrome.downloads + Fetch-intercepted signed video URL"
+}

@@ -784,6 +784,19 @@ Không làm trước khi core real runtime ổn định.
 - [x] I2V real. (live Run 1/2/3/4; Run 4 video mediaId 31e26cf9 + node-card video preview rendered)
 - [x] Download real. (live Run 1/2/3/4; Run 4 chrome download -> flowgraph-output (3).mp4)
 - [x] Download real VIDEO via production bridge (2026-09-04): `FLOWGRAPH_MEDIA_DOWNLOAD` -> service-worker `resolveMediaUrl(VIDEO)` -> `chrome.debugger` `Input.dispatchMouseEvent` opens the `flow-video-tile` editor -> Angular renders `<video>` with signed `flow-content.google/video/<mediaId>` src -> `chrome.downloads` completes. downloadId 17 `flowgraph_v1_prod_t2v.mp4`, 3,344,242 bytes, `video/mp4`, SHA-256 `321BBBB0…C9DB14`, `byExtensionName: FlowGraph Extension`. Evidence: `download/video_prod_bridge_2026-09-04T10-18-17Z.json`. Note: the legacy `media.getMediaUrlRedirect` endpoint now returns the SPA HTML fallback (401/HTML) for new-domain media, so the debugger trusted-click path is the production mechanism; a synthetic `element.click()` is ignored by Angular and `chrome.windows.update({focused})` does not reliably OS-foreground an occluded window.
+- [x] T2I / I2V / Download real, 3 consecutive clean full-chain passes (2026-09-05, cache bypassed, distinct mediaIds every run):
+  Run 5 `38e0eda0` — image `c8253b91` -> video `7f06b147` -> downloadId 33 `flowgraph-output (10).mp4` 8,380,117 B (125 s).
+  Run 6 `6f9e6355` — image `54207841` -> video `b47ecddd` -> downloadId 34 `flowgraph-output (11).mp4` 8,089,921 B (123 s).
+  Run 7 `3bf976c5` — image `fb3650ad` -> video `b8db27b9` -> downloadId 35 `flowgraph-output (12).mp4` 7,933,254 B (113 s).
+  All three MP4s verified with a real `ftypisom` box header. Evidence:
+  `e2e/run5_20260905_043227.json`, `e2e/run6_20260905_050133.json`, `e2e/run7_20260905_052925.json`
+  plus per-node `t2i/`, `i2v/`, `download/` files with the same run tags.
+  Defect found and fixed during this pass (commit `ba8d31d`): the Flow gallery is virtualised to a
+  fixed 8 `<flow-video-tile>`, so a finished render *replaces* the oldest tile instead of appending.
+  `decideVideoTileArrival()` only accepted a growing token list, which produced a false
+  `PROVIDER_ERROR: Timed out waiting for generated media` (runs `882a2552`, `0d64e93e`) while Flow had
+  already rendered the video. Now detects arrival by *unknown tile index* as well, with `:new`/`:repl`
+  trace markers and no false `MEDIA_FAILED` when a same-length window is rotated.
 - [x] T2V real. (live 3 fresh T2V runs; video mediaIds 63e32711, 67eafa40, d13f11f0 + valid mp4 artifacts; `t2v/run_t2v_20260903_141554.json`, `t2v/run_t2v_20260903_072455.json`, `t2v/run_t2v_20260903_072546.json`)
 - [ ] Verify credits if measurable. (creditsUsed 0 is insecure; no reliable live delta fixture — remains unchecked)
 
@@ -806,6 +819,9 @@ Live bridge returns **20 real projects** including the target, `account CONNECTE
 - [x] Canvas unlocks. (live gate unlocked)
 - [x] Build pipeline. (live Prompt→T2I→I2V→Download graph)
 - [x] Run. (live Run 1/2/3/4)
+- [x] Run full chain repeatedly with cache bypass. (live Runs 5/6/7 on 2026-09-05 — 3/3 success,
+  every node `success`, fresh image + video mediaIds, real mp4 artifact per run;
+  `e2e/run5_20260905_043227.json`, `e2e/run6_20260905_050133.json`, `e2e/run7_20260905_052925.json`)
 - [x] Image appears. (real image tile in Google Flow + Studio node card `<img>` render in Run 4)
 - [x] Video appears. (real video tile in Google Flow + Studio node card `<video>` render in Run 4)
 - [x] Download succeeds. (real mp4 artifacts on disk)
@@ -828,6 +844,13 @@ Mỗi capability được gọi là REAL/RUNTIME_VERIFIED phải có:
 - [x] terminal/test success. (Run 1/2/3/4 SUCCESS; Run 4 includes node-card preview render)
 - [x] media artifact nếu applicable. (real image/video mediaIds + mp4 on disk; Run 4 flowgraph-output (3).mp4)
 - [x] T2V live evidence. (3 fresh T2V runs with distinct video mediaIds + valid mp4; `t2v/run_t2v_20260903_141554.json`, `t2v/run_t2v_20260903_072455.json`, `t2v/run_t2v_20260903_072546.json`)
+- [x] 3 consecutive clean full-chain E2E evidence. (Runs 5/6/7 on 2026-09-05: per-run
+  `e2e/run[5-7]_*.json` with timestamps, projectId, distinct T2I + I2V mediaIds, downloadId,
+  artifact path/bytes and MP4 `ftypisom` header; matching per-node `t2i/`, `i2v/`, `download/`
+  files. No token, cookie, reCAPTCHA payload or signed URL stored.)
+- [x] Automated suite after the runtime fixes. (104/104 tests PASS across 15 files;
+  `npx tsc --noEmit` clean; `npm run build` PASS — including the virtualised-gallery
+  tile-arrival unit tests added in `tests/unit/VideoTileDetection.test.ts`.)
 
 Evidence link:
 `evidence/flowgraph_v1/` — account, projects, t2i, i2v, download, e2e all present with sanitized
@@ -840,6 +863,14 @@ Fresh evidence (2026-09-03):
 - `evidence/flowgraph_v1/e2e/fresh_session_boundary_2026-09-03T03-42-00Z.json`
 - `evidence/flowgraph_sync/2026-09-03-prompt-writer-live.json` — live ping, prompt write,
   IMAGE/VIDEO mode write on project `729eaa19...`; Slate placeholder-safe text selection fixed.
+
+Fresh evidence (2026-09-05 — three clean full-chain passes):
+- `evidence/flowgraph_v1/e2e/run5_20260905_043227.json`
+- `evidence/flowgraph_v1/e2e/run6_20260905_050133.json`
+- `evidence/flowgraph_v1/e2e/run7_20260905_052925.json`
+- `evidence/flowgraph_v1/t2i/run5_20260905_043227.json` / `run6_20260905_050133.json` / `run7_20260905_052925.json`
+- `evidence/flowgraph_v1/i2v/run5_20260905_043227.json` / `run6_20260905_050133.json` / `run7_20260905_052925.json`
+- `evidence/flowgraph_v1/download/run5_20260905_043227.json` / `run6_20260905_050133.json` / `run7_20260905_052925.json`
 
 ## FG-1603 — Capability matrix
 Phân loại node:
@@ -857,6 +888,10 @@ Phân loại node:
 - [x] Project Gate hoạt động. (live unlocked)
 - [x] Project Gate fail-closed on live navigation. (home locks, project unlocks within ~1s; SW derives real project state from tab URL via `projectIdFromUrl`; Studio re-reads account on FLOWGRAPH_EVENT)
 - [x] Real pipeline PASS nhiều lần liên tiếp. (Run 1/2/3/4)
+- [x] Real pipeline PASS nhiều lần liên tiếp với cache bypass. (Runs 5/6/7 on 2026-09-05 — 3/3
+  consecutive clean full-chain passes on project `729eaa19`, each with brand-new image + video
+  mediaIds and a real mp4 on disk; run 7 was the first pass after the virtualised-gallery fix
+  `ba8d31d` and the download/sync fixes `6e20ccb`/`8b05820`/`66b110d` were live)
 - [x] T2V live PASS nhiều lần liên tiếp. (3 fresh T2V runs with distinct mediaIds + valid mp4)
 - [x] Retry/cancel/error paths được test. (automated integration tests; live not exercised for retry/cancel this pass — honest note)
 - [x] Không leak secret.

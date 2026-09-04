@@ -1,0 +1,20 @@
+{
+  "runId": "3bf976c5",
+  "runLabel": "Run 7 (clean full E2E pass 3 of 3, first run after the virtualised-gallery tile fix)",
+  "status": "success",
+  "startedAt": "2026-09-04T22:27:32.854Z",
+  "finishedAt": "2026-09-04T22:29:25.850Z",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "account": "nhom8digitalmarketing1@gmail.com",
+  "evidenceCapturedAt": "2026-09-05T05:29:25+07:00",
+  "kind": "i2v",
+  "nodeId": "3",
+  "mediaId": "b8db27b9-d9cb-4270-b128-49c2a783378b",
+  "upstreamMediaId": "fb3650ad-553a-4f46-a564-6f756c3dda98",
+  "mimeType": "video/mp4",
+  "model": "Veo Omni Flash",
+  "settings": "720p / 8s",
+  "binding": "exact upstream T2I IMAGE mediaId selected in the Flow gallery",
+  "previewUrl": "https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=b8db27b9-d9cb-4270-b128-49c2a783378b",
+  "previewRendered": true
+}
