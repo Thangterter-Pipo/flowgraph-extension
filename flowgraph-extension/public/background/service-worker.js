@@ -115,7 +115,7 @@
   var TOKEN_TTL_MS = 50 * 60 * 1e3;
   var REQUEST_TIMEOUT_MS = 6e4;
   var SYNC_WRITE_TIMEOUT_MS = 12e3;
-  var DOWNLOAD_TIMEOUT_MS = 18e4;
+  var DOWNLOAD_TIMEOUT_MS = DOWNLOAD_TRANSFER_BUDGET_MS;
   var VIDEO_KINDS = /* @__PURE__ */ new Set([
     "i2v",
     "t2v",
@@ -314,7 +314,10 @@
     const tab = await findFlowTab();
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
     if (mediaType === "VIDEO") {
-      return resolveVideoUrlViaDebugger(tab.id, tab.url, mediaId);
+      return timeoutable(
+        resolveVideoUrlViaDebugger(tab.id, tab.url, mediaId),
+        DOWNLOAD_RESOLVE_BUDGET_MS
+      );
     }
     try {
       if (tab.windowId !== void 0) await chrome.windows.update(tab.windowId, { focused: true });
@@ -517,26 +520,34 @@
     const isVideo = payload.mediaType === "VIDEO" || /video|\.mp4/i.test(url);
     const filename = payload.fileName ? `${payload.fileName}.${isVideo ? "mp4" : "jpg"}` : void 0;
     return timeoutable(
-      new Promise((resolve) => {
-        chrome.downloads.download({
+      // Poll the item instead of waiting for `onChanged`. Live run 95a31d7a proved
+      // the event path unreliable: the artifact (`flowgraph-output (9).mp4`, id 30)
+      // reached state=complete 2.5s after it started, yet the listener never saw a
+      // matching delta, so a perfectly good download hung until the 180s worker
+      // deadline and surfaced as `PROVIDER_ERROR: Bridge request timed out`.
+      // Reading state from `chrome.downloads.search` cannot miss a transition.
+      (async () => {
+        const downloadId = await chrome.downloads.download({
           url,
           filename,
           saveAs: false,
           conflictAction: "uniquify"
-        }).then((downloadId) => {
-          const listener = (delta) => {
-            if (delta.id !== downloadId || !delta.state?.current) return;
-            if (delta.state.current !== "complete" && delta.state.current !== "interrupted") return;
-            chrome.downloads.onChanged.removeListener(listener);
-            if (delta.state.current === "interrupted") {
-              resolve({ ok: false, downloadId, error: delta.error?.current ?? "Download interrupted" });
-              return;
-            }
-            void chrome.downloads.search({ id: downloadId }).then(([item]) => resolve({ ok: true, downloadId, filename: item?.filename }));
-          };
-          chrome.downloads.onChanged.addListener(listener);
-        }).catch((error) => resolve({ ok: false, error: error instanceof Error ? error.message : String(error) }));
-      }),
+        });
+        const deadline = Date.now() + DOWNLOAD_TIMEOUT_MS;
+        for (; ; ) {
+          const [item] = await chrome.downloads.search({ id: downloadId });
+          if (item?.state === "complete") {
+            return { ok: true, downloadId, filename: item.filename };
+          }
+          if (item?.state === "interrupted") {
+            return { ok: false, downloadId, error: item.error ?? "Download interrupted" };
+          }
+          if (Date.now() > deadline) {
+            return { ok: false, downloadId, error: "Download did not finish in time" };
+          }
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      })(),
       DOWNLOAD_TIMEOUT_MS
     );
   }
