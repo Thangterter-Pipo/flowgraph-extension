@@ -32,7 +32,7 @@ export interface GoogleFlowAdapter {
   generate(payload: GeneratePayload): Promise<NormalizedMediaRef>;
   waitForMedia(payload: MediaStatusPayload): Promise<MediaStatusData>;
   resolvePreviewUrl(mediaId: string, projectId: string): Promise<string | undefined>;
-  downloadMedia(payload: { mediaId: string; projectId: string; fileName?: string }): Promise<{ ok: boolean; downloadId?: number; filename?: string; error?: string }>;
+  downloadMedia(payload: { mediaId: string; projectId: string; fileName?: string; mediaType?: 'IMAGE' | 'VIDEO'; url?: string }): Promise<{ ok: boolean; downloadId?: number; filename?: string; error?: string }>;
   cancel(payload: { projectId: string; mediaId: string }): Promise<Record<string, unknown>>;
 }
 
@@ -131,7 +131,7 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
     return status.media?.previewUrl;
   }
 
-  async downloadMedia(payload: { mediaId: string; projectId: string; fileName?: string }) {
+  async downloadMedia(payload: { mediaId: string; projectId: string; fileName?: string; mediaType?: 'IMAGE' | 'VIDEO'; url?: string }) {
     const result = await this.call<{ ok: boolean; downloadId?: number; filename?: string; error?: string }>('FLOWGRAPH_MEDIA_DOWNLOAD', payload);
     if (!result.ok) throw makeBridgeError('MEDIA_FAILED', result.error ?? 'Download failed', false);
     return result;

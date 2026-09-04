@@ -226,6 +226,8 @@ export interface MediaDownloadPayload {
   mediaId: string;
   projectId: string;
   fileName?: string;
+  /** Media kind so the worker can pick the right resolve strategy + file extension. */
+  mediaType?: 'IMAGE' | 'VIDEO';
   /** Optional pre-resolved CDN URL, otherwise the content script resolves it. */
   url?: string;
 }
