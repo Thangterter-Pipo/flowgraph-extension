@@ -472,20 +472,30 @@ async function pollOnce(payload: MediaStatusPayload, resolvePreview = false): Pr
 async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): Promise<string> {
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
-  // The video element only materialises its src while the tile is rendered in a
-  // visible viewport, so bring the Flow tab to the front before resolving.
+  // Videos: the signed CDN URL only materialises once Angular renders a
+  // <video> in the editor, and the editor only opens in response to a genuine
+  // pointer event — a synthetic element.click() is ignored by the Angular host,
+  // and chrome.windows.update({focused}) does not reliably OS-foreground the
+  // window when Chrome is occluded. We therefore drive the tile open with the
+  // DevTools Input domain over chrome.debugger (the same trusted-click
+  // mechanism the generate path uses) and read the rendered <video> src.
+  if (mediaType === 'VIDEO') {
+    return resolveVideoUrlViaDebugger(tab.id, tab.url, mediaId);
+  }
+  // Images: bring the tab forward (best-effort) and read the same-origin /asb/
+  // proxy URL that the [data-media-id] element already exposes.
   try {
     if (tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
     await chrome.tabs.update(tab.id, { active: true });
   } catch {
-    // Best-effort focus; resolution may still succeed for images.
+    // Best-effort focus; resolution may still succeed.
   }
   const results = await timeoutable(
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
       world: 'MAIN',
-      args: [mediaId, mediaType ?? null],
-      func: async (id: string, type: 'IMAGE' | 'VIDEO' | null) => {
+      args: [mediaId],
+      func: async (id: string) => {
         const isAsb = (u: string | null | undefined): u is string => !!u && u.includes('/asb/');
         // Images: the [data-media-id] element (or its child img) already points at the asb proxy.
         const el = document.querySelector(`[data-media-id="${id}"]`);
@@ -494,43 +504,13 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
           const s = img ? (img.currentSrc || img.getAttribute('src')) : null;
           if (isAsb(s)) return { ok: true, url: s };
         }
-        // Videos: opening a flow-video-tile in the editor makes Angular render a
-        // <video> whose src is a signed CDN URL that embeds the mediaId
-        // (https://flow-content.google/video/<mediaId>?...Signature=...), which
-        // chrome.downloads can fetch directly. The element only materialises while
-        // the tab is visible, so the caller focuses the window first. We match the
-        // rendered <video> by mediaId so we never download the wrong clip.
-        const videoUrlOk = (u: string | null | undefined): u is string =>
-          !!u && u.includes(id) && (u.includes('/video/') || u.includes('/asb/'));
-        const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
-        // Prefer the tile whose thumbnail still carries the raw UUID (freshly
-        // generated, before a reload rewrites it to an opaque /asb/ token); fall
-        // back to scanning tiles and matching the rendered <video> by mediaId.
-        const byThumb = tiles.filter((t) => {
-          const thumb = t.querySelector('img');
-          return thumb && (thumb.getAttribute('src') || '').includes(id);
-        });
-        const candidates = byThumb.length ? byThumb : tiles;
-        // A <video> may already be rendered (e.g. we are already in the editor).
-        const existing = Array.from(document.querySelectorAll('video')).find((v) =>
-          videoUrlOk(v.currentSrc || v.src),
+        // Passive video check: if the editor is already open with a matching
+        // <video> rendered, reuse it without needing a debugger click.
+        const v = Array.from(document.querySelectorAll('video')).find(
+          (el2) => (el2.currentSrc || el2.src || '').includes(id),
         );
-        if (existing) return { ok: true, url: (existing.currentSrc || existing.src) as string };
-        for (const tile of candidates.slice(0, 24)) {
-          const trigger = (tile.querySelector('.footer-left') ||
-            tile.querySelector('img') ||
-            tile) as HTMLElement;
-          trigger.click();
-          for (let i = 0; i < 20; i += 1) {
-            await new Promise((r) => setTimeout(r, 300));
-            const v = Array.from(document.querySelectorAll('video')).find((el) =>
-              videoUrlOk(el.currentSrc || el.src),
-            );
-            if (v) return { ok: true, url: (v.currentSrc || v.src) as string };
-          }
-        }
-        void type;
-        return { ok: false, message: 'Could not resolve a signed video URL for this media on the Flow page.' };
+        if (v) return { ok: true, url: (v.currentSrc || v.src) as string };
+        return { ok: false, message: 'Could not find a same-origin /asb/ URL for this media on the Flow page.' };
       },
     }),
     DOWNLOAD_TIMEOUT_MS,
@@ -538,6 +518,89 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
   const reply = results?.[0]?.result as { ok?: boolean; url?: string; message?: string } | undefined;
   if (!reply?.ok || !reply.url) throw bridgeError('MEDIA_FAILED', reply?.message ?? 'Could not resolve media url', false);
   return reply.url as string;
+}
+
+// Open a flow-video-tile in the editor with a real pointer click and read the
+// signed CDN <video> src that embeds the mediaId. Reuses an already-attached
+// debugger (e.g. while generate is in flight) and only detaches if it attached
+// here, so it is safe to call from inside the generate CDP session.
+async function resolveVideoUrlViaDebugger(
+  tabId: number,
+  galleryUrl: string | undefined,
+  mediaId: string,
+): Promise<string> {
+  const target: chrome.debugger.Debuggee = { tabId };
+  let attachedHere = false;
+  try {
+    await chrome.debugger.attach(target, '1.3');
+    attachedHere = true;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (!/already attached/i.test(msg)) {
+      throw bridgeError('MEDIA_FAILED', `Could not attach debugger to resolve video: ${msg}`, false);
+    }
+  }
+  try {
+    await chrome.debugger.sendCommand(target, 'Page.bringToFront').catch(() => {});
+    const evalOnPage = async <T = unknown>(expression: string): Promise<T | undefined> => {
+      try {
+        const res = (await chrome.debugger.sendCommand(target, 'Runtime.evaluate', {
+          expression,
+          returnByValue: true,
+          awaitPromise: true,
+        })) as { result?: { value?: T } } | undefined;
+        return res?.result?.value;
+      } catch {
+        return undefined;
+      }
+    };
+    const clickAt = async (x: number, y: number): Promise<void> => {
+      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
+        type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
+      });
+      await new Promise((r) => setTimeout(r, 80));
+      await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
+        type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
+      });
+    };
+    const findVideo = () =>
+      evalOnPage<string>(
+        `(()=>{const v=Array.from(document.querySelectorAll('video')).find((el)=>((el.currentSrc||el.src||'').includes(${JSON.stringify(mediaId)})));return v?(v.currentSrc||v.src||''):''})()`,
+      );
+    // Already rendered (e.g. we are already in the editor for this clip)?
+    const already = await findVideo();
+    if (already) return already;
+    const tileCount = (await evalOnPage<number>(`document.querySelectorAll('flow-video-tile').length`)) ?? 0;
+    for (let i = 0; i < Math.min(tileCount, 24); i += 1) {
+      const pos = await evalOnPage<{ x: number; y: number } | null>(
+        `(()=>{const t=document.querySelectorAll('flow-video-tile')[${i}];if(!t)return null;const b=t.getBoundingClientRect();if(b.width<10)return null;return{x:Math.round(b.left+b.width/2),y:Math.round(b.top+b.height/2)}})()`,
+      );
+      if (!pos) continue;
+      await clickAt(pos.x, pos.y);
+      let url = '';
+      for (let k = 0; k < 12; k += 1) {
+        await new Promise((r) => setTimeout(r, 400));
+        url = (await findVideo()) ?? '';
+        if (url) break;
+      }
+      if (url) return url;
+      // Wrong clip opened: return to the gallery before trying the next tile.
+      if (galleryUrl) {
+        await chrome.debugger.sendCommand(target, 'Page.navigate', { url: galleryUrl }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 4000));
+      }
+    }
+    throw bridgeError('MEDIA_FAILED', 'Could not resolve a signed video URL for this media on the Flow page.', false);
+  } finally {
+    if (attachedHere) {
+      try {
+        await chrome.debugger.detach(target);
+      } catch {
+        // best-effort
+      }
+    }
+  }
 }
 
 async function resolveRedirectSafe(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): Promise<string> {
