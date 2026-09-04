@@ -783,6 +783,7 @@ Không làm trước khi core real runtime ổn định.
 - [x] T2I real. (live Run 1/2/3/4; Run 4 mediaId ff49d846 + node-card image preview rendered)
 - [x] I2V real. (live Run 1/2/3/4; Run 4 video mediaId 31e26cf9 + node-card video preview rendered)
 - [x] Download real. (live Run 1/2/3/4; Run 4 chrome download -> flowgraph-output (3).mp4)
+- [x] Download real VIDEO via production bridge (2026-09-04): `FLOWGRAPH_MEDIA_DOWNLOAD` -> service-worker `resolveMediaUrl(VIDEO)` -> `chrome.debugger` `Input.dispatchMouseEvent` opens the `flow-video-tile` editor -> Angular renders `<video>` with signed `flow-content.google/video/<mediaId>` src -> `chrome.downloads` completes. downloadId 17 `flowgraph_v1_prod_t2v.mp4`, 3,344,242 bytes, `video/mp4`, SHA-256 `321BBBB0…C9DB14`, `byExtensionName: FlowGraph Extension`. Evidence: `download/video_prod_bridge_2026-09-04T10-18-17Z.json`. Note: the legacy `media.getMediaUrlRedirect` endpoint now returns the SPA HTML fallback (401/HTML) for new-domain media, so the debugger trusted-click path is the production mechanism; a synthetic `element.click()` is ignored by Angular and `chrome.windows.update({focused})` does not reliably OS-foreground an occluded window.
 - [x] T2V real. (live 3 fresh T2V runs; video mediaIds 63e32711, 67eafa40, d13f11f0 + valid mp4 artifacts; `t2v/run_t2v_20260903_141554.json`, `t2v/run_t2v_20260903_072455.json`, `t2v/run_t2v_20260903_072546.json`)
 - [ ] Verify credits if measurable. (creditsUsed 0 is insecure; no reliable live delta fixture — remains unchecked)
 

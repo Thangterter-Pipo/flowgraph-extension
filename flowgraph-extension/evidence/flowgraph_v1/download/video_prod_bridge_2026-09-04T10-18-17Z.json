@@ -1,0 +1,23 @@
+{
+  "runLabel": "production video download via bridge (chrome.debugger trusted click)",
+  "kind": "download",
+  "mediaType": "VIDEO",
+  "status": "success",
+  "account": "nhom8digitalmarketing1@gmail.com",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "mediaId": "478a3139-6c44-4229-be41-4f8d6d19ab3f",
+  "downloadId": 17,
+  "filename": "flowgraph_v1_prod_t2v.mp4",
+  "filePath": "C:\\Users\\thang\\Downloads\\flowgraph_v1_prod_t2v.mp4",
+  "bytes": 3344242,
+  "mimeType": "video/mp4",
+  "sha256": "321BBBB0B3829C7FEE5DB5F2D4D8E52FB5450AC6583C5CE9161C4AFBD6C9DB14",
+  "resolvedUrlHost": "flow-content.google",
+  "resolvedUrlPath": "/video/478a3139-6c44-4229-be41-4f8d6d19ab3f",
+  "resolvedUrlNote": "signed CDN URL; Signature/Expires/KeyName stripped from this evidence",
+  "byExtensionId": "doibgbebcgbecadimjcclbbhpaodijdp",
+  "byExtensionName": "FlowGraph Extension",
+  "state": "complete",
+  "mechanism": "FLOWGRAPH_MEDIA_DOWNLOAD bridge -> service worker resolveMediaUrl(VIDEO) -> chrome.debugger Input.dispatchMouseEvent opens flow-video-tile editor -> Angular renders <video> with signed CDN src matching mediaId -> chrome.downloads.download",
+  "evidenceCapturedAt": "2026-09-04T10:18:17Z"
+}
