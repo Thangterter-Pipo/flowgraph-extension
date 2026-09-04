@@ -44,6 +44,12 @@ import {
   type ProjectCreateData,
   type ProjectListData,
 } from '../shared/bridge';
+import { decideVideoTileArrival, editorPromptMatches } from './videoTileDetection';
+import {
+  MEDIA_WAIT_IMAGE_MS,
+  MEDIA_WAIT_VIDEO_MS,
+  VIDEO_TILE_MAX_CANDIDATES,
+} from '../shared/timeouts';
 
 const AISANDBOX_BASE = 'https://aisandbox-pa.googleapis.com/v1';
 const FX_API_BASE = 'https://labs.google/fx/api';
@@ -850,6 +856,9 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
 
   const target: chrome.debugger.Debuggee = { tabId };
   let attached = false;
+  // Populated when the CDP attach fails so the content-script fallback can say so
+  // in its error message instead of hiding a silent path change (see Path 2 below).
+  let attachFailure = '';
   // Google Flow only renders its editor (and therefore its real Generate button
   // and media tiles) while the tab is the active/visible tab. If the tab is
   // backgrounded its viewport reports 0x0 (the editor sits off-canvas at
@@ -875,8 +884,13 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
     // coordinates can target. Without this the tab can stay backgrounded even
     // after chrome.tabs.update across a debugger session.
     await ensureInputReachable(target);
-  } catch {
-    // debugger may be unavailable (DevTools open / remote port in use) — fall back to content script UI path
+  } catch (error) {
+    // debugger may be unavailable (DevTools open / remote port in use) — fall back
+    // to content script UI path. Record *why*: an external CDP client on the same
+    // tab (a probe script, DevTools) silently stealing the debugger from a live run
+    // is a real failure mode we have hit, and without this the run looks like an
+    // ordinary provider timeout instead of "the pipeline never used CDP at all".
+    attachFailure = normalizeError(error).message;
   }
 
   // Path 1: CDP-attached browser UI automation. This deliberately uses the
@@ -1009,63 +1023,99 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
 
     // After the labs.google/fx -> flow.google migration a freshly generated video
     // tile no longer exposes its mediaId anywhere in the gallery DOM: the tile's
-    // only stable identifier is the same-origin poster proxy URL
-    // `https://flow.google.com/asb/<opaqueToken>` (a JPEG poster, not a UUID).
-    // `readMediaIds()` therefore cannot see new videos and the generate loop would
-    // time out. We snapshot the poster tokens so the loop can detect "a new video
-    // tile appeared", then open that exact tile in the editor — whose URL is
-    // `/project/<pid>/edit/<mediaId>` — to recover the real mediaId.
+    // only stable identifier is its poster URL. Live probing showed that poster is
+    // usually the same-origin proxy `https://flow.google.com/asb/<opaqueToken>` but
+    // is *not always* — it can also be `flow-content.google/image/<uuid>` or a
+    // cross-origin signed URL. A `/asb/`-only regex therefore makes a real video
+    // tile invisible and the run falsely reports TIMEOUT.
+    //
+    // So the token is derived from whatever the poster src actually is: a
+    // query-stripped origin+pathname signature. That keeps the "did a new video
+    // tile appear?" comparison stable across re-renders (the signed query changes,
+    // the path does not) and works for every poster shape.
+    const POSTER_TOKEN_JS = `
+      ((el) => {
+        const s = el.currentSrc || el.src || '';
+        if (!s) return '';
+        try {
+          const u = new URL(s, location.href);
+          const asb = u.pathname.match(/\\/asb\\/([A-Za-z0-9_-]+)/);
+          if (asb) return 'asb:' + asb[1];
+          return 'p:' + u.host + u.pathname;
+        } catch { return 'r:' + s.split('?')[0].slice(-80); }
+      })`;
     const readVideoPosterTokens = () => evalOnPage<string[]>(`
       (() => {
-        const toks = [];
-        document.querySelectorAll('flow-video-tile img').forEach((el) => {
-          const s = el.currentSrc || el.src || '';
-          const m = s.match(/\\/asb\\/([A-Za-z0-9_-]+)/);
-          if (m && m[1]) toks.push(m[1]);
+        const key = ${POSTER_TOKEN_JS};
+        return Array.from(document.querySelectorAll('flow-video-tile')).map((t) => {
+          const img = t.querySelector('img');
+          return img ? key(img) : '';
         });
-        return toks;
       })()
     `);
 
-    // Open the video tile whose poster matches `token` with a real pointer click
-    // (Angular ignores synthetic clicks), read the mediaId from the resulting
-    // `/edit/<mediaId>` URL, then return to the gallery. Best-effort: returns ''
-    // when the tile cannot be located or the editor URL does not expose a UUID.
-    const openVideoTileAndGetId = async (token: string): Promise<string> => {
-      const pos = await evalOnPage<{ x: number; y: number } | null>(`((tok) => {
+    // Open a video tile with a real pointer click (Angular ignores synthetic
+    // clicks), read the mediaId from the resulting `/edit/<mediaId>` URL, then
+    // return to the gallery. The tile is picked either by poster token or by
+    // index, because a lazy poster means "which tile is new?" is not always
+    // answerable from the src alone. Best-effort: returns undefined when the tile
+    // cannot be located or the editor URL does not expose a UUID.
+    const openVideoTileAndGetId = async (
+      pick: { token?: string; index?: number },
+    ): Promise<{ mediaId: string; editorPrompt: string } | undefined> => {
+      const pos = await evalOnPage<{ x: number; y: number } | null>(`((sel) => {
+        const key = ${POSTER_TOKEN_JS};
         const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
-        for (const t of tiles) {
-          const img = t.querySelector('img');
-          const s = img ? (img.currentSrc || img.src || '') : '';
-          if (s.includes('/asb/' + tok)) {
-            t.scrollIntoView?.({ block: 'center', inline: 'center' });
-            const b = t.getBoundingClientRect();
-            if (b.width < 10 || b.height < 10) return null;
-            return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
-          }
+        let t = null;
+        if (sel.token !== undefined) {
+          t = tiles.find((x) => { const i = x.querySelector('img'); return i && key(i) === sel.token; }) || null;
+        } else if (sel.index !== undefined) {
+          t = tiles[sel.index] || null;
         }
-        return null;
-      })(${JSON.stringify(token)})`);
-      if (!pos) return '';
+        if (!t) return null;
+        t.scrollIntoView?.({ block: 'center', inline: 'center' });
+        const b = t.getBoundingClientRect();
+        if (b.width < 10 || b.height < 10) return null;
+        return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
+      })(${JSON.stringify(pick)})`);
+      if (!pos) return undefined;
       await clickAt(pos.x, pos.y);
       for (let k = 0; k < 15; k += 1) {
         await new Promise((r) => setTimeout(r, 400));
         const href = await evalOnPage<string>(`location.href`);
         const m = href && href.match(/\/edit\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-        if (m && m[1]) {
-          await chrome.debugger.sendCommand(target, 'Page.navigate', { url: galleryUrl }).catch(() => {});
-          await new Promise((r) => setTimeout(r, 3000));
-          return m[1];
-        }
+        if (!m || !m[1]) continue;
+        // Read the editor's own prompt back so the caller can prove this tile is
+        // *our* generation rather than an older clip that happens to sit at the
+        // same index. Verified live on /edit/<mediaId>: the clip's prompt is the
+        // composer's text, so only the rich-text editors are read — a generic
+        // contenteditable selector is deliberately avoided because it can match
+        // unrelated page text and produce a false match.
+        const editorPrompt = (await evalOnPage<string>(`(() => {
+          let best = '';
+          for (const s of ['[data-slate-editor="true"]', '.ProseMirror']) {
+            for (const el of document.querySelectorAll(s)) {
+              const t = (el.textContent || '').replace(/\\s+/g, ' ').trim();
+              if (t.length > best.length) best = t;
+            }
+          }
+          return best.slice(0, 200);
+        })()`)) ?? '';
+        await chrome.debugger.sendCommand(target, 'Page.navigate', { url: galleryUrl }).catch(() => {});
+        await new Promise((r) => setTimeout(r, 3000));
+        return { mediaId: m[1], editorPrompt };
       }
       await chrome.debugger.sendCommand(target, 'Page.navigate', { url: galleryUrl }).catch(() => {});
       await new Promise((r) => setTimeout(r, 3000));
-      return '';
+      return undefined;
     };
 
     try {
       const beforeIds = (await readMediaIds()) ?? [];
-      const beforeVidTokens = new Set((await readVideoPosterTokens()) ?? []);
+      // Per-tile poster tokens in DOM order. The array shape (not a deduped set)
+      // is deliberate: a poster can still be '' while it lazy-loads, so the length
+      // doubles as the video-tile count and the first extra entry is the new tile.
+      const beforeVidTokens = (await readVideoPosterTokens()) ?? [];
 
       // Explicitly set the composer mode before interacting with media / prompt.
       await setComposerMode(payload.kind);
@@ -1434,8 +1484,8 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
           const bound = root ? (root.querySelector('img,video') ? 'bound' : 'empty') : 'noslot';
           return 'chip=' + chip.slice(0, 22) + ' slot=' + bound
             + ' vtiles=' + document.querySelectorAll('flow-video-tile').length
-            + ' asb=' + Array.from(document.querySelectorAll('flow-video-tile img'))
-              .filter((i) => /\/asb\//.test(i.currentSrc || i.src || '')).length
+            + ' posters=' + Array.from(document.querySelectorAll('flow-video-tile img'))
+              .filter((i) => Boolean(i.currentSrc || i.src)).length
             + ' tiles=' + document.querySelectorAll('[data-media-id]').length;
         })()`);
 
@@ -1499,7 +1549,12 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
         );
       }
 
-      const maxWaitMs = 180_000;
+      // Images commit to the gallery in seconds; a real video render takes minutes.
+      // Live run 74d4c22b proved the old flat 180s ceiling could expire while Omni
+      // Flash was still rendering, which reported a healthy in-progress video as a
+      // node-3 TIMEOUT. Budget per media kind, and keep both below the adapter's
+      // overall ceiling so this loop's diagnostic trace is what the UI shows.
+      const maxWaitMs = isVideoKind(payload.kind) ? MEDIA_WAIT_VIDEO_MS : MEDIA_WAIT_IMAGE_MS;
       const startMs = Date.now();
       let waitTick = 0;
       const initialSet = new Set(beforeIds);
@@ -1542,17 +1597,29 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
           }
           continue;
         }
-        // Videos: detect a new poster token, then open that exact tile to recover
-        // its mediaId from the /edit/<mediaId> URL. The poster appears as soon as
-        // Flow finishes rendering the clip, so this is a genuine completion signal.
+        // Videos: a new <flow-video-tile> only appears once Flow finishes rendering
+        // the clip, so the tile list growing past the pre-submit snapshot is the
+        // completion signal. The reasoning lives in videoTileDetection.ts so the
+        // observed gallery shapes stay unit tested; each candidate tile is only
+        // accepted when the editor prompt matches the prompt we submitted, so a
+        // stale clip can never be reported as this node's success.
         const tokens = (await readVideoPosterTokens()) ?? [];
-        const newToken = tokens.find((t) => !beforeVidTokens.has(t));
-        if (!newToken) {
-          // Periodic composer snapshot so a video TIMEOUT records whether Flow
-          // ever started the render (poster count) and whether the start slot
-          // stayed bound, instead of only reporting the final deadline.
+        const verdict = decideVideoTileArrival(
+          { tokens: beforeVidTokens },
+          { tokens },
+          VIDEO_TILE_MAX_CANDIDATES,
+        );
+        if (!verdict.grew) {
           if (waitTick % 8 === 0) {
-            submitTrace.push(`w${Math.round(elapsed / 1000)}s:tok${tokens.length}:${(await composerDiag()) ?? 'noeval'}`);
+            // Record whether Flow ever started the render (tile count) and whether
+            // the start slot stayed bound, instead of only reporting the deadline.
+            // `rot` means posters were re-signed without a new tile: cosmetic, not a
+            // failure, and worth knowing when reading a TIMEOUT trace.
+            submitTrace.push(
+              `w${Math.round(elapsed / 1000)}s:vt${tokens.length}`
+                + `${verdict.rotated ? `:rot${verdict.unknownIndexes.length}` : ''}`
+                + `:${(await composerDiag()) ?? 'noeval'}`,
+            );
           }
           if (elapsed >= captchaGraceMs && (await detectInteractiveCaptcha())) {
             throw bridgeError(
@@ -1563,13 +1630,37 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
           }
           continue;
         }
-        const videoId = await openVideoTileAndGetId(newToken);
-        if (!videoId) continue;
-        const previewUrl = await resolveRedirectSafe(videoId, 'VIDEO');
-        // The tile only appears once Flow finishes rendering the clip, and its id
-        // was recovered from the /edit/<mediaId> URL, so completion is proven on
-        // the real UI. Mark it so the video executor skips the dead bearer poll.
-        return { mediaId: videoId, type: 'VIDEO', projectId: payload.projectId, previewUrl, completedViaUi: true };
+        let matched: { mediaId: string; editorPrompt: string } | undefined;
+        for (const index of verdict.candidates) {
+          const opened = await openVideoTileAndGetId({ index });
+          if (!opened) {
+            submitTrace.push(`v${index}:noeditor`);
+            continue;
+          }
+          if (!editorPromptMatches(opened.editorPrompt, normalizedPrompt)) {
+            // Not our clip — keep looking instead of claiming someone else's media.
+            submitTrace.push(`v${index}:mismatch:${opened.editorPrompt.slice(0, 24)}`);
+            continue;
+          }
+          matched = opened;
+          break;
+        }
+        if (!matched) {
+          // Every candidate was explainable as an older clip. Surface that honestly
+          // rather than returning a mediaId we cannot attribute to this node.
+          throw bridgeError(
+            'MEDIA_FAILED',
+            'New video tile(s) appeared on Flow but none had an editor prompt matching this node, so the pipeline cannot claim them. '
+              + `Trace ${submitTrace.slice(-6).join(' | ')}`,
+            true,
+          );
+        }
+        const previewUrl = await resolveRedirectSafe(matched.mediaId, 'VIDEO');
+        // The tile only appears once Flow finishes rendering the clip, its id was
+        // recovered from the /edit/<mediaId> URL, and its prompt matches, so
+        // completion is proven on the real UI. Mark it so the video executor skips
+        // the dead bearer poll.
+        return { mediaId: matched.mediaId, type: 'VIDEO', projectId: payload.projectId, previewUrl, completedViaUi: true };
       }
       throw bridgeError(
         'TIMEOUT',
@@ -1583,6 +1674,10 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
   }
 
   // Path 2: Content script UI fallback (when CDP attach is unavailable)
+  // This path is strictly weaker than the CDP path: it cannot dispatch real
+  // pointer input, so a failure here must never look like a provider timeout.
+  // Prefix the reason the debugger was unavailable (e.g. "Another debugger is
+  // already attached to the tab." means a probe script or DevTools stole it).
   const reply = await timeoutable(
     chrome.tabs.sendMessage(tabId, {
       type: 'FLOWGRAPH_UI_GENERATE',
@@ -1590,10 +1685,17 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       kind: payload.kind,
       startImageMediaId: payload.startImage?.mediaId,
     }),
-    180_000,
+    // The content script runs its own submit + media wait, so this has to cover
+    // the longest legitimate render rather than the old flat 180s.
+    MEDIA_WAIT_VIDEO_MS,
   );
   if (!reply?.ok || !reply.mediaId) {
-    throw bridgeError(reply?.code ?? 'MEDIA_FAILED', reply?.message ?? 'UI generation failed via content script', true);
+    const why = attached ? '' : ` [CDP unavailable${attachFailure ? `: ${attachFailure}` : ''}; used content-script fallback]`;
+    throw bridgeError(
+      reply?.code ?? 'MEDIA_FAILED',
+      `${reply?.message ?? 'UI generation failed via content script'}${why}`,
+      true,
+    );
   }
   const previewUrl = await resolveRedirectSafe(reply.mediaId as string);
   return {

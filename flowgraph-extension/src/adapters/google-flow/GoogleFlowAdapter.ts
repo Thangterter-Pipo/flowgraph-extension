@@ -19,6 +19,7 @@ import {
 } from '../../shared/bridge';
 import type { FlowSyncEvent } from '../../shared/sync/FlowSyncTypes';
 import type { SyncStateData } from '../../shared/bridge';
+import { GENERATE_BRIDGE_CEILING_MS } from '../../shared/timeouts';
 
 export type { AccountStatus, CreditsData, FlowStatus, GeneratePayload, NormalizedMediaRef, ProjectCreateData, ProjectListData };
 
@@ -58,8 +59,17 @@ function makeBridgeError(code: string, message: string, retryable: boolean) {
 /** Real adapter driven by chrome.runtime messaging (works in the extension context). */
 export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
   private readonly transport: BridgeTransport;
-  private readonly requestTimeoutMs = 300_000; // polls can run long
+  // Ordinary bridge calls (status, credits, sync writes) should fail fast.
+  private readonly requestTimeoutMs = 120_000;
   private readonly syncRequestTimeoutMs = 15_000;
+  // A real UI generation is bounded by the worker's own submit-verify loop, media
+  // wait, and video-tile editor recovery. Live run 54058dc8 proved a 300s ceiling
+  // could fire *while the worker was still working*, which surfaced a healthy
+  // in-progress generation as `PROVIDER_ERROR: Provider request timed out` on node
+  // 2 and discarded the specific error the worker was about to raise. Generation
+  // therefore gets its own ceiling, derived in shared/timeouts.ts so it always sits
+  // above every worker-side deadline.
+  private readonly generateTimeoutMs = GENERATE_BRIDGE_CEILING_MS;
 
   constructor(transport?: BridgeTransport) {
     const inExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
@@ -86,8 +96,8 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
     };
   }
 
-  private async call<T>(type: RequestType, payload?: unknown): Promise<T> {
-    const response = (await timeout(() => this.transport.request<T>(type, payload), this.requestTimeoutMs)) as BridgeResponse<T>;
+  private async call<T>(type: RequestType, payload?: unknown, maxMs = this.requestTimeoutMs): Promise<T> {
+    const response = (await timeout(() => this.transport.request<T>(type, payload), maxMs)) as BridgeResponse<T>;
     if (!response) throw makeBridgeError('BRIDGE_UNAVAILABLE', 'No response from service worker.', true);
     if (!response.ok) throw makeBridgeError(response.error?.code ?? 'PROVIDER_ERROR', response.error?.message ?? 'Provider error', response.error?.retryable ?? false);
     return response.data as T;
@@ -119,7 +129,7 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
   }
 
   generate(payload: GeneratePayload) {
-    return this.call<NormalizedMediaRef>('FLOWGRAPH_GENERATE', payload);
+    return this.call<NormalizedMediaRef>('FLOWGRAPH_GENERATE', payload, this.generateTimeoutMs);
   }
 
   waitForMedia(payload: MediaStatusPayload) {
