@@ -62,6 +62,27 @@ export class ImageToVideoExecutor implements NodeExecutor {
     }
     context.context.throwIfAborted();
 
+    // The CDP generate path confirms completion directly on the signed-in Flow
+    // UI (a new video tile appeared and its mediaId was recovered from the
+    // /edit/<mediaId> URL), so the render is already proven done. The legacy
+    // aisandbox-pa bearer status API is dead for migrated flow.google accounts
+    // (AUTH_EXPIRED), so we skip polling whenever generate reports completion or
+    // hands back a resolved URL. The download step re-resolves the URL from the
+    // page when previewUrl is empty. Only when neither signal is present do we
+    // fall back to the poller below.
+    if (ref.completedViaUi || ref.previewUrl) {
+      const media = mediaRefFromPayload({ ...ref, previewUrl: ref.previewUrl });
+      return {
+        outputs: { video: media },
+        result: {
+          type: 'video',
+          mediaId: ref.mediaId,
+          previewUrl: ref.previewUrl ?? '',
+          mimeType: 'video/mp4',
+        },
+      };
+    }
+
     const status = await this.poller.untilTerminal(async () => {
       context.context.throwIfAborted();
       const poll = await this.adapter.waitForMedia({ projectId, mediaId: ref.mediaId });
