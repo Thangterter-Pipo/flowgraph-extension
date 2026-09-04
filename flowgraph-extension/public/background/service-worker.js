@@ -74,8 +74,15 @@
       if (index < before.tokens.length && before.tokens[index]) rotatedIndexes.push(index);
     });
     const grew = now.tokens.length > before.tokens.length;
-    const candidates = grew ? Array.from(/* @__PURE__ */ new Set([0, ...unknownIndexes, ...now.tokens.map((_, index) => index)])).slice(0, maxCandidates) : [];
-    return { grew, unknownIndexes, candidates, rotated: !grew && rotatedIndexes.length > 0 };
+    const appeared = grew || unknownIndexes.length > 0;
+    const candidates = grew ? Array.from(/* @__PURE__ */ new Set([0, ...unknownIndexes, ...now.tokens.map((_, index) => index)])).slice(0, maxCandidates) : appeared ? unknownIndexes.slice(0, maxCandidates) : [];
+    return {
+      grew,
+      appeared,
+      unknownIndexes,
+      candidates,
+      rotated: !grew && rotatedIndexes.length > 0
+    };
   }
   function editorPromptMatches(editorPrompt, expectedPrompt) {
     const expected = normalizePrompt(expectedPrompt);
@@ -1332,7 +1339,7 @@
             { tokens },
             VIDEO_TILE_MAX_CANDIDATES
           );
-          if (!verdict.grew) {
+          if (!verdict.appeared) {
             if (waitTick % 8 === 0) {
               submitTrace.push(
                 `w${Math.round(elapsed / 1e3)}s:vt${tokens.length}${verdict.rotated ? `:rot${verdict.unknownIndexes.length}` : ""}:${await composerDiag() ?? "noeval"}`
@@ -1347,11 +1354,13 @@
             }
             continue;
           }
-          submitTrace.push(`w${Math.round(elapsed / 1e3)}s:vt${tokens.length}:new`);
+          submitTrace.push(
+            `w${Math.round(elapsed / 1e3)}s:vt${tokens.length}:${verdict.grew ? "new" : "repl"}`
+          );
           if (elapsed - lastAttributionMs < VIDEO_TILE_RECOVERY_STEP_MS) continue;
           lastAttributionMs = elapsed;
           let matched;
-          let everyCandidateDisproved = verdict.candidates.length > 0;
+          let everyCandidateDisproved = verdict.grew && verdict.candidates.length > 0;
           for (const index of verdict.candidates) {
             const opened = await openVideoTileAndGetId({ index });
             if (!opened) {
