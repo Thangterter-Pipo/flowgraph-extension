@@ -189,10 +189,10 @@ export interface RuntimeCapabilityRow {
 
 export const runtimeCapabilityMatrix: RuntimeCapabilityRow[] = [
   { kind: 'prompt', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: false, note: 'Local text output.' },
-  { kind: 't2i', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'batchGenerateImages (sync).' },
-  { kind: 'i2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'batchAsyncGenerateVideoStartImage + poll.' },
-  { kind: 'download', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Media redirect + Chrome downloads.' },
-  { kind: 't2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'batchAsyncGenerateVideoText + poll via UI.' },
+  { kind: 't2i', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Real Flow UI generation (CDP text insert + trusted Generate click); live Runs 1-7.' },
+  { kind: 'i2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Exact upstream IMAGE mediaId selected in the Flow gallery, then UI generate; live Runs 1-7.' },
+  { kind: 'download', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Trusted tile click + Fetch-intercepted signed URL + chrome.downloads; live Runs 1-7 (mp4 on disk).' },
+  { kind: 't2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Flow UI VIDEO mode + poll; 3 fresh live runs.' },
   { kind: 'extend', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter request shape verified; executor pending Phase 12.' },
   { kind: 'interpolation', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter verified; executor pending Phase 12.' },
   { kind: 'reference', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter verified; executor pending Phase 12.' },

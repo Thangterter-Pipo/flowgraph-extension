@@ -1,15 +1,15 @@
 # FlowGraph Real Runtime — Capability Matrix (FG-1603)
 
-> Status as of 2026-09-04. Classifications follow evidence in
+> Status as of 2026-09-05. Classifications follow evidence in
 > `GOOGLE_FLOW_API_REFERENCE.md` + `evidence/`, and the runtime build in
 > `flowgraph-extension/src/runtime/`.
 
 | Kind | Runtime class | Executor | Adapter | Realtime sync | Notes |
 |---|---|---|---|---|---|
 | `prompt` | RUNTIME_VERIFIED | ✅ | – | TWO_WAY_VERIFIED | Prompt equality verified in both directions; Google Flow reverse path requires a trusted user `beforeinput`/`input` event |
-| `t2i` | RUNTIME_VERIFIED | ✅ | ✅ | TWO_WAY_VERIFIED | IMAGE mode, prompt, model, aspect and result lifecycle verified against the real project; live image generation/preview evidence exists |
-| `i2v` | RUNTIME_VERIFIED | ✅ | ✅ | TWO_WAY_VERIFIED | Exact upstream IMAGE mediaId binding, VIDEO settings, lifecycle and result relay verified live; latest exact upstream `02f79c21...` produced video `257430d4...` |
-| `download` | RUNTIME_VERIFIED | ✅ | ✅ | NO_REALTIME_COUNTERPART | Chrome download bridge is live verified; Google Flow exposes no reverse "download state" counterpart to mirror into a Download node |
+| `t2i` | RUNTIME_VERIFIED | ✅ | ✅ | TWO_WAY_VERIFIED | IMAGE mode, prompt, model, aspect and result lifecycle verified against the real project; 7 live runs, latest image mediaId `fb3650ad...` (Run 7, 2026-09-05) |
+| `i2v` | RUNTIME_VERIFIED | ✅ | ✅ | TWO_WAY_VERIFIED | Exact upstream IMAGE mediaId binding, VIDEO settings, lifecycle and result relay verified live; Run 5/6/7 upstream→video pairs `c8253b91→7f06b147`, `54207841→b47ecddd`, `fb3650ad→b8db27b9` |
+| `download` | RUNTIME_VERIFIED | ✅ | ✅ | NO_REALTIME_COUNTERPART | Chrome download bridge is live verified (trusted tile click + Fetch-intercepted signed URL + `chrome.downloads` polling); Run 5/6/7 artifacts 8,380,117 / 8,089,921 / 7,933,254 bytes with real `ftypisom` headers. Google Flow exposes no reverse "download state" counterpart to mirror into a Download node |
 | `t2v` | RUNTIME_VERIFIED | ✅ | ✅ | TWO_WAY_VERIFIED | Prompt/settings/preflight/lifecycle verified live; stale Start/End were cleared before latest successful video `cebda58e...` |
 | `extend` | RUNTIME_PARTIAL | – | ✅ | TWO_WAY_PARTIAL | Shared prompt/settings can sync, but no explicit Extend tile action was present in the inspected Google Flow media menu; executor remains pending |
 | `interpolation` | RUNTIME_PARTIAL | – | ✅ | TWO_WAY_PARTIAL | Start Frame and End Frame semantic slots are two-way live verified; interpolation executor/result path remains pending |
