@@ -1,0 +1,42 @@
+{
+  "test_pass": "FLOWGRAPH_UPSCALE_LIVE_V1",
+  "verified_at": "2026-09-05T17:45:00Z",
+  "project_id": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "project_name": "FlowGraph V1 Live 2026-09-02",
+  "capabilities": {
+    "imageUpscale": "RUNTIME_PARTIAL",
+    "videoUpscale": "RUNTIME_PARTIAL"
+  },
+  "runs": [
+    {
+      "run_id": "run1_img_2k",
+      "kind": "imageUpscale",
+      "target_resolution": "2K",
+      "model_key": "GEM_PIX_2_UPSAMPLE_2K",
+      "input_image_media_id": "fb3650ad-553a-4f46-a564-6f756c3dda98",
+      "request_accepted_by_sw": true,
+      "dedicated_route": "flow/upsampleImage",
+      "project_isolation_verified": true,
+      "status": "BLOCKED_BY_PROVIDER_SECURITY",
+      "provider_code": "CAPTCHA_REQUIRED",
+      "provider_message": "reCAPTCHA evaluation failed",
+      "retryable": true,
+      "conclusion": "Payload schema accepted, dedicated routing verified, fail-closed behavior confirmed without simulated fake success."
+    },
+    {
+      "run_id": "run2_vid_1080p",
+      "kind": "videoUpscale",
+      "target_resolution": "1080p",
+      "model_key": "veo_3_1_upsampler_1080p",
+      "input_video_media_id": "b5c33c78-4151-4e6e-9a41-af03b54ecd50",
+      "request_accepted_by_sw": true,
+      "dedicated_route": "video:batchAsyncGenerateVideoUpsampleVideo",
+      "project_isolation_verified": true,
+      "status": "BLOCKED_BY_PROVIDER_SECURITY",
+      "provider_code": "CAPTCHA_REQUIRED",
+      "provider_message": "reCAPTCHA evaluation failed",
+      "retryable": true,
+      "conclusion": "Payload schema accepted, dedicated routing verified, fail-closed behavior confirmed without simulated fake success."
+    }
+  ]
+}
