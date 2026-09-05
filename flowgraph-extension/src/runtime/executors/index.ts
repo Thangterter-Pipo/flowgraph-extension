@@ -51,7 +51,7 @@ export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager)
     new MediaInputExecutor(),
     new ImageInputExecutor(),
     new VideoInputExecutor(),
-    new PreviewExecutor(),
+    new PreviewExecutor({ adapter }),
     new DownloadExecutor({ adapter }),
   ]) {
     executors.set(executor.kind, executor);
