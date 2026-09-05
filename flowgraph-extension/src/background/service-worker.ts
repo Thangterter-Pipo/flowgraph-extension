@@ -542,6 +542,11 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
           const s = img ? (img.currentSrc || img.getAttribute('src')) : null;
           if (isAsb(s)) return { ok: true, url: s };
         }
+        // In /edit/<mediaId> editor, read the active editor main image directly
+        const editorImg = Array.from(document.querySelectorAll('img')).find((i) => isAsb(i.currentSrc || i.src) && (i.naturalWidth > 600 || (i.src || '').includes('=s1600')));
+        if (editorImg) {
+          return { ok: true, url: editorImg.currentSrc || editorImg.src };
+        }
         // Passive video check: if the editor is already open with a matching
         // <video> rendered, reuse it without needing a debugger click.
         const v = Array.from(document.querySelectorAll('video')).find(
@@ -1948,8 +1953,36 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
 }
 
 async function handleMediaStatus(payload: MediaStatusPayload): Promise<MediaStatusData> {
-  // Single probe — the runtime's PollManager drives the interval so the client
-  // can abort between probes. Preview URL is resolved only at success.
+  // If the media item is already an existing asset in the active project,
+  // attempt to resolve its preview directly via resolveMediaUrl.
+  try {
+    const previewUrl = await resolveMediaUrl(payload.mediaId, 'IMAGE');
+    if (previewUrl) {
+      return {
+        status: 'SUCCESSFUL',
+        media: {
+          mediaId: payload.mediaId,
+          type: 'IMAGE',
+          projectId: payload.projectId,
+          previewUrl,
+        },
+      };
+    }
+  } catch {}
+  try {
+    const previewUrl = await resolveMediaUrl(payload.mediaId, 'VIDEO');
+    if (previewUrl) {
+      return {
+        status: 'SUCCESSFUL',
+        media: {
+          mediaId: payload.mediaId,
+          type: 'VIDEO',
+          projectId: payload.projectId,
+          previewUrl,
+        },
+      };
+    }
+  } catch {}
   return pollOnce(payload, true);
 }
 

@@ -573,6 +573,12 @@ function Studio() {
   const cancelRef = useRef(false);
   const timerRef = useRef<number | null>(null);
   const runtimeRef = useRef<WorkflowRuntime | null>(null);
+  useEffect(() => {
+    if (!runtimeRef.current) {
+      runtimeRef.current = new WorkflowRuntime(new RealGoogleFlowAdapter());
+      (window as any).studioRuntime = runtimeRef.current;
+    }
+  }, []);
   const connection = useStudioConnection();
   const { save, exportJson } = useWorkflowPersistence(nodes, edges, workflowName, connection.activeProject ? { projectId: connection.activeProject.projectId, projectName: connection.activeProject.projectName } : undefined);
 
@@ -935,6 +941,7 @@ function Studio() {
   const runtime = useCallback(() => {
     if (!runtimeRef.current) {
       runtimeRef.current = new WorkflowRuntime(new RealGoogleFlowAdapter());
+      (window as any).studioRuntime = runtimeRef.current;
     }
     return runtimeRef.current;
   }, []);

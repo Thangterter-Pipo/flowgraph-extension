@@ -1,0 +1,65 @@
+{
+  "test_pass": "FLOWGRAPH_UTILITY_NODES_LIVE_V1",
+  "verified_at": "2026-09-05T20:08:00Z",
+  "project_id": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "project_name": "FlowGraph V1 Live 2026-09-02",
+  "capabilities": {
+    "mediaInput": "RUNTIME_VERIFIED",
+    "imageInput": "RUNTIME_VERIFIED",
+    "videoInput": "RUNTIME_VERIFIED",
+    "preview": "RUNTIME_VERIFIED",
+    "download": "RUNTIME_VERIFIED"
+  },
+  "runs": [
+    {
+      "run_id": "run1_image_utility_workflow",
+      "workflow": "Image Input -> Preview -> Download",
+      "status": "SUCCESSFUL",
+      "cache_hit": false,
+      "nodes_executed": ["imageInput", "preview", "download"],
+      "input_image": {
+        "media_id": "6892185d-59af-4ce7-874f-cb31fe245c5c",
+        "type": "IMAGE",
+        "project_id": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5"
+      },
+      "preview_resolution": {
+        "resolved": true,
+        "preview_origin": "flow.google.com/asb",
+        "persisted_to_config": false
+      },
+      "download": {
+        "filename": "flowgraph-live-utility-image-6892185d.webp",
+        "bytes": 222066,
+        "artifact_path": "C:\\Users\\thang\\Downloads\\flowgraph-live-utility-image-6892185d.webp",
+        "state": "complete"
+      },
+      "duration_ms": 1280,
+      "credits_used": 0
+    },
+    {
+      "run_id": "run2_video_utility_workflow",
+      "workflow": "Video Input -> Preview -> Download",
+      "status": "SUCCESSFUL",
+      "cache_hit": false,
+      "nodes_executed": ["videoInput", "preview", "download"],
+      "input_video": {
+        "media_id": "b5c33c78-4151-4e6e-9a41-af03b54ecd50",
+        "type": "VIDEO",
+        "project_id": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5"
+      },
+      "preview_resolution": {
+        "resolved": true,
+        "preview_origin": "flow-content.google",
+        "persisted_to_config": false
+      },
+      "download": {
+        "filename": "flowgraph-live-utility-video-b5c33c78.mp4",
+        "bytes": 4382253,
+        "artifact_path": "C:\\Users\\thang\\Downloads\\flowgraph-live-utility-video-b5c33c78.mp4",
+        "state": "complete"
+      },
+      "duration_ms": 23410,
+      "credits_used": 0
+    }
+  ]
+}
