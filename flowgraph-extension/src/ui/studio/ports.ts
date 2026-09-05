@@ -137,6 +137,22 @@ export const nodePortCatalog: Record<string, NodePortSpec> = {
     inputs: [p('media', 'Media', 'MEDIA', { required: true })],
     outputs: [p('file', 'File', 'FILE')],
   },
+  mediaInput: {
+    inputs: [],
+    outputs: [p('media', 'Media', 'MEDIA'), p('image', 'Image', 'IMAGE'), p('video', 'Video', 'VIDEO')],
+  },
+  imageInput: {
+    inputs: [],
+    outputs: [p('image', 'Image', 'IMAGE'), p('media', 'Media', 'MEDIA')],
+  },
+  videoInput: {
+    inputs: [],
+    outputs: [p('video', 'Video', 'VIDEO'), p('media', 'Media', 'MEDIA')],
+  },
+  preview: {
+    inputs: [p('media', 'Media', 'MEDIA', { required: true })],
+    outputs: [p('media', 'Media', 'MEDIA'), p('image', 'Image', 'IMAGE'), p('video', 'Video', 'VIDEO')],
+  },
   condition: {
     inputs: [p('value', 'Value', 'BOOLEAN', { required: true })],
     outputs: [p('true', 'True', 'BOOLEAN', { role: 'T' }), p('false', 'False', 'BOOLEAN', { role: 'F' })],
