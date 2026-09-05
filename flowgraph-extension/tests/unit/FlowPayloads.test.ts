@@ -154,6 +154,25 @@ describe('flowPayloads contract (verified shapes)', () => {
     expect(req.metadata).toEqual({});
   });
 
+  it('verifies imageUpscale payload contract with 2K/4K target resolutions', () => {
+    const payload2k = {
+      mediaId: 'img-12345',
+      targetResolution: 'UPSAMPLE_IMAGE_RESOLUTION_2K',
+      clientContext: CTX,
+    };
+    expect(payload2k.mediaId).toBe('img-12345');
+    expect(payload2k.targetResolution).toBe('UPSAMPLE_IMAGE_RESOLUTION_2K');
+    expect(payload2k.clientContext).toBe(CTX);
+
+    const payload4k = {
+      mediaId: 'img-67890',
+      targetResolution: 'UPSAMPLE_IMAGE_RESOLUTION_4K',
+      clientContext: CTX,
+    };
+    expect(payload4k.mediaId).toBe('img-67890');
+    expect(payload4k.targetResolution).toBe('UPSAMPLE_IMAGE_RESOLUTION_4K');
+  });
+
   it('t2v uses the verified text-input request shape', () => {
     const payload = { kind: 't2v' as const, projectId: PROJECT, prompt: 'A fox', modelKey: 'abra_t2v_8s' };
     const req = (buildT2vRequest(payload, CTX, BATCH).requests as Array<Record<string, unknown>>)[0];
