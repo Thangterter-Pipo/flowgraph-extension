@@ -52,11 +52,15 @@ export class PreviewExecutor implements NodeExecutor {
     let transientPreviewUrl = mediaRef.previewUrl;
     // Transient resolution: if previewUrl is missing from upstream MediaRef (e.g. from ImageInput/VideoInput),
     // resolve it dynamically via adapter without persisting it into config.
+    // STRICT FAIL-CLOSED: if adapter cannot resolve previewUrl, throw PREVIEW_FAILED instead of empty fake success!
     if (!transientPreviewUrl && this.adapter) {
       try {
         transientPreviewUrl = await this.adapter.resolvePreviewUrl(mediaRef.mediaId, projectId);
-      } catch {
-        // Best-effort transient resolution
+      } catch (err) {
+        throw new RuntimeError('PREVIEW_FAILED', `Failed to resolve transient preview URL for media ${mediaRef.mediaId}: ${err instanceof Error ? err.message : String(err)}`, { nodeId: context.nodeId });
+      }
+      if (!transientPreviewUrl) {
+        throw new RuntimeError('PREVIEW_FAILED', `No preview URL could be resolved for media ${mediaRef.mediaId}.`, { nodeId: context.nodeId });
       }
     }
 

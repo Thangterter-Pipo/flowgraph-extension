@@ -290,21 +290,24 @@ describe('Task 5A.3 — Hardened Utility Nodes Config Materialization & Mandator
       expect(out.result?.previewUrl).toBe('https://flow.google.com/asb/dynamic-resolved-token');
     });
 
-    it('enforces project isolation on execute', async () => {
-      const executor = new PreviewExecutor();
+    it('strictly fails-closed with PREVIEW_FAILED when preview resolution fails', async () => {
+      const mockAdapter = {
+        resolvePreviewUrl: vi.fn().mockRejectedValueOnce(new Error('Network error')),
+      } as any;
+      const executor = new PreviewExecutor({ adapter: mockAdapter });
       const ctx: NodeExecutionContext = {
-        runId: 'r6',
-        nodeId: 'n6',
+        runId: 'r5-err',
+        nodeId: 'n5-err',
         inputs: {
           media: {
-            type: 'image',
-            value: { mediaId: 'img-123', projectId: 'other-proj', type: 'IMAGE' },
+            type: 'video',
+            value: { mediaId: 'vid-err', projectId: PROJECT, type: 'VIDEO' }, // no previewUrl
           },
         },
         config: {},
         context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
       };
-      await expect(executor.execute(ctx)).rejects.toMatchObject({ code: 'PROJECT_ISOLATION' });
+      await expect(executor.execute(ctx)).rejects.toMatchObject({ code: 'PREVIEW_FAILED' });
     });
   });
 });
