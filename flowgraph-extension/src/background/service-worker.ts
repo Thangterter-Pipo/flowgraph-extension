@@ -449,9 +449,10 @@ async function generateApi(payload: GeneratePayload): Promise<NormalizedMediaRef
   const previewUrl = imageFife
     ? (await resolveMediaUrl(media.name, 'IMAGE').catch(() => imageFife))
     : undefined;
+  const isImageOutput = payload.kind === 't2i' || payload.kind === 'imageUpscale';
   return {
     mediaId: media.name,
-    type: payload.kind === 't2i' ? 'IMAGE' : 'VIDEO',
+    type: isImageOutput ? 'IMAGE' : 'VIDEO',
     projectId: media.projectId ?? payload.projectId,
     workflowId: media.workflowId ?? json.workflows?.[0]?.name,
     previewUrl,
@@ -1017,17 +1018,26 @@ async function syncAndVerifyBeforeGenerate(
 }
 
 async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMediaRef> {
-  const isUpscaleKind = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale';
-  if (isUpscaleKind) {
-    // Dedicated direct provider path for Image and Video Upscaling.
-    // Upscaling does not exist as a primary text prompt button in the composer;
-    // it executes via direct aisandbox endpoints with project-scoped media binding.
-    return generateApi(payload);
-  }
-
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
   const tabId = tab.id;
+
+  // Enforce project isolation against the active Google Flow project
+  const expectedProjectId = projectIdFromUrl(tab.url ?? '');
+  if (!expectedProjectId || expectedProjectId !== payload.projectId) {
+    throw bridgeError(
+      'PROJECT_MISMATCH',
+      `Active Google Flow tab project (${expectedProjectId || 'none'}) does not match request projectId (${payload.projectId}).`,
+      false,
+    );
+  }
+
+  const isUpscaleKind = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale';
+  if (isUpscaleKind) {
+    // Dedicated direct provider path for Image and Video Upscaling.
+    // Upscaling executes via direct aisandbox endpoints with verified project-scoped media binding.
+    return generateApi(payload);
+  }
   const prompt = (payload.prompt ?? '').trim();
   if (!prompt) {
     throw bridgeError(
