@@ -207,6 +207,7 @@ export interface GeneratePayload {
   modelKey: string;
   /** Exact human-readable model label expected in the Google Flow UI. */
   modelLabel?: string;
+  mode?: string; // "Extend Forward" | "Edit Video"
   aspectRatio?: string;
   seed?: number;
   imageRefs?: Array<{ mediaId: string; imageUsageType?: string }>;

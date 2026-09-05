@@ -193,7 +193,7 @@ export const runtimeCapabilityMatrix: RuntimeCapabilityRow[] = [
   { kind: 'i2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Exact upstream IMAGE mediaId selected in the Flow gallery, then UI generate; live Runs 1-7.' },
   { kind: 'download', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Trusted tile click + Fetch-intercepted signed URL + chrome.downloads; live Runs 1-7 (mp4 on disk).' },
   { kind: 't2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Flow UI VIDEO mode + poll; 3 fresh live runs.' },
-  { kind: 'extend', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter request shape verified; executor pending Phase 12.' },
+  { kind: 'extend', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Extend Forward and Edit Video executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
   { kind: 'interpolation', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Start + End Frame interpolation executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
   { kind: 'reference', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Ordered Reference Images video executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
   { kind: 'upscale', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Video upscale adapter shape verified; provider may reject without trusted UI gesture.' },
