@@ -12,7 +12,7 @@
 | `download` | RUNTIME_VERIFIED | ✅ | ✅ | NO_REALTIME_COUNTERPART | Chrome download bridge is live verified (trusted tile click + Fetch-intercepted signed URL + `chrome.downloads` polling); Run 5/6/7 artifacts 8,380,117 / 8,089,921 / 7,933,254 bytes with real `ftypisom` headers. Google Flow exposes no reverse "download state" counterpart to mirror into a Download node |
 | `t2v` | RUNTIME_VERIFIED | ✅ | ✅ | TWO_WAY_VERIFIED | Prompt/settings/preflight/lifecycle verified live; stale Start/End were cleared before latest successful video `cebda58e...` |
 | `extend` | RUNTIME_PARTIAL | – | ✅ | TWO_WAY_PARTIAL | Shared prompt/settings can sync, but no explicit Extend tile action was present in the inspected Google Flow media menu; executor remains pending |
-| `interpolation` | RUNTIME_PARTIAL | – | ✅ | TWO_WAY_PARTIAL | Start Frame and End Frame semantic slots are two-way live verified; interpolation executor/result path remains pending |
+| `interpolation` | RUNTIME_VERIFIED | ✅ | ✅ | TWO_WAY_VERIFIED | Start Frame and End Frame semantic slots are two-way live verified; interpolation executor and live generation verified (Run 1 `fb3650ad+12bd87d1→e2fe5146`, Run 2 `c7c1750a+54207841→720fea1e`) |
 | `reference` | RUNTIME_PARTIAL | – | ✅ | TWO_WAY_VERIFIED | Ordered Reference Media configuration is live verified in both directions; the standalone Reference generation executor remains pending |
 | `upscale` | RUNTIME_PARTIAL | – | ✅ | NO_UI_COUNTERPART | No explicit Upscale tile action was present in the inspected Google Flow media menu; no success is inferred from generic resolution controls |
 | `uploadImage` | UI_ONLY | – | ✅ | NONE | Upload adapter exists; no standalone realtime node mapping was live verified |
@@ -48,8 +48,8 @@ Realtime sync labels are independent from runtime/executor maturity:
 The realtime column is backed by sanitized live evidence in
 `flowgraph-extension/evidence/flowgraph_sync/`. Verification used exact project
 `729eaa19-1c85-4cfc-89c3-5f86de2dffc5`. A verified Reference Media configuration mirror does
-not upgrade the still-pending Reference generation executor, and verified Start/End slot mirroring
-does not upgrade the still-pending interpolation executor.
+not upgrade the still-pending Reference generation executor, whereas Start/End slot mirroring
+and the Interpolation executor have now been verified live together (2026-09-05).
 
 **Honesty rule:** No kind in the matrix shows fake success. Run validation reports
 `UNSUPPORTED_NODE` for anything without an executor, before any provider call.

@@ -1,0 +1,53 @@
+{
+  "test_pass": "FLOWGRAPH_INTERPOLATION_LIVE_V1",
+  "verified_at": "2026-09-05T06:37:09Z",
+  "project_id": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "project_name": "FlowGraph V1 Live 2026-09-02",
+  "kind": "interpolation",
+  "runs": [
+    {
+      "run_id": "run1",
+      "status": "SUCCESSFUL",
+      "completed_via_ui": true,
+      "cache_hit": false,
+      "prompt": "FG-INTERP-RUN1: Create a smooth cinematic transition from the provided start frame to the provided end frame, preserving visual continuity and subject identity.",
+      "start_image": {
+        "media_id": "fb3650ad-553a-4f46-a564-6f756c3dda98",
+        "exact_binding": true
+      },
+      "end_image": {
+        "media_id": "12bd87d1-c551-4c0c-a7f1-4199ebd09207",
+        "exact_binding": true
+      },
+      "result": {
+        "media_id": "e2fe5146-f540-4add-bf7d-6fe6b9a95c61",
+        "type": "VIDEO",
+        "preview_resolved": true,
+        "preview_origin": "flow-content.google"
+      },
+      "duration_seconds": 89
+    },
+    {
+      "run_id": "run2",
+      "status": "SUCCESSFUL",
+      "completed_via_ui": true,
+      "cache_hit": false,
+      "prompt": "FG-INTERP-RUN2: Generate a gradual natural transformation from the supplied start image to the supplied end image with stable motion and coherent scene continuity.",
+      "start_image": {
+        "media_id": "c7c1750a-5d70-4efb-82a9-84f2f8d33365",
+        "exact_binding": true
+      },
+      "end_image": {
+        "media_id": "54207841-1bae-4b62-92fc-b70b96073cb6",
+        "exact_binding": true
+      },
+      "result": {
+        "media_id": "720fea1e-bd4c-43dc-a765-6326259170a0",
+        "type": "VIDEO",
+        "preview_resolved": true,
+        "preview_origin": "flow-content.google"
+      },
+      "duration_seconds": 78
+    }
+  ]
+}

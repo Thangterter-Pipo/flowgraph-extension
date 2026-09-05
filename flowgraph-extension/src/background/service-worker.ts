@@ -2299,8 +2299,9 @@ async function bindRealtimeStartImage(
       const card = media?.closest?.('flow-tile-container') || media?.closest?.('[role="button"]') || media?.parentElement;
       const scopes = [card, card?.parentElement, card?.parentElement?.parentElement].filter(Boolean);
       const button = scopes.flatMap((scope) => [...scope.querySelectorAll('button')]).find((candidate) =>
-        [...candidate.querySelectorAll('i.google-symbols, .google-symbols')]
+        [...candidate.querySelectorAll('i.google-symbols, .google-symbols, mat-icon, i.material-icons')]
           .some((icon) => (icon.textContent || '').trim() === 'more_vert')
+          || candidate.classList.contains('mat-mdc-menu-trigger')
       );
       if (!button) return { ok: false, reason: 'more-vert-not-found' };
       const rect = button.getBoundingClientRect();
@@ -2328,7 +2329,10 @@ async function bindRealtimeStartImage(
       throw bridgeError('MEDIA_FAILED', `Flow Animate action was not found for ${mediaId}.`, true);
     }
     await clickAt(animate.x, animate.y);
-    await new Promise((resolve) => setTimeout(resolve, 900));
+    for (let check = 0; check < 10; check += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (await evaluate<boolean>(boundExpression)) return { ok: true, mediaId };
+    }
     if (!(await evaluate<boolean>(boundExpression))) {
       throw bridgeError('MEDIA_FAILED', `Flow did not bind ${mediaId} as the composer Start Frame.`, true);
     }
@@ -2391,13 +2395,14 @@ async function bindRealtimeEndImage(
     if (await evaluate<boolean>(endBoundExpression)) return { ok: true, mediaId };
 
     const endSlot = await evaluate<{ ok: boolean; x?: number; y?: number; reason?: string }>(`(() => {
-      const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]');
-      const editorRect = editor?.getBoundingClientRect();
-      const element = [...document.querySelectorAll('[type="button"][aria-haspopup="dialog"]')]
-        .find((candidate) => /^(Kết thúc|End)$/i.test((candidate.textContent || '').trim())
-          && (!editorRect || Math.abs(candidate.getBoundingClientRect().top - editorRect.top) < 180));
-      if (!element) return { ok: false, reason: 'end-slot-not-found' };
-      const rect = element.getBoundingClientRect();
+      const swap = [...document.querySelectorAll('button')].find((button) =>
+        [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
+          .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
+      const endRoot = swap?.nextElementSibling;
+      const triggers = Array.from(document.querySelectorAll('.frame-trigger'));
+      const target = endRoot?.querySelector('button') || triggers[1]?.querySelector('button') || endRoot || triggers[1];
+      if (!target) return { ok: false, reason: 'end-slot-not-found' };
+      const rect = target.getBoundingClientRect();
       return rect.width && rect.height
         ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
         : { ok: false, reason: 'end-slot-not-visible' };
@@ -2407,28 +2412,40 @@ async function bindRealtimeEndImage(
     }
     await clickAt(endSlot.x, endSlot.y);
     await new Promise((resolve) => setTimeout(resolve, 450));
-    const dialogOpened = await evaluate<boolean>(`[...document.querySelectorAll('[role="dialog"]')]
+    const dialogOpened = await evaluate<boolean>(`[...document.querySelectorAll('[role="dialog"], .cdk-overlay-pane, mat-dialog-container')]
       .some((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0)`);
     if (!dialogOpened) {
       // Some Flow builds do not route DevTools pointer events to this non-button
       // Radix trigger. Invoke only the exact semantic End trigger, then verify
       // that its dialog opened before interacting with any media.
       const opened = await evaluate<boolean>(`(() => {
-        const element = [...document.querySelectorAll('[type="button"][aria-haspopup="dialog"]')]
-          .find((candidate) => /^(Kết thúc|End)$/i.test((candidate.textContent || '').trim()));
+        const element = [...document.querySelectorAll('[type="button"][aria-haspopup="dialog"], .frame-trigger, button, div')]
+          .find((candidate) => /^(Kết thúc|End)$/i.test((candidate.textContent || '').trim())
+            || candidate.classList.contains('frame-trigger'));
         element?.click();
         return Boolean(element);
       })()`);
       if (!opened) throw bridgeError('UI_NOT_READY', 'Flow End Frame dialog trigger disappeared.', true);
-      await new Promise((resolve) => setTimeout(resolve, 450));
+      await new Promise((resolve) => setTimeout(resolve, 600));
     }
 
     const readDialogMedia = () => evaluate<{ ok: boolean; x?: number; y?: number; reason?: string }>(`((mediaId) => {
-      const dialog = [...document.querySelectorAll('[role="dialog"]')]
+      const dialog = [...document.querySelectorAll('[role="dialog"], .cdk-overlay-pane, mat-dialog-container')]
         .find((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0);
+      
+      // Look up poster token from main page if data-media-id is not inside dialog
+      const mainMedia = [...document.querySelectorAll('img, video, a, [data-media-id]')]
+        .find((el) => [el.getAttribute?.('data-media-id'), el.getAttribute?.('src'), el.currentSrc, el.src]
+          .filter(Boolean).some((v) => String(v).includes(mediaId)));
+      const mainSrc = mainMedia ? (mainMedia.currentSrc || mainMedia.src || '') : '';
+      const token = mainSrc.includes('/asb/') ? mainSrc.split('/asb/')[1]?.slice(0, 20) : '';
+
       const matches = [...(dialog?.querySelectorAll('img, video, [data-media-id]') || [])]
-        .filter((element) => [element.getAttribute?.('data-media-id'), element.getAttribute?.('src'), element.currentSrc, element.src]
-          .filter(Boolean).some((value) => String(value).includes(mediaId)))
+        .filter((element) => {
+          const src = String(element.currentSrc || element.src || element.getAttribute?.('src') || '');
+          const directId = String(element.getAttribute?.('data-media-id') || '');
+          return directId === mediaId || src.includes(mediaId) || (token && src.includes(token));
+        })
         .map((element) => ({ element, rect: element.getBoundingClientRect() }))
         .filter(({ rect }) => rect.width > 0 && rect.height > 0)
         .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
@@ -2450,10 +2467,10 @@ async function bindRealtimeEndImage(
     await new Promise((resolve) => setTimeout(resolve, 350));
 
     const readAddButton = () => evaluate<{ ok: boolean; x?: number; y?: number; reason?: string }>(`(() => {
-      const dialog = [...document.querySelectorAll('[role="dialog"]')]
+      const dialog = [...document.querySelectorAll('[role="dialog"], .cdk-overlay-pane, mat-dialog-container')]
         .find((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0);
       const button = [...(dialog?.querySelectorAll('button') || [])]
-        .find((candidate) => /Thêm vào câu lệnh|Add to prompt/i.test(candidate.innerText || ''));
+        .find((candidate) => /Thêm vào câu lệnh|Add to prompt|Xác nhận|Confirm|Chọn|Select/i.test(candidate.innerText || ''));
       if (!button) return { ok: false, reason: 'add-to-prompt-not-found' };
       if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
         return { ok: false, reason: 'add-to-prompt-disabled' };
@@ -2470,7 +2487,10 @@ async function bindRealtimeEndImage(
       throw bridgeError('UI_NOT_READY', `Flow End Frame picker could not commit (${add.reason ?? 'unknown'}).`, true);
     }
     await clickAt(add.x, add.y);
-    await new Promise((resolve) => setTimeout(resolve, 750));
+    for (let check = 0; check < 10; check += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      if (await evaluate<boolean>(endBoundExpression)) return { ok: true, mediaId };
+    }
     if (!(await evaluate<boolean>(endBoundExpression))) {
       throw bridgeError('MEDIA_FAILED', `Flow did not bind ${mediaId} as the End Frame.`, true);
     }

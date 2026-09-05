@@ -676,9 +676,10 @@ Chỉ làm sau khi V1 pipeline thật PASS.
 - [x] Executor thật. (live T2V + realtime preflight/lifecycle evidence; latest mediaId `cebda58e-f8eb-47b9-b6af-d303f35917ae`)
 
 ## FG-1202 — Start Frame / End Frame
-- [ ] Typed Start Frame input.
-- [ ] Typed End Frame input.
-- [ ] Interpolation executor.
+- [x] Typed Start Frame input.
+- [x] Typed End Frame input.
+- [x] Interpolation executor.
+- [x] Live 2 runs verified (2026-09-05): Run 1 `fb3650ad+12bd87d1→e2fe5146` (89s), Run 2 `c7c1750a+54207841→720fea1e` (78s). Evidence: `flowgraph-extension/evidence/flowgraph_v1/interpolation_live_runs_2026-09-05.json`.
 
 ## FG-1203 — Reference Video
 - [ ] Multiple reference inputs.
@@ -875,7 +876,8 @@ Fresh evidence (2026-09-05 — three clean full-chain passes):
 ## FG-1603 — Capability matrix
 Phân loại node:
 - [x] RUNTIME_VERIFIED (t2i/i2v/t2v/download — live provider evidence Runs 1–4 + 3 fresh T2V runs; prompt — local runtime)
-- [x] CONTRACT_VERIFIED (extend/interpolation/reference/upscale — adapter/payload verified; executor pending Phase 12)
+- [x] CONTRACT_VERIFIED (extend/reference/upscale — adapter/payload verified; executor pending Phase 12)
+- [x] RUNTIME_VERIFIED (interpolation — executor + live Runs 1 & 2 verified 2026-09-05)
 - [x] RUNTIME_PARTIAL
 - [x] UI_ONLY
 - [x] COMING_SOON
