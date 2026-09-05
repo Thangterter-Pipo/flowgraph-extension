@@ -990,7 +990,7 @@ async function syncAndVerifyBeforeGenerate(
   }
   if (payload.videoInput?.mediaId) {
     const startedAt = Date.now();
-    await bindRealtimeVideoInput(tab, payload.videoInput.mediaId);
+    await bindRealtimeVideoInput(tab, payload.videoInput.mediaId, payload.mode);
     console.info(`[FlowGraph Sync] videoInput PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
       projectId: payload.projectId,
       mediaId: payload.videoInput.mediaId,
@@ -2519,10 +2519,12 @@ async function bindRealtimeEndImage(
 async function bindRealtimeVideoInput(
   tab: chrome.tabs.Tab,
   mediaId: string,
+  mode?: string,
 ): Promise<{ ok: true; mediaId: string }> {
   if (tab.id === undefined || !mediaId) {
     throw bridgeError('INVALID_VALUE', 'Extend/Edit Video requires an exact mediaId.', false);
   }
+  const projectUrl = (tab.url ?? '').replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, '');
   await ensureDesktopViewport(tab);
   await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
   const target: chrome.debugger.Debuggee = { tabId: tab.id };
@@ -2552,50 +2554,43 @@ async function bindRealtimeVideoInput(
     attached = true;
     await ensureInputReachable(target);
 
-    // Locate the video tile in gallery and click its "Thêm vào câu lệnh" (add_2) menu action
-    const tileMore = await evaluate<{ ok: boolean; x?: number; y?: number; reason?: string }>(`((mediaId) => {
-      const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
-      for (const tile of tiles) {
-        const hasId = tile.outerHTML.includes(mediaId) || Array.from(tile.querySelectorAll('img, video')).some(el => (el.src || '').includes(mediaId));
-        if (hasId || tiles.length === 1) {
-          const btn = tile.querySelector('button.more-vert-button') || tile.querySelector('button[aria-haspopup="menu"]') || Array.from(tile.querySelectorAll('button')).find(b => (b.innerText||'').includes('more_vert'));
-          if (btn) {
-            const r = btn.getBoundingClientRect();
-            return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-          }
-        }
-      }
-      // If exact tile attribute not found, check the first video tile
-      const firstTile = tiles[0];
-      if (firstTile) {
-        const btn = firstTile.querySelector('button.more-vert-button') || firstTile.querySelector('button[aria-haspopup="menu"]') || Array.from(firstTile.querySelectorAll('button')).find(b => (b.innerText||'').includes('more_vert'));
+    // Navigate directly to the video's editor URL: /edit/<mediaId>
+    // This allows exact, deterministic binding of the requested mediaId even if the
+    // gallery tile doesn't embed the UUID in its DOM.
+    const editUrl = `${projectUrl}/edit/${mediaId}`;
+    await chrome.debugger.sendCommand(target, 'Page.navigate', { url: editUrl }).catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    // In /edit/<mediaId> editor, the video is ALREADY the active canvas media!
+    // The editor has an "Add clip" / "add_2" button for Extend Forward, or directly
+    // edits the prompt ("Mô tả cách chỉnh sửa video này…") for Edit Video.
+    const editSetup = await evaluate<{ ok: boolean; x?: number; y?: number; mode: string }>(`((mode) => {
+      const isExtend = mode === 'Extend Forward';
+      if (isExtend) {
+        const btn = Array.from(document.querySelectorAll('button')).find(b => {
+          const txt = (b.innerText||'').trim();
+          const aria = (b.getAttribute('aria-label')||'').trim();
+          return aria === 'Add clip' || txt === 'add_2' || (b.querySelector('mat-icon, i')?.innerText || '') === 'add_2';
+        });
         if (btn) {
           const r = btn.getBoundingClientRect();
-          return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+          return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), mode };
         }
       }
-      return { ok: false, reason: 'tile-not-found' };
-    })(${JSON.stringify(mediaId)})`);
+      return { ok: true, mode };
+    })(${JSON.stringify(mode)})`);
 
-    if (tileMore.ok && tileMore.x !== undefined && tileMore.y !== undefined) {
-      await clickAt(tileMore.x, tileMore.y);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      const addItem = await evaluate<{ ok: boolean; x?: number; y?: number }>(`(() => {
-        const items = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
-        const target = items.find(b => (b.innerText||'').includes('Thêm vào câu lệnh') || (b.innerText||'').includes('add_2'));
-        if (target) {
-          const r = target.getBoundingClientRect();
-          return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
-        }
-        return { ok: false };
-      })()`);
-
-      if (addItem.ok && addItem.x !== undefined && addItem.y !== undefined) {
-        await clickAt(addItem.x, addItem.y);
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
+    if (editSetup.ok && editSetup.x !== undefined && editSetup.y !== undefined) {
+      await clickAt(editSetup.x, editSetup.y);
+      await new Promise((resolve) => setTimeout(resolve, 800));
     }
+
+    // STRICT VERIFICATION: Verify that we are indeed in the editor for the EXACT mediaId requested
+    const hereUrl = await evaluate<string>('location.href');
+    if (!hereUrl || !hereUrl.includes(`/edit/${mediaId}`)) {
+      throw bridgeError('MEDIA_FAILED', `Flow did not navigate to editor for video ${mediaId} (current: ${hereUrl}).`, true);
+    }
+
     return { ok: true, mediaId };
   } finally {
     if (attached) await chrome.debugger.detach(target).catch(() => undefined);
