@@ -9,6 +9,7 @@ import { ImageToVideoExecutor } from './ImageToVideoExecutor';
 import { TextToVideoExecutor } from './TextToVideoExecutor';
 import { InterpolationExecutor } from './InterpolationExecutor';
 import { ReferenceVideoExecutor } from './ReferenceVideoExecutor';
+import { ExtendVideoExecutor } from './ExtendVideoExecutor';
 import { DownloadExecutor } from './DownloadExecutor';
 import { PollManager } from '../PollManager';
 
@@ -19,6 +20,7 @@ export const RUNTIME_SUPPORTED_KINDS: ReadonlySet<string> = new Set([
   't2v',
   'interpolation',
   'reference',
+  'extend',
   'download',
 ]);
 
@@ -31,6 +33,7 @@ export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager)
     new TextToVideoExecutor({ adapter, poller }),
     new InterpolationExecutor({ adapter, poller }),
     new ReferenceVideoExecutor({ adapter, poller }),
+    new ExtendVideoExecutor({ adapter, poller }),
     new DownloadExecutor({ adapter }),
   ]) {
     executors.set(executor.kind, executor);

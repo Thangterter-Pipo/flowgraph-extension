@@ -185,7 +185,7 @@ describe('WorkflowRuntime', () => {
   it('rejects unsupported node kinds at validation', async () => {
     const adapter = mockAdapter();
     const runtime = new WorkflowRuntime(adapter);
-    const report = runtime.validate([spec('extend', '9', {})], [], PROJECT);
+    const report = runtime.validate([spec('upscale', '9', {})], [], PROJECT);
     expect(report.valid).toBe(false);
     expect(report.errors.some((issue) => issue.code === 'UNSUPPORTED_NODE')).toBe(true);
   });

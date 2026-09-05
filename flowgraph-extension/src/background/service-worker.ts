@@ -988,6 +988,14 @@ async function syncAndVerifyBeforeGenerate(
       count: payload.imageRefs.length,
     });
   }
+  if (payload.videoInput?.mediaId) {
+    const startedAt = Date.now();
+    await bindRealtimeVideoInput(tab, payload.videoInput.mediaId);
+    console.info(`[FlowGraph Sync] videoInput PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
+      projectId: payload.projectId,
+      mediaId: payload.videoInput.mediaId,
+    });
+  }
   await applyWrites(settingWrites);
   if (promptWrite) await applyWrites([promptWrite]);
   return { limitations };
@@ -2501,6 +2509,92 @@ async function bindRealtimeEndImage(
     }
     if (!(await evaluate<boolean>(endBoundExpression))) {
       throw bridgeError('MEDIA_FAILED', `Flow did not bind ${mediaId} as the End Frame.`, true);
+    }
+    return { ok: true, mediaId };
+  } finally {
+    if (attached) await chrome.debugger.detach(target).catch(() => undefined);
+  }
+}
+
+async function bindRealtimeVideoInput(
+  tab: chrome.tabs.Tab,
+  mediaId: string,
+): Promise<{ ok: true; mediaId: string }> {
+  if (tab.id === undefined || !mediaId) {
+    throw bridgeError('INVALID_VALUE', 'Extend/Edit Video requires an exact mediaId.', false);
+  }
+  await ensureDesktopViewport(tab);
+  await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
+  const target: chrome.debugger.Debuggee = { tabId: tab.id };
+  let attached = false;
+  const evaluate = async <T>(expression: string): Promise<T> => {
+    const response = await chrome.debugger.sendCommand(target, 'Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    }) as { result?: { value?: T }; exceptionDetails?: { text?: string } };
+    if (response.exceptionDetails) throw bridgeError('UI_NOT_READY', response.exceptionDetails.text ?? 'Flow DOM evaluation failed.', true);
+    return response.result?.value as T;
+  };
+  const clickAt = async (x: number, y: number) => {
+    await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
+      type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    await chrome.debugger.sendCommand(target, 'Input.dispatchMouseEvent', {
+      type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1,
+    });
+  };
+
+  try {
+    await chrome.debugger.attach(target, '1.3');
+    attached = true;
+    await ensureInputReachable(target);
+
+    // Locate the video tile in gallery and click its "Thêm vào câu lệnh" (add_2) menu action
+    const tileMore = await evaluate<{ ok: boolean; x?: number; y?: number; reason?: string }>(`((mediaId) => {
+      const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+      for (const tile of tiles) {
+        const hasId = tile.outerHTML.includes(mediaId) || Array.from(tile.querySelectorAll('img, video')).some(el => (el.src || '').includes(mediaId));
+        if (hasId || tiles.length === 1) {
+          const btn = tile.querySelector('button.more-vert-button') || tile.querySelector('button[aria-haspopup="menu"]') || Array.from(tile.querySelectorAll('button')).find(b => (b.innerText||'').includes('more_vert'));
+          if (btn) {
+            const r = btn.getBoundingClientRect();
+            return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+          }
+        }
+      }
+      // If exact tile attribute not found, check the first video tile
+      const firstTile = tiles[0];
+      if (firstTile) {
+        const btn = firstTile.querySelector('button.more-vert-button') || firstTile.querySelector('button[aria-haspopup="menu"]') || Array.from(firstTile.querySelectorAll('button')).find(b => (b.innerText||'').includes('more_vert'));
+        if (btn) {
+          const r = btn.getBoundingClientRect();
+          return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        }
+      }
+      return { ok: false, reason: 'tile-not-found' };
+    })(${JSON.stringify(mediaId)})`);
+
+    if (tileMore.ok && tileMore.x !== undefined && tileMore.y !== undefined) {
+      await clickAt(tileMore.x, tileMore.y);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const addItem = await evaluate<{ ok: boolean; x?: number; y?: number }>(`(() => {
+        const items = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
+        const target = items.find(b => (b.innerText||'').includes('Thêm vào câu lệnh') || (b.innerText||'').includes('add_2'));
+        if (target) {
+          const r = target.getBoundingClientRect();
+          return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+        }
+        return { ok: false };
+      })()`);
+
+      if (addItem.ok && addItem.x !== undefined && addItem.y !== undefined) {
+        await clickAt(addItem.x, addItem.y);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
     return { ok: true, mediaId };
   } finally {

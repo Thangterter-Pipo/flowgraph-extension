@@ -688,9 +688,10 @@ Chỉ làm sau khi V1 pipeline thật PASS.
 - [x] Live 2 runs verified (2026-09-05): Run 1 `[fb3650ad, 12bd87d1]→b5c33c78` (54.8s), Run 2 reversed `[12bd87d1, fb3650ad]→e350d08d` (50.0s). Evidence: `flowgraph-extension/evidence/flowgraph_v1/reference_live_runs_2026-09-05.json`.
 
 ## FG-1204 — Extend Video
-- [ ] Video input.
-- [ ] Prompt input.
-- [ ] Real extension request.
+- [x] Video input.
+- [x] Prompt input.
+- [x] Real extension request.
+- [x] Live 2 runs verified (2026-09-05): Run 1 Extend Forward `b5c33c78→f1e6ab01` (83.1s), Run 2 Edit Video `e350d08d→321a8ee2` (108.3s). Evidence: `flowgraph-extension/evidence/flowgraph_v1/extend_live_runs_2026-09-05.json`.
 
 ## FG-1205 — Upscale
 - [ ] Image upscale 2K/4K theo runtime support.
