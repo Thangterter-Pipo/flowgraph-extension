@@ -240,7 +240,7 @@ export const palette: PaletteSpec[] = [
     subtitle: 'Inject existing project media',
     tone: 'blue',
     group: 'Utility',
-    config: { mediaId: '', mediaType: 'IMAGE' },
+    config: { mediaId: '', mediaType: 'IMAGE', projectId: '' },
   },
   {
     kind: 'imageInput',
@@ -248,7 +248,7 @@ export const palette: PaletteSpec[] = [
     subtitle: 'Inject existing project image',
     tone: 'blue',
     group: 'Utility',
-    config: { mediaId: '' },
+    config: { mediaId: '', mediaType: 'IMAGE', projectId: '' },
   },
   {
     kind: 'videoInput',
@@ -256,7 +256,7 @@ export const palette: PaletteSpec[] = [
     subtitle: 'Inject existing project video',
     tone: 'blue',
     group: 'Utility',
-    config: { mediaId: '' },
+    config: { mediaId: '', mediaType: 'VIDEO', projectId: '' },
   },
   {
     kind: 'preview',
