@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "live_realtime_sync",
+  "recordedDate": "2026-09-04",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "field": "referenceMedia",
+  "result": "PASS",
+  "flowgraphToFlow": {
+    "actionTimestamp": "2026-09-03T20:33:19.120Z",
+    "orderedMediaIds": [
+      "02f79c21-b669-41a8-81a4-85d3224d722d",
+      "18f42f76-3b2e-4192-98b9-4e03427bea8e"
+    ],
+    "sourceMediaFound": [true, true],
+    "sourceMediaVisible": [true, true],
+    "appliedInExactOrder": true,
+    "latencyMs": 6059
+  },
+  "flowToFlowgraph": {
+    "actionTimestamp": "2026-09-03T20:33:33.030Z",
+    "physicalUserRemoval": true,
+    "removedMediaId": "18f42f76-3b2e-4192-98b9-4e03427bea8e",
+    "remainingFlowMediaIds": [
+      "02f79c21-b669-41a8-81a4-85d3224d722d"
+    ],
+    "remainingStudioMediaIds": [
+      "02f79c21-b669-41a8-81a4-85d3224d722d"
+    ],
+    "successLogCount": 1,
+    "latencyMs": 119
+  },
+  "checks": {
+    "semanticComponentsTab": true,
+    "exactRoleOptionByMediaId": true,
+    "orderedListPreserved": true,
+    "startEndFrameRootsExcluded": true,
+    "temporaryWorkflowRestored": true,
+    "temporaryFlowReferencesCleared": true
+  }
+}

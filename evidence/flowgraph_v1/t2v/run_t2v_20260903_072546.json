@@ -1,0 +1,43 @@
+{
+  "runId": "e1a2ee5f-8dfb-440b-8f7c-30726b64176c",
+  "runLabel": "T2V live run 3 (fresh media)",
+  "kind": "t2v",
+  "status": "success",
+  "startedAt": "2026-09-03T07:25:46.214Z",
+  "finishedAt": "2026-09-03T07:26:34.279Z",
+  "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+  "account": "<REDACTED_EMAIL>",
+  "workflow": {
+    "schemaVersion": 3,
+    "name": "FlowGraph T2V Probe",
+    "nodes": [
+      { "id": "p1", "kind": "prompt", "status": "success", "title": "Prompt" },
+      { "id": "t2v", "kind": "t2v", "status": "success", "title": "Text to Video", "model": "Veo 3.1 - Fast", "duration": "8 seconds", "resolution": "720p", "serviceTier": "SERVICE_TIER_INTERMEDIATE" },
+      { "id": "dl", "kind": "download", "status": "success", "title": "Download" }
+    ],
+    "edges": [
+      { "id": "e-p-t", "source": "p1", "target": "t2v" },
+      { "id": "e-t-d", "source": "t2v", "target": "dl" }
+    ]
+  },
+  "media": {
+    "type": "video",
+    "mediaId": "d13f11f0-f42e-4c51-8ba8-1741e0dd7dc9",
+    "mimeType": "video/mp4"
+  },
+  "download": {
+    "status": "success",
+    "filename": "flowgraph-output (6).mp4",
+    "filePath": "C:\\Users\\thang\\Downloads\\flowgraph-output (6).mp4",
+    "bytes": 3056616,
+    "mimeType": "video/mp4",
+    "isValidMp4": true
+  },
+  "security": {
+    "captchaBypassed": false,
+    "tokenCopied": false,
+    "cookieCopied": false,
+    "fakeMedia": false
+  },
+  "evidenceCapturedAt": "2026-09-03T07:26:34Z"
+}

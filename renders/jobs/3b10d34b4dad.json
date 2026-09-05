@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "projectId": "render-v2-test",
+  "projectTitle": "Render V2 Test",
+  "timeline": [
+    {
+      "id": "v1",
+      "projectId": "render-v2-test",
+      "type": "VIDEO",
+      "name": "Picture",
+      "clips": [
+        {
+          "id": "clip-a",
+          "trackId": "v1",
+          "startSeconds": 0,
+          "durationSeconds": 2,
+          "trimInSeconds": 0,
+          "transitionOut": "DISSOLVE",
+          "source": {
+            "localPath": "E:\\Flow_veo\\flowgraph-extension\\scripts\\v2-a.mp4"
+          }
+        },
+        {
+          "id": "clip-b",
+          "trackId": "v1",
+          "startSeconds": 1.5,
+          "durationSeconds": 2,
+          "trimInSeconds": 0,
+          "transitionIn": "DISSOLVE",
+          "source": {
+            "localPath": "E:\\Flow_veo\\flowgraph-extension\\scripts\\v2-b.mp4"
+          }
+        }
+      ]
+    },
+    {
+      "id": "m1",
+      "projectId": "render-v2-test",
+      "type": "MUSIC",
+      "name": "Music",
+      "clips": [
+        {
+          "id": "music-1",
+          "trackId": "m1",
+          "startSeconds": 0,
+          "durationSeconds": 3.5,
+          "volume": 0.4,
+          "fadeInSeconds": 0.25,
+          "fadeOutSeconds": 0.5,
+          "source": {
+            "localPath": "E:\\Flow_veo\\flowgraph-extension\\scripts\\v2-tone.wav"
+          }
+        }
+      ]
+    },
+    {
+      "id": "s1",
+      "projectId": "render-v2-test",
+      "type": "SUBTITLE",
+      "name": "Subtitle",
+      "clips": [
+        {
+          "id": "sub-1",
+          "trackId": "s1",
+          "startSeconds": 0.4,
+          "durationSeconds": 1.2,
+          "text": "FlowGraph Render V2"
+        },
+        {
+          "id": "sub-2",
+          "trackId": "s1",
+          "startSeconds": 2.0,
+          "durationSeconds": 1.0,
+          "text": "Audio + xfade + subtitle"
+        }
+      ]
+    }
+  ],
+  "settings": {
+    "width": 1280,
+    "height": 720,
+    "frameRate": 24,
+    "codec": "H264",
+    "bitrate": "4M",
+    "includeAudio": true,
+    "burnSubtitles": true,
+    "container": "mp4"
+  }
+}

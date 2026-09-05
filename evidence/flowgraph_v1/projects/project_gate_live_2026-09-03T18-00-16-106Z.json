@@ -1,0 +1,97 @@
+{
+  "stamp": "2026-09-03T18:00:16.108Z",
+  "steps": [
+    {
+      "step": "baseline",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow/project/729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+        "title": "Google Flow - FlowGraph V1 Live 2026-09-02"
+      },
+      "studio": {
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "title": "FlowGraph Studio",
+        "locked": false,
+        "gateText": null,
+        "runDisabled": false,
+        "account": {
+          "state": "CONNECTED",
+          "email": "<REDACTED_EMAIL>",
+          "name": "Môn Digital Qua",
+          "expiresAt": "2026-09-04T07:07:26.000Z"
+        },
+        "flow": {
+          "state": "READY",
+          "url": "https://labs.google/fx/vi/tools/flow/project/729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+          "title": "Google Flow - FlowGraph V1 Live 2026-09-02",
+          "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5"
+        },
+        "activeProject": {
+          "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-03T16:59:58.712Z"
+        }
+      }
+    },
+    {
+      "step": "navigate-home",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow",
+        "title": "Google Flow – Studio sáng tạo AI cho video, hình ảnh và công cụ tuỳ chỉnh"
+      },
+      "studio": {
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "title": "FlowGraph Studio",
+        "locked": true,
+        "gateText": "PROJECT REQUIRED\n\nSelect or create a Google Flow project to unlock the workspace.\n\nFlowGraph V1 Live 2026-09-02\nRefresh Flow",
+        "runDisabled": true,
+        "account": {
+          "state": "CONNECTED",
+          "email": "<REDACTED_EMAIL>",
+          "name": "Môn Digital Qua",
+          "expiresAt": "2026-09-04T07:07:26.000Z"
+        },
+        "flow": {
+          "state": "PROJECT_REQUIRED",
+          "url": "https://labs.google/fx/vi/tools/flow",
+          "title": "Google Flow – Studio sáng tạo AI cho video, hình ảnh và công cụ tuỳ chỉnh"
+        },
+        "activeProject": {
+          "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-03T16:59:58.712Z"
+        }
+      }
+    },
+    {
+      "step": "navigate-project",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow/project/23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+        "title": "Google Flow - FlowGraph V1 Live 2026-09-02"
+      },
+      "studio": {
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "title": "FlowGraph Studio",
+        "locked": false,
+        "gateText": null,
+        "runDisabled": false,
+        "account": {
+          "state": "CONNECTED",
+          "email": "<REDACTED_EMAIL>",
+          "name": "Môn Digital Qua",
+          "expiresAt": "2026-09-04T07:07:26.000Z"
+        },
+        "flow": {
+          "state": "READY",
+          "url": "https://labs.google/fx/vi/tools/flow/project/23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "title": "Google Flow - FlowGraph V1 Live 2026-09-02",
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32"
+        },
+        "activeProject": {
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "projectName": "labs.google/fx/vi/tools/flow/project/23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "selectedAt": "2026-09-03T18:00:34.881Z"
+        }
+      }
+    }
+  ]
+}

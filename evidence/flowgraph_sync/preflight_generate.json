@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "live_generation_preflight",
+  "recordedDate": "2026-09-04",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "result": "PASS",
+  "scenario": "T2V generation started while stale Start and End frame bindings both referenced a4303113-5fce-43d1-8c1d-f261bbb32ebf.",
+  "preflightOrder": [
+    "mode",
+    "clearStaleFrameState",
+    "bindRequiredMedia",
+    "settings",
+    "prompt"
+  ],
+  "checks": {
+    "staleStartFrameCleared": true,
+    "staleEndFrameCleared": true,
+    "semanticDomActionsOnly": true,
+    "projectGuardHeld": true,
+    "generationStarted": true,
+    "pageNavigationOccurred": false
+  },
+  "run": {
+    "runId": "cb4dc2c1-82fe-4794-8c86-bd9e195b6c73",
+    "startedAt": "2026-09-03T19:48:35.684Z",
+    "finishedAt": "2026-09-03T19:49:14.690Z",
+    "elapsedSeconds": 37,
+    "resultMediaId": "cebda58e-f8eb-47b9-b6af-d303f35917ae",
+    "resultType": "VIDEO",
+    "download": {
+      "fileName": "flowgraph-output (7).mp4",
+      "sizeBytes": 840997,
+      "result": "PASS"
+    }
+  }
+}

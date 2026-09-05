@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "live_realtime_sync",
+  "recordedDate": "2026-09-04",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "direction": "GOOGLE_FLOW_TO_FLOWGRAPH",
+  "field": "prompt",
+  "result": "PASS",
+  "latencyMs": 283,
+  "checks": {
+    "physicalUserEdit": true,
+    "trustedBeforeInputCaptured": true,
+    "studioActiveNodeUpdated": true,
+    "untrustedEditableMutationIgnored": true
+  },
+  "note": "Google Flow's Slate editor can emit trusted beforeinput without a useful input event; the production observer handles that path.",
+  "security": {
+    "tokensStored": false,
+    "cookiesStored": false,
+    "captchaBypass": false
+  }
+}

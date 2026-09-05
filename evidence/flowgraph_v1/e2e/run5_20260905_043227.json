@@ -1,0 +1,48 @@
+{
+  "runId": "38e0eda0",
+  "runLabel": "Run 5 (clean full E2E pass 1 of 3)",
+  "status": "success",
+  "startedAt": "2026-09-04T21:30:22.564Z",
+  "finishedAt": "2026-09-04T21:32:27.970Z",
+  "elapsedSeconds": 125,
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "projectName": "FlowGraph V1 Live 2026-09-02",
+  "account": "<REDACTED_EMAIL>",
+  "workflowName": "FlowGraph V1 Pipeline",
+  "cacheBypassed": true,
+  "nodes": [
+    { "kind": "prompt", "status": "success", "nodeId": "1" },
+    {
+      "kind": "t2i",
+      "status": "success",
+      "nodeId": "2",
+      "mediaId": "c8253b91-cadc-4c9b-b604-948a09de42f9",
+      "mimeType": "image/jpeg",
+      "model": "Nano Banana 2",
+      "aspectRatio": "16:9"
+    },
+    {
+      "kind": "i2v",
+      "status": "success",
+      "nodeId": "3",
+      "mediaId": "7f06b147-2fa5-458a-a89a-014f2f4488d7",
+      "upstreamMediaId": "c8253b91-cadc-4c9b-b604-948a09de42f9",
+      "mimeType": "video/mp4",
+      "model": "Veo Omni Flash",
+      "settings": "720p / 8s"
+    },
+    {
+      "kind": "download",
+      "status": "success",
+      "nodeId": "4",
+      "mediaId": "7f06b147-2fa5-458a-a89a-014f2f4488d7",
+      "downloadId": 33,
+      "filename": "flowgraph-output (10).mp4",
+      "bytes": "8380117",
+      "artifactPath": "C:\\Users\\thang\\Downloads\\flowgraph-output (10).mp4",
+      "state": "complete",
+      "ftypBox": "00 00 00 20 66 74 79 70 69 73 6f 6d"
+    }
+  ],
+  "evidenceCapturedAt": "2026-09-05T04:32:27+07:00"
+}
