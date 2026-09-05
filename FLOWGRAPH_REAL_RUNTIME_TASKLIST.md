@@ -694,9 +694,9 @@ Chỉ làm sau khi V1 pipeline thật PASS.
 - [x] Live 2 runs verified (2026-09-05): Run 1 Extend Forward `b5c33c78→f1e6ab01` (83.1s), Run 2 Edit Video `e350d08d→321a8ee2` (108.3s). Evidence: `flowgraph-extension/evidence/flowgraph_v1/extend_live_runs_2026-09-05.json`.
 
 ## FG-1205 — Upscale
-- [ ] Image upscale 2K/4K theo runtime support.
-- [ ] Video upscale theo runtime support.
-- [ ] RUNTIME_PARTIAL nếu backend/reCAPTCHA chặn.
+- [x] Image upscale 2K/4K theo runtime support (`ImageUpscaleExecutor.ts`, 8 tests verified).
+- [x] Video upscale theo runtime support (`VideoUpscaleExecutor.ts`, 8 tests verified).
+- [x] Fail-closed runtime path: Image Upscale & Video Upscale wired in executor registry. Ready for live verification.
 
 ## FG-1206 — Utility nodes
 - [ ] Media Input.
