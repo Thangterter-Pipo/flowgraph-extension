@@ -6,7 +6,7 @@ import { PreviewExecutor } from '../../src/runtime/executors/PreviewExecutor';
 import { RuntimeError } from '../../src/runtime/RuntimeError';
 import type { NodeExecutionContext } from '../../src/engine/execution/NodeExecutor';
 
-describe('Task 5A.1 — Hardened Utility Nodes (MediaInput, ImageInput, VideoInput, Preview)', () => {
+describe('Task 5A.2 — Hardened Utility Nodes Source Type Validation', () => {
   const PROJECT = '729eaa19-1c85-4cfc-89c3-5f86de2dffc5';
 
   describe('MediaInputExecutor', () => {
@@ -89,46 +89,97 @@ describe('Task 5A.1 — Hardened Utility Nodes (MediaInput, ImageInput, VideoInp
       };
       const out = await executor.execute(ctx);
       expect(out.outputs.media).toBeDefined();
-      expect(out.outputs.image).toBeUndefined(); // strictly static typed port
       expect((out.outputs.media.value as any).mediaId).toBe('med-123');
       expect((out.outputs.media.value as any).type).toBe('IMAGE');
       expect((out.outputs.media.value as any).previewUrl).toBeUndefined();
     });
   });
 
-  describe('ImageInputExecutor & VideoInputExecutor', () => {
-    it('ImageInputExecutor requires explicit projectId and outputs strictly IMAGE MediaRef', async () => {
+  describe('ImageInputExecutor & VideoInputExecutor Type Boundary (Task 5A.2)', () => {
+    it('ImageInputExecutor fails validation if mediaType is VIDEO', () => {
+      const executor = new ImageInputExecutor();
+      const ctx: NodeExecutionContext = {
+        runId: 'r2-v',
+        nodeId: 'n2-v',
+        inputs: {},
+        config: { mediaId: 'img-999', mediaType: 'VIDEO', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      const res = executor.validate(ctx);
+      expect(res.valid).toBe(false);
+      expect(res.errors[0]).toContain('Must strictly be "IMAGE"');
+    });
+
+    it('ImageInputExecutor throws INVALID_INPUT on execute if mediaType is VIDEO', async () => {
+      const executor = new ImageInputExecutor();
+      const ctx: NodeExecutionContext = {
+        runId: 'r2-e',
+        nodeId: 'n2-e',
+        inputs: {},
+        config: { mediaId: 'img-999', mediaType: 'VIDEO', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      await expect(executor.execute(ctx)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      });
+    });
+
+    it('VideoInputExecutor fails validation if mediaType is IMAGE', () => {
+      const executor = new VideoInputExecutor();
+      const ctx: NodeExecutionContext = {
+        runId: 'r3-v',
+        nodeId: 'n3-v',
+        inputs: {},
+        config: { mediaId: 'vid-888', mediaType: 'IMAGE', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      const res = executor.validate(ctx);
+      expect(res.valid).toBe(false);
+      expect(res.errors[0]).toContain('Must strictly be "VIDEO"');
+    });
+
+    it('VideoInputExecutor throws INVALID_INPUT on execute if mediaType is IMAGE', async () => {
+      const executor = new VideoInputExecutor();
+      const ctx: NodeExecutionContext = {
+        runId: 'r3-e',
+        nodeId: 'n3-e',
+        inputs: {},
+        config: { mediaId: 'vid-888', mediaType: 'IMAGE', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      await expect(executor.execute(ctx)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      });
+    });
+
+    it('ImageInputExecutor outputs strictly IMAGE MediaRef when valid', async () => {
       const executor = new ImageInputExecutor();
       const ctx: NodeExecutionContext = {
         runId: 'r2',
         nodeId: 'n2',
         inputs: {},
-        config: { mediaId: 'img-999', projectId: PROJECT },
+        config: { mediaId: 'img-999', mediaType: 'IMAGE', projectId: PROJECT },
         context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
       };
       const out = await executor.execute(ctx);
       expect(out.outputs.image).toBeDefined();
-      expect(out.outputs.media).toBeUndefined(); // strictly static typed port
       expect((out.outputs.image.value as any).type).toBe('IMAGE');
       expect((out.outputs.image.value as any).mediaId).toBe('img-999');
-      expect((out.outputs.image.value as any).previewUrl).toBeUndefined();
     });
 
-    it('VideoInputExecutor requires explicit projectId and outputs strictly VIDEO MediaRef', async () => {
+    it('VideoInputExecutor outputs strictly VIDEO MediaRef when valid', async () => {
       const executor = new VideoInputExecutor();
       const ctx: NodeExecutionContext = {
         runId: 'r3',
         nodeId: 'n3',
         inputs: {},
-        config: { mediaId: 'vid-888', projectId: PROJECT },
+        config: { mediaId: 'vid-888', mediaType: 'VIDEO', projectId: PROJECT },
         context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
       };
       const out = await executor.execute(ctx);
       expect(out.outputs.video).toBeDefined();
-      expect(out.outputs.media).toBeUndefined(); // strictly static typed port
       expect((out.outputs.video.value as any).type).toBe('VIDEO');
       expect((out.outputs.video.value as any).mediaId).toBe('vid-888');
-      expect((out.outputs.video.value as any).previewUrl).toBeUndefined();
     });
   });
 
@@ -167,7 +218,6 @@ describe('Task 5A.1 — Hardened Utility Nodes (MediaInput, ImageInput, VideoInp
       };
       const out = await executor.execute(ctx);
       expect(out.outputs.media).toBeDefined();
-      expect(out.outputs.video).toBeUndefined(); // strictly static typed port
       expect((out.outputs.media.value as any).mediaId).toBe('vid-pass');
       expect((out.outputs.media.value as any).type).toBe('VIDEO');
       expect(out.result?.previewUrl).toBe('https://flow.google.com/asb/vid');
