@@ -8,14 +8,22 @@ export class ImageInputExecutor implements NodeExecutor {
 
   validate(context: NodeExecutionContext): ValidationResult {
     const mediaId = String(context.config.mediaId ?? '').trim();
+    const configProjectId = String(context.config.projectId ?? '').trim();
     const errors: string[] = [];
 
     if (!mediaId) {
       errors.push('Image Input requires a configured mediaId from the active project.');
     }
 
-    if (!context.context.activeProject.projectId) {
+    if (!configProjectId) {
+      errors.push('Image Input requires explicit projectId provenance in its configuration.');
+    }
+
+    const activeProject = context.context.activeProject.projectId;
+    if (!activeProject) {
       errors.push('Image Input requires an active project.');
+    } else if (configProjectId && configProjectId !== activeProject) {
+      errors.push(`Configured image projectId ${configProjectId} does not match active project ${activeProject}.`);
     }
 
     return { valid: errors.length === 0, errors };
@@ -28,33 +36,37 @@ export class ImageInputExecutor implements NodeExecutor {
       throw new RuntimeError('INVALID_INPUT', 'Image Input has no configured mediaId.', { nodeId: context.nodeId });
     }
 
-    const projectId = context.context.activeProject.projectId;
-    const configProjectId = String(context.config.projectId ?? projectId).trim();
-    if (configProjectId !== projectId) {
+    const activeProject = context.context.activeProject.projectId;
+    const configProjectId = String(context.config.projectId ?? '').trim();
+    if (!configProjectId) {
+      throw new RuntimeError('INVALID_INPUT', 'Image Input missing explicit projectId provenance.', { nodeId: context.nodeId });
+    }
+
+    if (configProjectId !== activeProject) {
       throw new RuntimeError(
         'PROJECT_ISOLATION',
-        `Configured image belongs to project ${configProjectId}, not the active project ${projectId}.`,
+        `Configured image belongs to project ${configProjectId}, not the active project ${activeProject}.`,
         { nodeId: context.nodeId },
       );
     }
 
+    // Do NOT store signed URLs in config — only transient runtime reference
     const ref = {
       mediaId,
-      projectId,
+      projectId: activeProject,
       type: 'IMAGE' as const,
-      previewUrl: context.config.previewUrl ? String(context.config.previewUrl) : undefined,
+      previewUrl: undefined,
     };
 
     const runtimeVal = mediaRefFromPayload(ref);
     return {
       outputs: {
         image: runtimeVal,
-        media: runtimeVal,
       },
       result: {
         type: 'image',
         mediaId,
-        previewUrl: ref.previewUrl ?? '',
+        previewUrl: '',
       },
     };
   }
