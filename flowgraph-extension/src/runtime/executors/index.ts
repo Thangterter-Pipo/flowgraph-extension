@@ -12,6 +12,10 @@ import { ReferenceVideoExecutor } from './ReferenceVideoExecutor';
 import { ExtendVideoExecutor } from './ExtendVideoExecutor';
 import { ImageUpscaleExecutor } from './ImageUpscaleExecutor';
 import { VideoUpscaleExecutor } from './VideoUpscaleExecutor';
+import { MediaInputExecutor } from './MediaInputExecutor';
+import { ImageInputExecutor } from './ImageInputExecutor';
+import { VideoInputExecutor } from './VideoInputExecutor';
+import { PreviewExecutor } from './PreviewExecutor';
 import { DownloadExecutor } from './DownloadExecutor';
 import { PollManager } from '../PollManager';
 
@@ -25,6 +29,10 @@ export const RUNTIME_SUPPORTED_KINDS: ReadonlySet<string> = new Set([
   'extend',
   'imageUpscale',
   'videoUpscale',
+  'mediaInput',
+  'imageInput',
+  'videoInput',
+  'preview',
   'download',
 ]);
 
@@ -40,6 +48,10 @@ export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager)
     new ExtendVideoExecutor({ adapter, poller }),
     new ImageUpscaleExecutor({ adapter }),
     new VideoUpscaleExecutor({ adapter, poller }),
+    new MediaInputExecutor(),
+    new ImageInputExecutor(),
+    new VideoInputExecutor(),
+    new PreviewExecutor(),
     new DownloadExecutor({ adapter }),
   ]) {
     executors.set(executor.kind, executor);
@@ -48,5 +60,6 @@ export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager)
 }
 
 export { RUNTIME_SUPPORTED_KINDS as supportedKinds };
-export { ImageUpscaleExecutor, VideoUpscaleExecutor };
+export { ImageUpscaleExecutor, VideoUpscaleExecutor, MediaInputExecutor, ImageInputExecutor, VideoInputExecutor, PreviewExecutor };
+
 

@@ -701,11 +701,12 @@ Chỉ làm sau khi V1 pipeline thật PASS.
 - [x] RUNTIME_PARTIAL: Giữ trạng thái trung thực do provider yêu cầu trusted UI / reCAPTCHA challenge.
 
 ## FG-1206 — Utility nodes
-- [ ] Media Input.
-- [ ] Image Input.
-- [ ] Video Input.
-- [ ] Preview.
-- [ ] Download.
+- [x] Media Input (`MediaInputExecutor.ts`, project isolation + typed MediaRef).
+- [x] Image Input (`ImageInputExecutor.ts`, strictly IMAGE MediaRef).
+- [x] Video Input (`VideoInputExecutor.ts`, strictly VIDEO MediaRef).
+- [x] Preview (`PreviewExecutor.ts`, pass-through MediaRef + previewUrl).
+- [x] Download (`DownloadExecutor.ts`, already verified & audit passed).
+- [ ] Live 2 runs verification: Image Input → Preview → Download & Video Input → Preview → Download.
 
 ---
 
