@@ -1,6 +1,6 @@
 # FlowGraph Extension — Node-Based Workflow Builder for Google Flow (Veo)
 
-**FlowGraph** là một Chrome Extension (Manifest V3) giao diện Node-based Visual Workflow Builder dành cho **Google Flow & Veo AI Studio** (`labs.google/fx/tools/flow`). 
+**FlowGraph** là một Chrome Extension (Manifest ) giao diện Node-based Visual Workflow Builder dành cho **Google Flow & Veo AI Studio** (`labs.google/fx/tools/flow`). 
 
 Dự án giúp xây dựng, quản lý và tự động hóa các chuỗi xử lý sinh hình ảnh, video (Text-to-Video, Image-to-Video, Video Extend, Image Upsample, Character Consistency) theo dạng sơ đồ khối trực quan.
 
@@ -29,7 +29,6 @@ flowgraph-extension/
 │   └── sidepanel/            # Giao diện SidePanel Manifest V3
 ├── manifest.json             # Extension Manifest V3 Specification
 ├── packages/                 # Core Packages & Workflow Engine
-├── proxies/                  # Service Worker & Proxy Bridge Modules
 ├── scripts/                  # Build & Automation Scripts
 └── vite.config.ts            # Vite Build Configuration
 ```
@@ -56,5 +55,5 @@ npm run build
 ---
 
 ## 📄 Giấy Phép & Tác Giả
-- **Phát triển bởi**: Thangterter-Pipo & Papi AI Family
+- **Phát triển bởi**: Thangterter-Pipo
 - **Giấy phép**: MIT License
