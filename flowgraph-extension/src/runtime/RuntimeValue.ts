@@ -1,4 +1,5 @@
 // Runtime value model — normalized values flowing between node outputs and inputs (FG-0302).
+import type { RuntimeInputValue } from '../engine/execution/NodeExecutor';
 
 export type RuntimeValueType = 'text' | 'image' | 'video' | 'media' | 'number' | 'boolean' | 'json';
 
@@ -50,19 +51,37 @@ export function mediaRefFromPayload(media: Omit<RuntimeMediaRef, 'provider'> & {
   });
 }
 
-export function asText(value: RuntimeValue | undefined): string | undefined {
+export function asText(value: RuntimeInputValue | undefined): string | undefined {
   if (!value) return undefined;
-  if (value.type === 'text') return String(value.value);
+  const single = Array.isArray(value) ? value[0] : value;
+  if (single && single.type === 'text') return String(single.value);
   return undefined;
 }
 
-export function asMedia(value: RuntimeValue | undefined): RuntimeMediaRef | undefined {
+export function asMedia(value: RuntimeInputValue | undefined): RuntimeMediaRef | undefined {
   if (!value) return undefined;
-  if (value.type === 'image' || value.type === 'video' || value.type === 'media') {
-    const media = value.value as RuntimeMediaRef | null;
+  const single = Array.isArray(value) ? value[0] : value;
+  if (!single) return undefined;
+  if (single.type === 'image' || single.type === 'video' || single.type === 'media') {
+    const media = single.value as RuntimeMediaRef | null;
     if (media && typeof media === 'object' && 'mediaId' in media) return media;
   }
   return undefined;
+}
+
+export function asMediaList(value: RuntimeInputValue | undefined): RuntimeMediaRef[] {
+  if (!value) return [];
+  const items = Array.isArray(value) ? value : [value];
+  const result: RuntimeMediaRef[] = [];
+  for (const item of items) {
+    if (item.type === 'image' || item.type === 'video' || item.type === 'media') {
+      const media = item.value as RuntimeMediaRef | null;
+      if (media && typeof media === 'object' && 'mediaId' in media) {
+        result.push(media);
+      }
+    }
+  }
+  return result;
 }
 
 export function valueTypeOf(value: RuntimeValue): RuntimeValueType {
