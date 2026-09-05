@@ -1017,14 +1017,19 @@ async function syncAndVerifyBeforeGenerate(
 }
 
 async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMediaRef> {
+  const isUpscaleKind = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale';
+  if (isUpscaleKind) {
+    // Dedicated direct provider path for Image and Video Upscaling.
+    // Upscaling does not exist as a primary text prompt button in the composer;
+    // it executes via direct aisandbox endpoints with project-scoped media binding.
+    return generateApi(payload);
+  }
+
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
   const tabId = tab.id;
-  // Prompt validation: Nodes that generate new content require non-empty prompt.
-  // Upscale nodes (imageUpscale, videoUpscale, upscale) do NOT require prompt.
-  const isUpscaleKind = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale';
   const prompt = (payload.prompt ?? '').trim();
-  if (!prompt && !isUpscaleKind) {
+  if (!prompt) {
     throw bridgeError(
       'INVALID_INPUT',
       `Refusing to generate: the ${payload.kind ?? 'unknown'} node produced an empty prompt. `
