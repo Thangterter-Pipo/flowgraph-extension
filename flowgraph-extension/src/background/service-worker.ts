@@ -380,6 +380,8 @@ const ENDPOINT_BY_KIND: Record<string, string> = {
   interpolation: 'video:batchAsyncGenerateVideoStartAndEndImage',
   reference: 'video:batchAsyncGenerateVideoReferenceImages',
   upscale: 'video:batchAsyncGenerateVideoUpsampleVideo',
+  videoUpscale: 'video:batchAsyncGenerateVideoUpsampleVideo',
+  imageUpscale: 'flow/upsampleImage',
 };
 
 function endpointFor(payload: GeneratePayload): string {
@@ -410,9 +412,22 @@ function buildRequestPayload(payload: GeneratePayload): Record<string, unknown> 
       if (!refs.length) throw bridgeError('INVALID_INPUT', 'reference requires at least one image', false);
       return buildReferenceRequest(payload as GeneratePayload & { imageRefs: Array<{ mediaId: string; imageUsageType?: string }> }, ctx, batchId);
     }
-    case 'upscale': {
+    case 'upscale':
+    case 'videoUpscale': {
       if (!payload.videoInput) throw bridgeError('INVALID_INPUT', 'upscale requires a video input mediaId', false);
       return buildUpsampleRequest(payload as GeneratePayload & { videoInput: { mediaId: string } }, ctx, batchId);
+    }
+    case 'imageUpscale': {
+      const mediaId = payload.imageRefs?.[0]?.mediaId || (payload as any).mediaId;
+      if (!mediaId) throw bridgeError('INVALID_INPUT', 'imageUpscale requires an image mediaId', false);
+      let targetResolution = payload.targetResolution || 'UPSAMPLE_IMAGE_RESOLUTION_2K';
+      if (targetResolution === '2K') targetResolution = 'UPSAMPLE_IMAGE_RESOLUTION_2K';
+      if (targetResolution === '4K') targetResolution = 'UPSAMPLE_IMAGE_RESOLUTION_4K';
+      return {
+        mediaId,
+        targetResolution,
+        clientContext: ctx,
+      };
     }
     default:
       throw bridgeError('UNSUPPORTED_KIND', `Unsupported generation kind: ${payload.kind}`, false);
@@ -1005,13 +1020,11 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
   const tabId = tab.id;
-  // Never invent a prompt. Live run a82e1b01 proved why: node 3 had no prompt
-  // wired in, this fallback silently submitted a hard-coded "red paper boat"
-  // line, and Flow happily rendered it — so the pipeline would have reported
-  // success with a clip that has nothing to do with the graph. A missing prompt
-  // is a graph/runtime defect and must surface as one.
+  // Prompt validation: Nodes that generate new content require non-empty prompt.
+  // Upscale nodes (imageUpscale, videoUpscale, upscale) do NOT require prompt.
+  const isUpscaleKind = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale';
   const prompt = (payload.prompt ?? '').trim();
-  if (!prompt) {
+  if (!prompt && !isUpscaleKind) {
     throw bridgeError(
       'INVALID_INPUT',
       `Refusing to generate: the ${payload.kind ?? 'unknown'} node produced an empty prompt. `

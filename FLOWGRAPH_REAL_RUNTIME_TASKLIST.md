@@ -696,7 +696,8 @@ Chỉ làm sau khi V1 pipeline thật PASS.
 ## FG-1205 — Upscale
 - [x] Image upscale 2K/4K theo runtime support (`ImageUpscaleExecutor.ts`, 8 tests verified).
 - [x] Video upscale theo runtime support (`VideoUpscaleExecutor.ts`, 8 tests verified).
-- [x] Fail-closed runtime path: Image Upscale & Video Upscale wired in executor registry. Ready for live verification.
+- [x] Dedicated service-worker upscale bridge routes & prompt-free validation wired.
+- [ ] RUNTIME_PARTIAL: Chờ kết quả Live Verification trên Google Flow session thật.
 
 ## FG-1206 — Utility nodes
 - [ ] Media Input.
