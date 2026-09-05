@@ -265,25 +265,29 @@ describe('Task 5A.3 — Hardened Utility Nodes Config Materialization & Mandator
       expect(res.valid).toBe(true);
     });
 
-    it('passes through upstream MediaRef strictly via typed media port', async () => {
-      const executor = new PreviewExecutor();
+    it('passes through upstream MediaRef strictly via typed media port and resolves transient previewUrl', async () => {
+      const mockAdapter = {
+        resolvePreviewUrl: vi.fn().mockResolvedValueOnce('https://flow.google.com/asb/dynamic-resolved-token'),
+      } as any;
+      const executor = new PreviewExecutor({ adapter: mockAdapter });
       const ctx: NodeExecutionContext = {
         runId: 'r5',
         nodeId: 'n5',
         inputs: {
           media: {
             type: 'video',
-            value: { mediaId: 'vid-pass', projectId: PROJECT, type: 'VIDEO', previewUrl: 'https://flow.google.com/asb/vid' },
+            value: { mediaId: 'vid-pass', projectId: PROJECT, type: 'VIDEO' }, // no previewUrl
           },
         },
         config: {},
         context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
       };
       const out = await executor.execute(ctx);
+      expect(mockAdapter.resolvePreviewUrl).toHaveBeenCalledWith('vid-pass', PROJECT);
       expect(out.outputs.media).toBeDefined();
       expect((out.outputs.media.value as any).mediaId).toBe('vid-pass');
       expect((out.outputs.media.value as any).type).toBe('VIDEO');
-      expect(out.result?.previewUrl).toBe('https://flow.google.com/asb/vid');
+      expect(out.result?.previewUrl).toBe('https://flow.google.com/asb/dynamic-resolved-token');
     });
 
     it('enforces project isolation on execute', async () => {
