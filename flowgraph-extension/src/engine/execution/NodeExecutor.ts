@@ -9,10 +9,12 @@ export interface ValidationResult {
   errors: string[];
 }
 
+export type RuntimeInputValue = RuntimeValue | RuntimeValue[];
+
 export interface NodeExecutionContext {
   runId: string;
   nodeId: string;
-  inputs: Record<string, RuntimeValue>;
+  inputs: Record<string, RuntimeInputValue>;
   config: Record<string, unknown>;
   context: ExecutionContext;
 }

@@ -2,7 +2,7 @@
 // validate → plan → execute ready nodes (bounded concurrency, FG-1001) → emit node
 // events → error/retry/cancel handling. The runtime never simulates: unsupported
 // kinds block before any provider call; every success comes from an executor result.
-import type { NodeExecutor } from '../engine/execution/NodeExecutor';
+import type { NodeExecutor, RuntimeInputValue } from '../engine/execution/NodeExecutor';
 import type { GoogleFlowAdapter } from '../adapters/google-flow/GoogleFlowAdapter';
 import type { RuntimeValue } from './RuntimeValue';
 import { ExecutionContext, type ActiveProject, type CachedNodeResult, type RuntimeCache } from './ExecutionContext';
@@ -252,14 +252,25 @@ export class WorkflowRuntime {
         emit({ type: 'node', runId, nodeId, state: 'running' });
         try {
           context.throwIfAborted();
-          const inputValues: Record<string, RuntimeValue> = {};
+          const inputValues: Record<string, RuntimeInputValue> = {};
           for (const edge of planEdges.filter((candidate) => candidate.target === nodeId)) {
             const sourceOutput = outputs.get(edge.source)?.[edge.sourceHandle ?? ''];
-            if (sourceOutput !== undefined) inputValues[edge.targetHandle ?? ''] = sourceOutput;
+            if (sourceOutput !== undefined) {
+              const handle = edge.targetHandle ?? '';
+              const existing = inputValues[handle];
+              if (existing === undefined) {
+                inputValues[handle] = sourceOutput;
+              } else if (Array.isArray(existing)) {
+                existing.push(sourceOutput);
+              } else {
+                inputValues[handle] = [existing, sourceOutput];
+              }
+            }
           }
 
           // FG-0902 — cache hit short-circuits provider calls (credit protection).
           const upstreamMediaIds = Object.values(inputValues)
+            .flatMap((val) => (Array.isArray(val) ? val : [val]))
             .map((value) => (value.type === 'image' || value.type === 'video' ? (value.value as { mediaId?: string })?.mediaId : undefined))
             .filter((value): value is string => Boolean(value));
           const fingerprint = fingerprintNode({
