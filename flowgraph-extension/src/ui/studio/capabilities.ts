@@ -86,14 +86,14 @@ export const capabilityRegistry: Record<string, CapabilityMeta> = {
     maturity: 'RUNTIME_PARTIAL',
     label: 'EXPERIMENTAL',
     experimental: true,
-    summary: 'Image Upscale (2K/4K) executor wired with exact upstream IMAGE MediaRef; waiting for live provider verification.',
+    summary: 'Image Upscale (2K/4K) executor wired with exact upstream IMAGE MediaRef; live attempted, blocked by provider security boundary (reCAPTCHA).',
     evidence: '§7.3 Image Upsample 2K/4K (FG-1205)',
   },
   videoUpscale: {
     maturity: 'RUNTIME_PARTIAL',
     label: 'EXPERIMENTAL',
     experimental: true,
-    summary: 'Video Upscale (1080p/4K) executor wired with exact upstream VIDEO MediaRef; waiting for live provider verification.',
+    summary: 'Video Upscale (1080p/4K) executor wired with exact upstream VIDEO MediaRef; live attempted, blocked by provider security boundary (reCAPTCHA).',
     evidence: '§8.6 Video Upsample (FG-1205)',
   },
   cancelGeneration: {
