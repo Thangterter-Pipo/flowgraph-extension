@@ -199,7 +199,7 @@ export interface MediaUploadPayload {
 }
 
 export interface GeneratePayload {
-  kind: 't2i' | 'i2v' | 't2v' | 'extend' | 'interpolation' | 'reference' | 'upscale';
+  kind: 't2i' | 'i2v' | 't2v' | 'extend' | 'interpolation' | 'reference' | 'upscale' | 'imageUpscale' | 'videoUpscale';
   projectId: string;
   /** Filled by the SW after acquiring a fresh reCAPTCHA token — never sent by UI. */
   recaptchaToken?: string;
