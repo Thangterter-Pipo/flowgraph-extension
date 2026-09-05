@@ -59,7 +59,7 @@ export const capabilityRegistry: Record<string, CapabilityMeta> = {
     label: 'VERIFIED',
     experimental: false,
     summary: 'Start + End frame interpolation using mediaId references.',
-    evidence: '§8.3 Start + End Interpolation',
+    evidence: '§8.3 Start + End Interpolation (Live Runs 1 & 2 verified 2026-09-05)',
   },
   reference: {
     maturity: 'RUNTIME_VERIFIED',
@@ -194,7 +194,7 @@ export const runtimeCapabilityMatrix: RuntimeCapabilityRow[] = [
   { kind: 'download', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Trusted tile click + Fetch-intercepted signed URL + chrome.downloads; live Runs 1-7 (mp4 on disk).' },
   { kind: 't2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Flow UI VIDEO mode + poll; 3 fresh live runs.' },
   { kind: 'extend', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter request shape verified; executor pending Phase 12.' },
-  { kind: 'interpolation', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter verified; executor pending Phase 12.' },
+  { kind: 'interpolation', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Start + End Frame interpolation executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
   { kind: 'reference', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter verified; executor pending Phase 12.' },
   { kind: 'upscale', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Video upscale adapter shape verified; provider may reject without trusted UI gesture.' },
   { kind: 'uploadImage', runtime: 'UI_ONLY', executor: false, adapter: true, note: 'uploadImage adapter implemented; node executor not enabled in V1.' },
