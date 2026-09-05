@@ -110,4 +110,51 @@ describe('GraphValidator', () => {
     expect(report.valid).toBe(false);
     expect(report.errors.some((issue) => issue.code === 'INVALID_MODEL')).toBe(true);
   });
+
+  it('allows multiple sources into ports with multiple: true, but rejects for single ports', () => {
+    const refNode: NodeSpecForValidation = {
+      id: 'ref',
+      kind: 'reference',
+      inputs: [
+        { id: 'prompt', label: 'Prompt', type: 'PROMPT', required: true },
+        { id: 'references', label: 'References', type: 'IMAGE', required: true, multiple: true },
+      ],
+      outputs: [{ id: 'video', label: 'Video', type: 'VIDEO' }],
+      config: { usageKey: 'veo_3_1_reference' },
+    };
+    const img1: NodeSpecForValidation = {
+      id: 'img1',
+      kind: 't2i',
+      inputs: [{ id: 'prompt', label: 'Prompt', type: 'PROMPT', required: false }],
+      outputs: [{ id: 'image', label: 'Image', type: 'IMAGE' }],
+      config: { model: 'Nano Banana 2', usageKey: 'NARWHAL' },
+    };
+    const img2: NodeSpecForValidation = {
+      id: 'img2',
+      kind: 't2i',
+      inputs: [{ id: 'prompt', label: 'Prompt', type: 'PROMPT', required: false }],
+      outputs: [{ id: 'image', label: 'Image', type: 'IMAGE' }],
+      config: { model: 'Nano Banana 2', usageKey: 'NARWHAL' },
+    };
+    const pr = prompt('p');
+
+    // references port has multiple: true
+    const validMulti = validateGraph([pr, img1, img2, refNode], [
+      { id: 'e1', source: 'p', sourceHandle: 'prompt', target: 'ref', targetHandle: 'prompt' },
+      { id: 'e2', source: 'img1', sourceHandle: 'image', target: 'ref', targetHandle: 'references' },
+      { id: 'e3', source: 'img2', sourceHandle: 'image', target: 'ref', targetHandle: 'references' },
+    ], { activeProject: project, supportedKinds: new Set([...supported, 'reference']) });
+
+    expect(validMulti.valid).toBe(true);
+
+    // single-input port (like i2v image port which has multiple: false / default)
+    const i2vNode = i2v('i2v');
+    const invalidMulti = validateGraph([img1, img2, i2vNode], [
+      { id: 'e4', source: 'img1', sourceHandle: 'image', target: 'i2v', targetHandle: 'image' },
+      { id: 'e5', source: 'img2', sourceHandle: 'image', target: 'i2v', targetHandle: 'image' },
+    ], { activeProject: project, supportedKinds: supported });
+
+    expect(invalidMulti.valid).toBe(false);
+    expect(invalidMulti.errors.some((issue) => issue.code === 'MULTIPLE_SOURCE')).toBe(true);
+  });
 });

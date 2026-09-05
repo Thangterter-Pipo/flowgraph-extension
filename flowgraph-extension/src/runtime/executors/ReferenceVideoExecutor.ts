@@ -23,13 +23,22 @@ export class ReferenceVideoExecutor implements NodeExecutor {
   }
 
   validate(context: NodeExecutionContext): ValidationResult {
-    const refs = asMediaList(context.inputs.references);
+    const rawInput = context.inputs.references;
+    const items = Array.isArray(rawInput) ? rawInput : rawInput ? [rawInput] : [];
     const prompt = asText(context.inputs.prompt) ?? String(context.config.prompt ?? '');
     const errors: string[] = [];
 
-    if (refs.length === 0) {
+    if (items.length === 0) {
       errors.push('Reference Video requires at least one Reference Image from a connected node.');
+    } else {
+      for (const item of items) {
+        if (item.type !== 'image' || !item.value || typeof item.value !== 'object' || !('mediaId' in item.value) || !(item.value as any).mediaId) {
+          errors.push('Reference Video inputs must strictly be valid IMAGE MediaRefs.');
+          break;
+        }
+      }
     }
+
     if (!prompt.trim()) {
       errors.push('Reference Video requires a prompt from a connected node or node configuration.');
     }
@@ -41,13 +50,26 @@ export class ReferenceVideoExecutor implements NodeExecutor {
 
   async execute(context: NodeExecutionContext, abortSignal?: AbortSignal): Promise<NodeExecutorOutput> {
     context.context.throwIfAborted();
-    const refs = asMediaList(context.inputs.references);
-    if (refs.length === 0) {
+    const rawInput = context.inputs.references;
+    const items = Array.isArray(rawInput) ? rawInput : rawInput ? [rawInput] : [];
+
+    if (items.length === 0) {
       throw new RuntimeError('INVALID_INPUT', 'Reference Video received no reference images input.', { nodeId: context.nodeId });
     }
 
     const projectId = context.context.activeProject.projectId;
-    for (const refItem of refs) {
+    const refs = [];
+    for (const item of items) {
+      if (item.type !== 'image' || !item.value || typeof item.value !== 'object' || !('mediaId' in item.value)) {
+        throw new RuntimeError('INVALID_INPUT', 'Reference Video inputs must strictly be IMAGE MediaRefs.', { nodeId: context.nodeId });
+      }
+      const refItem = item.value as { mediaId?: string; projectId?: string; type?: string };
+      if (!refItem.mediaId || !refItem.mediaId.trim()) {
+        throw new RuntimeError('INVALID_INPUT', 'Reference Image has empty mediaId.', { nodeId: context.nodeId });
+      }
+      if (refItem.type !== 'IMAGE') {
+        throw new RuntimeError('INVALID_INPUT', `Reference Image ${refItem.mediaId} is of type ${refItem.type}, expected IMAGE.`, { nodeId: context.nodeId });
+      }
       if (refItem.projectId !== projectId) {
         throw new RuntimeError(
           'PROJECT_ISOLATION',
@@ -55,6 +77,7 @@ export class ReferenceVideoExecutor implements NodeExecutor {
           { nodeId: context.nodeId },
         );
       }
+      refs.push(refItem);
     }
 
     const prompt = asText(context.inputs.prompt) ?? String(context.config.prompt ?? '');
@@ -68,7 +91,7 @@ export class ReferenceVideoExecutor implements NodeExecutor {
 
     const modelKey = String(context.config.usageKey ?? context.config.model ?? 'veo_3_1_reference');
     const imageRefs = refs.map((refItem) => ({
-      mediaId: refItem.mediaId,
+      mediaId: refItem.mediaId!,
       imageUsageType: 'IMAGE_USAGE_TYPE_ASSET',
     }));
 
