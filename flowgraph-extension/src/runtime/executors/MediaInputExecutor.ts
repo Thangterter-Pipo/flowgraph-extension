@@ -8,19 +8,27 @@ export class MediaInputExecutor implements NodeExecutor {
 
   validate(context: NodeExecutionContext): ValidationResult {
     const mediaId = String(context.config.mediaId ?? '').trim();
-    const mediaType = String(context.config.mediaType ?? context.config.type ?? 'IMAGE').toUpperCase();
+    const mediaType = String(context.config.mediaType ?? context.config.type ?? '').toUpperCase();
+    const configProjectId = String(context.config.projectId ?? '').trim();
     const errors: string[] = [];
 
     if (!mediaId) {
       errors.push('Media Input requires a configured mediaId from the active project.');
     }
 
-    if (mediaType !== 'IMAGE' && mediaType !== 'VIDEO') {
-      errors.push(`Invalid mediaType "${mediaType}". Must be "IMAGE" or "VIDEO".`);
+    if (!mediaType || (mediaType !== 'IMAGE' && mediaType !== 'VIDEO')) {
+      errors.push(`Invalid or missing mediaType "${mediaType}". Must strictly be "IMAGE" or "VIDEO".`);
     }
 
-    if (!context.context.activeProject.projectId) {
+    if (!configProjectId) {
+      errors.push('Media Input requires an explicit projectId provenance in its configuration.');
+    }
+
+    const activeProject = context.context.activeProject.projectId;
+    if (!activeProject) {
       errors.push('Media Input requires an active project.');
+    } else if (configProjectId && configProjectId !== activeProject) {
+      errors.push(`Configured media projectId ${configProjectId} does not match active project ${activeProject}.`);
     }
 
     return { valid: errors.length === 0, errors };
@@ -33,38 +41,42 @@ export class MediaInputExecutor implements NodeExecutor {
       throw new RuntimeError('INVALID_INPUT', 'Media Input has no configured mediaId.', { nodeId: context.nodeId });
     }
 
-    const mediaType = String(context.config.mediaType ?? context.config.type ?? 'IMAGE').toUpperCase() as 'IMAGE' | 'VIDEO';
+    const mediaType = String(context.config.mediaType ?? context.config.type ?? '').toUpperCase() as 'IMAGE' | 'VIDEO';
     if (mediaType !== 'IMAGE' && mediaType !== 'VIDEO') {
-      throw new RuntimeError('INVALID_INPUT', `Invalid mediaType "${mediaType}". Must be "IMAGE" or "VIDEO".`, { nodeId: context.nodeId });
+      throw new RuntimeError('INVALID_INPUT', `Invalid mediaType "${mediaType}". Must strictly be "IMAGE" or "VIDEO".`, { nodeId: context.nodeId });
     }
 
-    const projectId = context.context.activeProject.projectId;
-    const configProjectId = String(context.config.projectId ?? projectId).trim();
-    if (configProjectId !== projectId) {
+    const activeProject = context.context.activeProject.projectId;
+    const configProjectId = String(context.config.projectId ?? '').trim();
+    if (!configProjectId) {
+      throw new RuntimeError('INVALID_INPUT', 'Media Input missing explicit projectId provenance.', { nodeId: context.nodeId });
+    }
+
+    if (configProjectId !== activeProject) {
       throw new RuntimeError(
         'PROJECT_ISOLATION',
-        `Configured media belongs to project ${configProjectId}, not the active project ${projectId}.`,
+        `Configured media belongs to project ${configProjectId}, not the active project ${activeProject}.`,
         { nodeId: context.nodeId },
       );
     }
 
+    // Do NOT store signed URLs in config — only transient runtime reference
     const ref = {
       mediaId,
-      projectId,
+      projectId: activeProject,
       type: mediaType,
-      previewUrl: context.config.previewUrl ? String(context.config.previewUrl) : undefined,
+      previewUrl: undefined,
     };
 
     const runtimeVal = mediaRefFromPayload(ref);
     return {
       outputs: {
         media: runtimeVal,
-        [mediaType === 'IMAGE' ? 'image' : 'video']: runtimeVal,
       },
       result: {
         type: mediaType === 'IMAGE' ? 'image' : 'video',
         mediaId,
-        previewUrl: ref.previewUrl ?? '',
+        previewUrl: '',
       },
     };
   }

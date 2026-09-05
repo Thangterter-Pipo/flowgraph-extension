@@ -1,4 +1,4 @@
-// PreviewExecutor — displays upstream IMAGE or VIDEO MediaRef and passes it through.
+// PreviewExecutor — displays upstream IMAGE or VIDEO MediaRef and passes it through via typed MEDIA port.
 import type { NodeExecutor, NodeExecutorOutput, NodeExecutionContext, ValidationResult } from '../../engine/execution/NodeExecutor';
 import { asMedia, mediaRefFromPayload } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
@@ -43,7 +43,6 @@ export class PreviewExecutor implements NodeExecutor {
     return {
       outputs: {
         media: runtimeVal,
-        [mediaRef.type.toLowerCase()]: runtimeVal,
       },
       result: {
         type: mediaRef.type === 'IMAGE' ? 'image' : 'video',
