@@ -68,7 +68,7 @@ export function fingerprintNode(input: {
     prompt: input.prompt ?? null,
     model: input.model ?? null,
     seed: input.seed ?? null,
-    upstreamMediaIds: [...input.upstreamMediaIds].sort(),
+    upstreamMediaIds: [...input.upstreamMediaIds],
     projectId: input.projectId,
   });
   let hash = 5381;

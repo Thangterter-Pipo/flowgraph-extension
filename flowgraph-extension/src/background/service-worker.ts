@@ -980,6 +980,14 @@ async function syncAndVerifyBeforeGenerate(
       projectId: payload.projectId,
     });
   }
+  if (payload.imageRefs && payload.imageRefs.length > 0) {
+    const startedAt = Date.now();
+    await bindRealtimeReferenceMedia(tab, payload.imageRefs.map((r) => ({ mediaId: r.mediaId })));
+    console.info(`[FlowGraph Sync] referenceMedia PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
+      projectId: payload.projectId,
+      count: payload.imageRefs.length,
+    });
+  }
   await applyWrites(settingWrites);
   if (promptWrite) await applyWrites([promptWrite]);
   return { limitations };

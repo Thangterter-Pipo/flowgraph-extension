@@ -195,7 +195,7 @@ export const runtimeCapabilityMatrix: RuntimeCapabilityRow[] = [
   { kind: 't2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Flow UI VIDEO mode + poll; 3 fresh live runs.' },
   { kind: 'extend', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter request shape verified; executor pending Phase 12.' },
   { kind: 'interpolation', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Start + End Frame interpolation executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
-  { kind: 'reference', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Adapter verified; executor pending Phase 12.' },
+  { kind: 'reference', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Ordered Reference Images video executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
   { kind: 'upscale', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'Video upscale adapter shape verified; provider may reject without trusted UI gesture.' },
   { kind: 'uploadImage', runtime: 'UI_ONLY', executor: false, adapter: true, note: 'uploadImage adapter implemented; node executor not enabled in V1.' },
   { kind: 'imageTransform', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: false, note: 'Provider shape partially verified (HTTP 400 on incomplete payload).' },

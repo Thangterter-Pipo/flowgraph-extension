@@ -682,9 +682,10 @@ Chỉ làm sau khi V1 pipeline thật PASS.
 - [x] Live 2 runs verified (2026-09-05): Run 1 `fb3650ad+12bd87d1→e2fe5146` (89s), Run 2 `c7c1750a+54207841→720fea1e` (78s). Evidence: `flowgraph-extension/evidence/flowgraph_v1/interpolation_live_runs_2026-09-05.json`.
 
 ## FG-1203 — Reference Video
-- [ ] Multiple reference inputs.
-- [ ] Reference validation.
-- [ ] Real executor.
+- [x] Multiple reference inputs.
+- [x] Reference validation.
+- [x] Real executor.
+- [x] Live 2 runs verified (2026-09-05): Run 1 `[fb3650ad, 12bd87d1]→b5c33c78` (54.8s), Run 2 reversed `[12bd87d1, fb3650ad]→e350d08d` (50.0s). Evidence: `flowgraph-extension/evidence/flowgraph_v1/reference_live_runs_2026-09-05.json`.
 
 ## FG-1204 — Extend Video
 - [ ] Video input.

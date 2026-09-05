@@ -87,6 +87,63 @@ describe('ReferenceVideoExecutor', () => {
     expect(valid.errors).toHaveLength(0);
   });
 
+  it('rejects non-IMAGE inputs (like VIDEO) in validate and execute without calling adapter', async () => {
+    const generateFn = vi.fn();
+    const adapter: GoogleFlowAdapter = { generate: generateFn } as any;
+    const exec = new ReferenceVideoExecutor({ adapter });
+    const { ctx } = makeMockContext();
+
+    const videoInput = mediaRefFromPayload({ mediaId: 'vid-1', type: 'VIDEO', projectId: 'proj-1' });
+    const valResult = exec.validate({
+      runId: 'run-1',
+      nodeId: 'node-ref',
+      inputs: {
+        references: [
+          mediaRefFromPayload({ mediaId: 'img-1', type: 'IMAGE', projectId: 'proj-1' }),
+          videoInput,
+        ],
+      },
+      config: { prompt: 'Valid prompt' },
+      context: ctx,
+    });
+    expect(valResult.valid).toBe(false);
+    expect(valResult.errors).toContain('Reference Video inputs must strictly be valid IMAGE MediaRefs.');
+
+    await expect(exec.execute({
+      runId: 'run-1',
+      nodeId: 'node-ref',
+      inputs: {
+        references: [
+          mediaRefFromPayload({ mediaId: 'img-1', type: 'IMAGE', projectId: 'proj-1' }),
+          videoInput,
+        ],
+      },
+      config: { prompt: 'Valid prompt' },
+      context: ctx,
+    })).rejects.toThrow('Reference Video inputs must strictly be IMAGE MediaRefs.');
+
+    expect(generateFn).not.toHaveBeenCalled();
+  });
+
+  it('fails closed on empty mediaId', async () => {
+    const generateFn = vi.fn();
+    const adapter: GoogleFlowAdapter = { generate: generateFn } as any;
+    const exec = new ReferenceVideoExecutor({ adapter });
+    const { ctx } = makeMockContext();
+
+    await expect(exec.execute({
+      runId: 'run-1',
+      nodeId: 'node-ref',
+      inputs: {
+        references: [{ type: 'image', value: { mediaId: '', projectId: 'proj-1', type: 'IMAGE' } } as any],
+      },
+      config: { prompt: 'Valid prompt' },
+      context: ctx,
+    })).rejects.toThrow('Reference Image has empty mediaId.');
+
+    expect(generateFn).not.toHaveBeenCalled();
+  });
+
   it('fails closed on missing or blank prompt at execute without calling adapter', async () => {
     const generateFn = vi.fn();
     const adapter: GoogleFlowAdapter = { generate: generateFn } as any;

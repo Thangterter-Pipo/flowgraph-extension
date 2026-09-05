@@ -1,0 +1,46 @@
+{
+  "test_pass": "FLOWGRAPH_REFERENCE_VIDEO_LIVE_V1",
+  "verified_at": "2026-09-05T08:20:00Z",
+  "project_id": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "project_name": "FlowGraph V1 Live 2026-09-02",
+  "kind": "reference",
+  "model": "Omni 1.1 Flash",
+  "runs": [
+    {
+      "run_id": "run1",
+      "status": "SUCCESSFUL",
+      "completed_via_ui": true,
+      "cache_hit": false,
+      "prompt": "FG-REF-RUN1: Cinematic scene with continuous style and subject details derived faithfully from the reference images.",
+      "reference_images": [
+        { "media_id": "fb3650ad-553a-4f46-a564-6f756c3dda98", "order": 0 },
+        { "media_id": "12bd87d1-c551-4c0c-a7f1-4199ebd09207", "order": 1 }
+      ],
+      "result": {
+        "media_id": "b5c33c78-4151-4e6e-9a41-af03b54ecd50",
+        "type": "VIDEO",
+        "preview_resolved": true,
+        "preview_origin": "flow-content.google"
+      },
+      "duration_seconds": 54.8
+    },
+    {
+      "run_id": "run2",
+      "status": "SUCCESSFUL",
+      "completed_via_ui": true,
+      "cache_hit": false,
+      "prompt": "FG-REF-RUN2: Reversed reference image conditioning producing alternative visual interpretation while retaining character and environment integrity.",
+      "reference_images": [
+        { "media_id": "12bd87d1-c551-4c0c-a7f1-4199ebd09207", "order": 0 },
+        { "media_id": "fb3650ad-553a-4f46-a564-6f756c3dda98", "order": 1 }
+      ],
+      "result": {
+        "media_id": "e350d08d-3e59-456d-abdb-3dd23455d1b3",
+        "type": "VIDEO",
+        "preview_resolved": true,
+        "preview_origin": "flow-content.google"
+      },
+      "duration_seconds": 50.0
+    }
+  ]
+}

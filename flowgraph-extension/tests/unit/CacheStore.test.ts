@@ -10,6 +10,13 @@ describe('CacheStore (FG-0901/0902)', () => {
     expect(a).toBe(b);   // same node → same fingerprint
     expect(a).not.toBe(c); // different upstream media → different
     expect(a).not.toBe(d); // different project → different (project isolation)
+
+    // Task 2B.1: Ordered upstream mediaIds must produce distinct fingerprints
+    const ab = fingerprintNode({ nodeKind: 'reference', config: {}, prompt: 'x', upstreamMediaIds: ['img-A', 'img-B'], projectId: 'p1' });
+    const ba = fingerprintNode({ nodeKind: 'reference', config: {}, prompt: 'x', upstreamMediaIds: ['img-B', 'img-A'], projectId: 'p1' });
+    const ab2 = fingerprintNode({ nodeKind: 'reference', config: {}, prompt: 'x', upstreamMediaIds: ['img-A', 'img-B'], projectId: 'p1' });
+    expect(ab).not.toBe(ba); // order matters!
+    expect(ab).toBe(ab2);   // deterministic for same order
   });
 
   it('is scoped per project — the same key in another project misses', () => {
