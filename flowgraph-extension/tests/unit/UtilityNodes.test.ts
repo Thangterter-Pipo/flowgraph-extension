@@ -6,7 +6,7 @@ import { PreviewExecutor } from '../../src/runtime/executors/PreviewExecutor';
 import { RuntimeError } from '../../src/runtime/RuntimeError';
 import type { NodeExecutionContext } from '../../src/engine/execution/NodeExecutor';
 
-describe('Task 5A.2 — Hardened Utility Nodes Source Type Validation', () => {
+describe('Task 5A.3 — Hardened Utility Nodes Config Materialization & Mandatory MediaType', () => {
   const PROJECT = '729eaa19-1c85-4cfc-89c3-5f86de2dffc5';
 
   describe('MediaInputExecutor', () => {
@@ -52,18 +52,25 @@ describe('Task 5A.2 — Hardened Utility Nodes Source Type Validation', () => {
       expect(res.errors[0]).toContain('explicit projectId provenance');
     });
 
-    it('fails validation when mediaType is invalid', () => {
+    it('fails validation when mediaType is missing or invalid', () => {
       const executor = new MediaInputExecutor();
-      const ctx: NodeExecutionContext = {
-        runId: 'r1',
-        nodeId: 'n1',
+      const ctxMissing: NodeExecutionContext = {
+        runId: 'r1-m',
+        nodeId: 'n1-m',
+        inputs: {},
+        config: { mediaId: 'med-123', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      expect(executor.validate(ctxMissing).valid).toBe(false);
+
+      const ctxInvalid: NodeExecutionContext = {
+        runId: 'r1-i',
+        nodeId: 'n1-i',
         inputs: {},
         config: { mediaId: 'med-123', mediaType: 'AUDIO', projectId: PROJECT },
         context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
       };
-      const res = executor.validate(ctx);
-      expect(res.valid).toBe(false);
-      expect(res.errors[0]).toContain('Must strictly be "IMAGE" or "VIDEO"');
+      expect(executor.validate(ctxInvalid).valid).toBe(false);
     });
 
     it('enforces project isolation on execute', async () => {
@@ -95,7 +102,63 @@ describe('Task 5A.2 — Hardened Utility Nodes Source Type Validation', () => {
     });
   });
 
-  describe('ImageInputExecutor & VideoInputExecutor Type Boundary (Task 5A.2)', () => {
+  describe('ImageInputExecutor & VideoInputExecutor Type Boundary (Task 5A.3)', () => {
+    it('ImageInputExecutor fails validation if mediaType is missing', () => {
+      const executor = new ImageInputExecutor();
+      const ctx: NodeExecutionContext = {
+        runId: 'r2-missing',
+        nodeId: 'n2-missing',
+        inputs: {},
+        config: { mediaId: 'img-999', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      const res = executor.validate(ctx);
+      expect(res.valid).toBe(false);
+      expect(res.errors[0]).toContain('requires an explicit mediaType: "IMAGE"');
+    });
+
+    it('ImageInputExecutor throws INVALID_INPUT on execute if mediaType is missing', async () => {
+      const executor = new ImageInputExecutor();
+      const ctx: NodeExecutionContext = {
+        runId: 'r2-exec-missing',
+        nodeId: 'n2-exec-missing',
+        inputs: {},
+        config: { mediaId: 'img-999', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      await expect(executor.execute(ctx)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      });
+    });
+
+    it('VideoInputExecutor fails validation if mediaType is missing', () => {
+      const executor = new VideoInputExecutor();
+      const ctx: NodeExecutionContext = {
+        runId: 'r3-missing',
+        nodeId: 'n3-missing',
+        inputs: {},
+        config: { mediaId: 'vid-888', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      const res = executor.validate(ctx);
+      expect(res.valid).toBe(false);
+      expect(res.errors[0]).toContain('requires an explicit mediaType: "VIDEO"');
+    });
+
+    it('VideoInputExecutor throws INVALID_INPUT on execute if mediaType is missing', async () => {
+      const executor = new VideoInputExecutor();
+      const ctx: NodeExecutionContext = {
+        runId: 'r3-exec-missing',
+        nodeId: 'n3-exec-missing',
+        inputs: {},
+        config: { mediaId: 'vid-888', projectId: PROJECT },
+        context: { activeProject: { projectId: PROJECT }, throwIfAborted: vi.fn() } as any,
+      };
+      await expect(executor.execute(ctx)).rejects.toMatchObject({
+        code: 'INVALID_INPUT',
+      });
+    });
+
     it('ImageInputExecutor fails validation if mediaType is VIDEO', () => {
       const executor = new ImageInputExecutor();
       const ctx: NodeExecutionContext = {
