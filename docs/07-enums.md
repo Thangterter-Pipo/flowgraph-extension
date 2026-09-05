@@ -1,0 +1,340 @@
+# 7. Enum
+
+Các giá trị dưới đây được trích từ bundle JS công khai của frontend Flow, nên đây là
+danh sách đầy đủ theo định nghĩa protobuf của client — không phải suy diễn từ mẫu lưu
+lượng. Nhãn chung: `[BUNDLE]`.
+
+## 7.1 `VideoAspectRatio`
+
+```text
+VIDEO_ASPECT_RATIO_UNSPECIFIED
+VIDEO_ASPECT_RATIO_LANDSCAPE   // 16:9
+VIDEO_ASPECT_RATIO_PORTRAIT    // 9:16
+```
+
+Video chỉ có hai hướng. Không có 1:1 hay 4:3 cho video.
+
+## 7.2 `ImageAspectRatio`
+
+```text
+IMAGE_ASPECT_RATIO_UNSPECIFIED
+IMAGE_ASPECT_RATIO_SQUARE              // 1:1
+IMAGE_ASPECT_RATIO_PORTRAIT            // 9:16
+IMAGE_ASPECT_RATIO_LANDSCAPE           // 16:9
+IMAGE_ASPECT_RATIO_PORTRAIT_THREE_FOUR // 3:4
+IMAGE_ASPECT_RATIO_LANDSCAPE_FOUR_THREE// 4:3
+```
+
+## 7.3 `VideoResolution`
+
+```text
+VIDEO_RESOLUTION_UNSPECIFIED
+VIDEO_RESOLUTION_360P
+VIDEO_RESOLUTION_720P
+VIDEO_RESOLUTION_1080P
+VIDEO_RESOLUTION_4K
+```
+
+Trong `modelConfig`, chỉ họ `abra` khai báo `supportedResolutions` tường minh
+(`720P`, `360P`). Các họ `veo_3_1_*` để mảng rỗng, và nâng cấp lên 1080p/4K đi qua
+model upsampler riêng.
+
+## 7.4 `VideoGenerationMode`
+
+```text
+VIDEO_GENERATION_MODE_UNSPECIFIED
+VIDEO_GENERATION_MODE_TEXT_TO_VIDEO
+VIDEO_GENERATION_MODE_IMAGE_TO_VIDEO
+VIDEO_GENERATION_MODE_REFERENCE_TO_VIDEO
+VIDEO_GENERATION_MODE_VIDEO_TO_VIDEO
+VIDEO_GENERATION_MODE_VIDEO_EXTENSION
+VIDEO_GENERATION_MODE_EDIT_VIDEO
+```
+
+Trường này chỉ đọc, xuất hiện trong
+`mediaMetadata.requestData.videoGenerationRequestData.videoModelControlInput`.
+Client không truyền nó vào; nó được suy ra từ endpoint và `videoModelKey`.
+
+## 7.5 `MediaGenerationStatus`
+
+```text
+MEDIA_GENERATION_STATUS_UNSPECIFIED
+MEDIA_GENERATION_STATUS_PENDING
+MEDIA_GENERATION_STATUS_SCHEDULED
+MEDIA_GENERATION_STATUS_IN_PROGRESS
+MEDIA_GENERATION_STATUS_ACTIVE
+MEDIA_GENERATION_STATUS_SUCCESSFUL
+MEDIA_GENERATION_STATUS_COMPLETE
+MEDIA_GENERATION_STATUS_FAILED
+MEDIA_GENERATION_STATUS_CANCELED
+```
+
+Phân loại khi poll:
+
+| Nhóm | Giá trị |
+|------|---------|
+| Đang chờ / đang chạy | `PENDING`, `SCHEDULED`, `IN_PROGRESS`, `ACTIVE` |
+| Kết thúc thành công | `SUCCESSFUL`, `COMPLETE` |
+| Kết thúc thất bại | `FAILED`, `CANCELED` |
+
+Nên coi cả `SUCCESSFUL` và `COMPLETE` là thành công: lưu lượng thật dùng
+`..._SUCCESSFUL` (len=33) ở bước tạo và một giá trị ngắn hơn (len=30) ở bước poll,
+nên dùng cả hai để an toàn.
+
+## 7.6 `ServiceTier`
+
+```text
+SERVICE_TIER_UNSPECIFIED
+SERVICE_TIER_ENTRY
+SERVICE_TIER_INTERMEDIATE
+SERVICE_TIER_ADVANCED
+```
+
+Đây là trường quyết định giá credit. Đọc từ `GET /v1/credits`.
+
+## 7.7 `PaygateTier`
+
+```text
+PAYGATE_TIER_UNSPECIFIED
+PAYGATE_TIER_NOT_PAID
+PAYGATE_TIER_ZERO
+PAYGATE_TIER_ONE
+PAYGATE_TIER_TIER1P5
+PAYGATE_TIER_TWO
+PAYGATE_TIER_EXEMPT
+PAYGATE_TIER_GEMNOVA
+PAYGATE_TIER_UNSUBSCRIBED_WITH_CREDITS
+```
+
+Truyền vào `clientContext.userPaygateTier` khi sinh video. Lấy đúng giá trị từ
+`GET /v1/credits` thay vì hardcode.
+
+Lưu ý `serviceTier` và `userPaygateTier` là hai trục khác nhau: paygate mô tả gói
+thuê bao, service tier mô tả mức chất lượng dịch vụ. Bảng giá dùng service tier.
+
+## 7.8 `AgentToggleState`
+
+```text
+AGENT_TOGGLE_STATE_UNSPECIFIED
+AGENT_TOGGLE_STATE_ENABLED
+AGENT_TOGGLE_STATE_DISABLED
+```
+
+## 7.9 `PermissionAction`
+
+```text
+PERMISSION_ACTION_UNSPECIFIED
+PERMISSION_ACTION_APPROVED
+PERMISSION_ACTION_APPROVED_STICKY
+PERMISSION_ACTION_DENIED
+```
+
+Dùng khi trả lời yêu cầu xác nhận của creation agent. `APPROVED_STICKY` tương ứng nút
+"Phê duyệt, không hỏi lại".
+
+## 7.10 `RecaptchaApplicationType`
+
+```text
+RECAPTCHA_APPLICATION_TYPE_UNSPECIFIED
+RECAPTCHA_APPLICATION_TYPE_WEB
+RECAPTCHA_APPLICATION_TYPE_ANDROID
+RECAPTCHA_APPLICATION_TYPE_IOS
+```
+
+## 7.11 `ClientPlatform`
+
+```text
+CLIENT_PLATFORM_UNSPECIFIED
+CLIENT_PLATFORM_WEB
+CLIENT_PLATFORM_MOBILE
+CLIENT_PLATFORM_MOBILE_APP
+```
+
+Chỉ đọc, xuất hiện trong `mediaMetadata.requestData.clientPlatform`.
+
+## 7.12 `AudioFailurePreference`
+
+```text
+AUDIO_FAILURE_PREFERENCE_UNSPECIFIED
+```
+
+Chỉ tìm thấy một giá trị trong bundle. Lưu lượng thật gửi đúng giá trị này trong
+`mediaGenerationContext.audioFailurePreference`.
+
+## 7.13 `MediaUrlType`
+
+```text
+MEDIA_URL_TYPE_THUMBNAIL
+```
+
+Tham số tuỳ chọn của `media.getMediaUrlRedirect`. Không truyền thì lấy bản đầy đủ.
+
+## 7.14 `MediaVisibility`
+
+```text
+MEDIA_VISIBILITY_UNSPECIFIED
+```
+
+Response của sinh ảnh có `mediaVisibility` và `visibility` với giá trị chuỗi ngắn
+(len=7) — khả năng cao là `PRIVATE`, nhưng tài liệu không khẳng định vì chưa bắt được
+giá trị thật.
+
+## 7.15 Yêu cầu input
+
+### `VideoRequirement`
+
+```text
+VIDEO_REQUIREMENT_TEXT
+VIDEO_REQUIREMENT_START_IMAGE
+VIDEO_REQUIREMENT_END_IMAGE
+VIDEO_REQUIREMENT_REFERENCES
+VIDEO_REQUIREMENT_AUDIO_REFERENCE
+VIDEO_REQUIREMENT_CHARACTERS
+VIDEO_REQUIREMENT_EXTENSION
+VIDEO_REQUIREMENT_VIDEO_EDIT
+VIDEO_REQUIREMENT_UPSAMPLE1080
+VIDEO_REQUIREMENT_UPSAMPLE4K
+```
+
+### `ImageRequirement`
+
+```text
+IMAGE_REQUIREMENT_TEXT
+IMAGE_REQUIREMENT_BASE_IMAGE
+IMAGE_REQUIREMENT_REFERENCES
+IMAGE_REQUIREMENT_CHARACTERS
+UPSAMPLE_IMAGE_RESOLUTION2K
+UPSAMPLE_IMAGE_RESOLUTION4K
+```
+
+Danh sách này trích từ `requirements` của từng usage key trong `modelConfig`
+(`[VERIFIED]`), không phải từ bundle.
+
+## 7.16 `VideoGenerationOrigin`
+
+```text
+VIDEO_GENERATION_ORIGIN_UNSPECIFIED
+VIDEO_GENERATION_ORIGIN_EDIT
+VIDEO_GENERATION_ORIGIN_INSERTION
+VIDEO_GENERATION_ORIGIN_REMOVAL
+VIDEO_GENERATION_ORIGIN_RESHOOT
+```
+
+Cho biết video được tạo ra từ thao tác nào trên một video có trước. Xuất hiện trong
+`videoGenerationRequestData` — xem [03-endpoints-aisandbox.md](03-endpoints-aisandbox.md)
+mục 3.4.
+
+## 7.17 `ReshootMotionType` (64 giá trị)
+
+Dùng cho chế độ reshoot: quay lại cùng một cảnh với chuyển động camera khác. Chia
+thành bốn nhóm theo tiền tố.
+
+**Chuyển động cơ bản (tuyệt đối)**
+
+```text
+RESHOOT_MOTION_TYPE_UNSPECIFIED
+RESHOOT_MOTION_TYPE_STATIONARY
+RESHOOT_MOTION_TYPE_FORWARD
+RESHOOT_MOTION_TYPE_BACKWARD
+RESHOOT_MOTION_TYPE_LEFT
+RESHOOT_MOTION_TYPE_LEFT_LARGE
+RESHOOT_MOTION_TYPE_RIGHT
+RESHOOT_MOTION_TYPE_RIGHT_LARGE
+RESHOOT_MOTION_TYPE_UP
+RESHOOT_MOTION_TYPE_DOWN
+RESHOOT_MOTION_TYPE_SPIN
+RESHOOT_MOTION_TYPE_LEFT_TO_RIGHT
+RESHOOT_MOTION_TYPE_LEFT_TO_RIGHT_LARGE
+RESHOOT_MOTION_TYPE_RIGHT_TO_LEFT
+RESHOOT_MOTION_TYPE_RIGHT_TO_LEFT_LARGE
+RESHOOT_MOTION_TYPE_CLOSER_SHOT
+RESHOOT_MOTION_TYPE_FURTHER_SHOT
+RESHOOT_MOTION_TYPE_WIDER_SHOT
+RESHOOT_MOTION_TYPE_HIGHER_ANGLE
+```
+
+**Dolly và zoom**
+
+```text
+RESHOOT_MOTION_TYPE_DOLLY_IN
+RESHOOT_MOTION_TYPE_DOLLY_OUT
+RESHOOT_MOTION_TYPE_DOLLY_IN_ZOOM_OUT
+RESHOOT_MOTION_TYPE_DOLLY_IN_ZOOM_OUT_LARGE
+RESHOOT_MOTION_TYPE_DOLLY_OUT_ZOOM_IN
+RESHOOT_MOTION_TYPE_DOLLY_OUT_ZOOM_IN_LARGE
+```
+
+**Orbit (quay quanh chủ thể)**
+
+```text
+RESHOOT_MOTION_TYPE_ORBIT_360
+RESHOOT_MOTION_TYPE_ORBIT_LEFT
+RESHOOT_MOTION_TYPE_ORBIT_RIGHT
+RESHOOT_MOTION_TYPE_ORBIT_UP
+RESHOOT_MOTION_TYPE_ORBIT_DOWN
+RESHOOT_MOTION_TYPE_ORBIT_LEFT_TO_RIGHT
+RESHOOT_MOTION_TYPE_ORBIT_RIGHT_TO_LEFT
+```
+
+**Biến thể `RELATIVE_*` (so với camera hiện tại)**
+
+```text
+RESHOOT_MOTION_TYPE_RELATIVE_FORWARD
+RESHOOT_MOTION_TYPE_RELATIVE_BACKWARD
+RESHOOT_MOTION_TYPE_RELATIVE_UP
+RESHOOT_MOTION_TYPE_RELATIVE_UP_LARGE
+RESHOOT_MOTION_TYPE_RELATIVE_ZOOM_OUT
+RESHOOT_MOTION_TYPE_RELATIVE_ZOOM_OUT_LARGE
+RESHOOT_MOTION_TYPE_RELATIVE_DOLLY_IN_ZOOM_OUT
+RESHOOT_MOTION_TYPE_RELATIVE_DOLLY_IN_ZOOM_OUT_LARGE
+RESHOOT_MOTION_TYPE_RELATIVE_DOLLY_OUT_ZOOM_IN
+RESHOOT_MOTION_TYPE_RELATIVE_DOLLY_OUT_ZOOM_IN_LARGE
+```
+
+**Biến thể `STATIONARY_*` (giữ nguyên vị trí, đổi hướng nhìn)**
+
+```text
+RESHOOT_MOTION_TYPE_STATIONARY_FORWARD
+RESHOOT_MOTION_TYPE_STATIONARY_BACKWARD
+RESHOOT_MOTION_TYPE_STATIONARY_LEFT
+RESHOOT_MOTION_TYPE_STATIONARY_LEFT_LARGE
+RESHOOT_MOTION_TYPE_STATIONARY_RIGHT
+RESHOOT_MOTION_TYPE_STATIONARY_RIGHT_LARGE
+RESHOOT_MOTION_TYPE_STATIONARY_UP
+RESHOOT_MOTION_TYPE_STATIONARY_UP_LARGE
+RESHOOT_MOTION_TYPE_STATIONARY_DOWN
+RESHOOT_MOTION_TYPE_STATIONARY_CLOSER
+RESHOOT_MOTION_TYPE_STATIONARY_FURTHER
+RESHOOT_MOTION_TYPE_STATIONARY_HIGHER
+RESHOOT_MOTION_TYPE_STATIONARY_LOWER
+RESHOOT_MOTION_TYPE_STATIONARY_DOLLY_IN_ZOOM_OUT
+RESHOOT_MOTION_TYPE_STATIONARY_DOLLY_IN_ZOOM_OUT_LARGE
+RESHOOT_MOTION_TYPE_STATIONARY_DOLLY_OUT_ZOOM_IN
+RESHOOT_MOTION_TYPE_STATIONARY_DOLLY_OUT_ZOOM_IN_LARGE
+```
+
+**Stereo (dựng ảnh nổi)**
+
+```text
+RESHOOT_MOTION_TYPE_STEREO_X2
+RESHOOT_MOTION_TYPE_STEREO_X3
+RESHOOT_MOTION_TYPE_STEREO_X4
+RESHOOT_MOTION_TYPE_STEREO_X5
+RESHOOT_MOTION_TYPE_STEREO_X6
+```
+
+Lưu ý: các usage key reshoot (`veo_3_0_reshoot_landscape` / `_portrait`) nằm trong
+`deprecatedModelKeys`, nên enum này có thể không còn dùng được với model Veo 3.1.
+
+## 7.18 `ReferenceImageType`
+
+```text
+REFERENCE_IMAGE_TYPE_UNSPECIFIED
+REFERENCE_IMAGE_TYPE_CONTEXT
+REFERENCE_IMAGE_TYPE_STYLE
+```
+
+Phân biệt ảnh tham chiếu dùng để lấy bối cảnh so với ảnh dùng để lấy phong cách.
+Liên quan tới `referenceImages[]` của `video:batchAsyncGenerateVideoReferenceImages`,
+nhưng vị trí chính xác của trường này trong phần tử chưa được xác nhận — xem
+[03-endpoints-aisandbox.md](03-endpoints-aisandbox.md) mục 3.4.
