@@ -697,7 +697,7 @@ Chỉ làm sau khi V1 pipeline thật PASS.
 - [x] Image upscale 2K/4K theo runtime support (`ImageUpscaleExecutor.ts`, 8 tests verified).
 - [x] Video upscale theo runtime support (`VideoUpscaleExecutor.ts`, 8 tests verified).
 - [x] Dedicated service-worker upscale bridge routes & prompt-free validation wired.
-- [x] Live runs verified & fail-closed confirmed: Image Upscale 2K (`fb3650ad...`) & Video Upscale 1080p (`b5c33c78...`) payload accepted by provider, correctly surfaced `CAPTCHA_REQUIRED` without fake success. Evidence: `flowgraph-extension/evidence/flowgraph_v1/upscale_live_runs_2026-09-05.json`.
+- [x] Live 4 runs verified & fail-closed confirmed: Image Upscale 2K/4K & Video Upscale 1080p/4K requests reached provider, correctly surfaced `CAPTCHA_REQUIRED` without fake success. Evidence: `flowgraph-extension/evidence/flowgraph_v1/upscale_live_runs_2026-09-05.json`.
 - [x] RUNTIME_PARTIAL: Giữ trạng thái trung thực do provider yêu cầu trusted UI / reCAPTCHA challenge.
 
 ## FG-1206 — Utility nodes
