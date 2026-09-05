@@ -9,10 +9,15 @@ export class ImageInputExecutor implements NodeExecutor {
   validate(context: NodeExecutionContext): ValidationResult {
     const mediaId = String(context.config.mediaId ?? '').trim();
     const configProjectId = String(context.config.projectId ?? '').trim();
+    const mediaType = String(context.config.mediaType ?? context.config.type ?? 'IMAGE').toUpperCase();
     const errors: string[] = [];
 
     if (!mediaId) {
       errors.push('Image Input requires a configured mediaId from the active project.');
+    }
+
+    if (mediaType && mediaType !== 'IMAGE') {
+      errors.push(`Image Input cannot accept mediaType "${mediaType}". Must strictly be "IMAGE".`);
     }
 
     if (!configProjectId) {
@@ -34,6 +39,11 @@ export class ImageInputExecutor implements NodeExecutor {
     const mediaId = String(context.config.mediaId ?? '').trim();
     if (!mediaId) {
       throw new RuntimeError('INVALID_INPUT', 'Image Input has no configured mediaId.', { nodeId: context.nodeId });
+    }
+
+    const mediaType = String(context.config.mediaType ?? context.config.type ?? 'IMAGE').toUpperCase();
+    if (mediaType !== 'IMAGE') {
+      throw new RuntimeError('INVALID_INPUT', `Image Input received mediaType "${mediaType}", expected IMAGE.`, { nodeId: context.nodeId });
     }
 
     const activeProject = context.context.activeProject.projectId;
