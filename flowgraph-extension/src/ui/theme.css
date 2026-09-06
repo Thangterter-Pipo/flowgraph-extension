@@ -500,7 +500,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   flex-direction: column;
   justify-content: space-between;
   padding: 6px;
-  background: rgba(0, 0, 0, 0.12);
+  background: rgba(0, 0, 0, 0.2);
+  transition: background 0.2s ease;
+}
+.player-overlay.is-playing {
+  background: transparent;
+}
+.player-overlay.is-playing .player-meta-bottom {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.player-overlay.is-playing:hover .player-meta-bottom {
+  opacity: 1;
 }
 .play-button-glass {
   align-self: center;
