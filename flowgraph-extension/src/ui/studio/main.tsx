@@ -75,6 +75,10 @@ import { getSyncNodeCapability, isSyncGenerationNode, normalizeFlowUiModelLabel,
 
 const nodeTypes = { flowNode: WorkflowNode };
 
+function isVideoKind(kind: string): boolean {
+  return ['t2v', 'i2v', 'extend', 'interpolation', 'reference'].includes(kind);
+}
+
 function colorForTone(tone: PaletteSpec['tone']) {
   return tone === 'purple' ? '#9a52f8' : tone === 'blue' ? '#4e9fff' : tone === 'green' ? '#3ad39c' : '#ff9941';
 }
@@ -214,14 +218,25 @@ function Inspector({ node, edges, updateConfig, close, locked }: { node?: FlowNo
   const registryRatios = registryBacked ? aspectRatioOptions(data.kind, data.config) : [];
 
   const optionMap: Record<string, string[]> = {
-    model: modelOptions.length ? modelOptions : ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'],
+    model: modelOptions.length
+      ? modelOptions
+      : isVideoKind(data.kind)
+        ? ['Omni 1.1 Flash', 'Veo 3.1 – Lite', 'Veo 3.1 – Fast', 'Veo 3.1 – Quality']
+        : ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'],
     serviceTier: serviceTierOptions,
+    mode: isVideoKind(data.kind)
+      ? ['Thành phần', 'Khung hình']
+      : data.kind === 'creationAgent'
+        ? ['streamChat', 'Session']
+        : ['Extend Forward', 'Edit Video'],
     style: ['Cinematic', 'Realistic', 'Artistic', 'Advertising', 'Anime', 'Custom'],
-    aspectRatio: ['16:9', '4:3', '1:1', '3:4', '9:16'],
+    aspectRatio: isVideoKind(data.kind) ? ['16:9', '9:16'] : ['16:9', '4:3', '1:1', '3:4', '9:16'],
+    resolution: isVideoKind(data.kind)
+      ? ['720p', '360p']
+      : ['720p'],
     batchCount: ['1', '2', '3', '4'],
-    duration: registryDurations.length ? registryDurations : ['4 seconds', '5 seconds', '6 seconds', '8 seconds', '10 seconds'],
+    duration: ['4 seconds', '6 seconds', '8 seconds', '10 seconds'],
     frameRate: ['24 fps'],
-    mode: data.kind === 'creationAgent' ? ['streamChat', 'Session'] : ['Extend Forward', 'Edit Video'],
     format: ['Original media', 'MP4 (1080p)', 'MP4 (720p)'],
     promptSource: ['Input', 'Custom'],
     targetResolution: data.kind === 'imageUpscale'
@@ -229,9 +244,6 @@ function Inspector({ node, edges, updateConfig, close, locked }: { node?: FlowNo
       : data.kind === 'videoUpscale'
         ? (modelOptions.includes('Veo 3.1 - Upsampler 4K') ? ['1080p', '4K'] : ['1080p'])
         : ['1080p', '4K'],
-    resolution: normalizeFlowUiModelLabel(data.config.model ?? '').startsWith('Omni')
-      ? ['360p', '720p']
-      : ['720p'],
     nativeAudio: ['Enabled', 'Not declared'],
     motion: ['Auto', 'Subtle', 'Dynamic'],
     usageType: ['ASSET'],

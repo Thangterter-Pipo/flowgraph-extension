@@ -137,11 +137,22 @@ export const palette: PaletteSpec[] = [
   {
     kind: 'i2v',
     title: 'Image to Video',
-    subtitle: 'Animate an Image MediaRef',
+    subtitle: 'Animate image with Google Flow',
     tone: 'green',
     group: 'Video',
     preview: 'video',
-    config: { model: 'Omni Flash', serviceTier: 'SERVICE_TIER_INTERMEDIATE', duration: '8 seconds', aspectRatio: '16:9 (Landscape)', motion: 'Auto', imageSource: 'Input MediaRef' },
+    config: {
+      model: 'Omni 1.1 Flash',
+      mode: 'Thành phần',
+      serviceTier: 'SERVICE_TIER_INTERMEDIATE',
+      duration: '8 seconds',
+      aspectRatio: '16:9',
+      resolution: '720p',
+      batchCount: '1',
+      costCredits: '12',
+      promptSource: 'Input',
+      startImage: 'Input MediaRef',
+    },
   },
   {
     kind: 'extend',
@@ -343,7 +354,20 @@ export const initialNodes: FlowNode[] = [
       promptSource: 'Input',
     },
   }),
-  node('3', 'i2v', 740, 140),
+  node('3', 'i2v', 740, 140, {
+    config: {
+      model: 'Omni 1.1 Flash',
+      mode: 'Thành phần',
+      serviceTier: 'SERVICE_TIER_INTERMEDIATE',
+      duration: '8 seconds',
+      aspectRatio: '16:9',
+      resolution: '720p',
+      batchCount: '1',
+      costCredits: '12',
+      promptSource: 'Input',
+      startImage: 'Input MediaRef',
+    },
+  }),
   node('4', 'download', 1100, 140),
 ];
 

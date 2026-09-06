@@ -202,26 +202,106 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                 </div>
               )}
               {isI2V && (
-                <div className="meta-item" title="Duration">
-                  <Clock3 size={11} />
-                  <span>{data.config.duration || '8s'}</span>
+                <>
+                  <div className="size-segmented-control mode-control" title="Chế độ tạo video">
+                    {(['Thành phần', 'Khung hình'] as const).map((m) => (
+                      <button
+                        key={m}
+                        className={(data.config.mode || 'Thành phần') === m ? 'active' : ''}
+                        title={`Chế độ: ${m}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'mode', value: m } }));
+                        }}
+                      >
+                        {m === 'Thành phần' ? '🧩 Thành phần' : '🔲 Khung hình'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="size-segmented-control duration-control" title="Thời lượng video">
+                    {(['4s', '6s', '8s', '10s'] as const).map((d) => (
+                      <button
+                        key={d}
+                        className={(data.config.duration?.replace(' seconds', 's') || '8s') === d ? 'active' : ''}
+                        title={`Thời lượng: ${d}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'duration', value: d.replace('s', ' seconds') } }));
+                        }}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="size-segmented-control res-control" title="Độ phân giải">
+                    {(['720p', '360p'] as const).map((res) => (
+                      <button
+                        key={res}
+                        className={(data.config.resolution || '720p') === res ? 'active' : ''}
+                        title={`Độ phân giải: ${res}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'resolution', value: res } }));
+                        }}
+                      >
+                        {res}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="size-segmented-control batch-control" title="Số lượng tạo">
+                    {(['1', '2', '3', '4'] as const).map((b) => (
+                      <button
+                        key={b}
+                        className={(data.config.batchCount || '1') === b ? 'active' : ''}
+                        title={`Tạo x${b}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'batchCount', value: b } }));
+                        }}
+                      >
+                        x{b}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="meta-item cost-pill" title="Chi phí tín dụng">
+                    <span>Quá trình tạo sẽ tốn <u>{data.config.costCredits || '12'} tín dụng</u></span>
+                  </div>
+                </>
+              )}
+              {isT2I && (
+                <div className="size-segmented-control ratio-control">
+                  {(['16:9', '4:3', '1:1', '3:4', '9:16'] as const).map((r) => (
+                    <button
+                      key={r}
+                      className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
+                      title={`Tỷ lệ ${r}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'aspectRatio', value: r } }));
+                      }}
+                    >
+                      {r}
+                    </button>
+                  ))}
                 </div>
               )}
-              <div className="size-segmented-control ratio-control">
-                {(['16:9', '4:3', '1:1', '3:4', '9:16'] as const).map((r) => (
-                  <button
-                    key={r}
-                    className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
-                    title={`Tỷ lệ ${r}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'aspectRatio', value: r } }));
-                    }}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
+              {isI2V && (
+                <div className="size-segmented-control ratio-control">
+                  {(['16:9', '9:16'] as const).map((r) => (
+                    <button
+                      key={r}
+                      className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
+                      title={`Tỷ lệ ${r}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'aspectRatio', value: r } }));
+                      }}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
