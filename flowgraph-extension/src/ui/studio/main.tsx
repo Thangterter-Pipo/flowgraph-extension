@@ -1270,13 +1270,11 @@ function Studio() {
       let className = '';
       let animated = false;
 
+      // Chỉ kích hoạt animation cho dây nối trực tiếp liên quan đến node đang chạy thực tế
       if (isRunning && (isSourceRunning || isTargetRunning)) {
         className = 'running-active';
         animated = true;
-      } else if (isRunning) {
-        className = 'running';
-        animated = true;
-      } else if (isSourceSuccess) {
+      } else if (isSourceSuccess && !isRunning) {
         className = 'running-success';
       }
 

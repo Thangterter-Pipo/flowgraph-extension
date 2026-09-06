@@ -391,6 +391,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   color: #fbbf24;
   background: rgba(251, 191, 36, 0.1);
   border: 1px solid rgba(251, 191, 36, 0.25);
+  animation: nodePillPulse 1s ease-in-out infinite alternate;
+}
+@keyframes nodePillPulse {
+  from { opacity: 0.6; box-shadow: 0 0 5px rgba(251, 191, 36, 0.2); }
+  to { opacity: 1; box-shadow: 0 0 12px rgba(251, 191, 36, 0.6); }
 }
 .badge-stitch.completed {
   color: #34d399;
