@@ -57,6 +57,9 @@ function inferredResult(data: FlowNodeData): NodeMediaResult | undefined {
 }
 
 interface CustomComboboxProps {
+  id: string;
+  activeId: string | null;
+  onToggle: (id: string | null) => void;
   value: string;
   options: Array<{ value: string; label: string }>;
   onChange: (val: string) => void;
@@ -65,20 +68,30 @@ interface CustomComboboxProps {
   title?: string;
 }
 
-function CustomCombobox({ value, options, onChange, icon, wrapClass = '', title = '' }: CustomComboboxProps) {
-  const [open, setOpen] = useState(false);
+function CustomCombobox({
+  id,
+  activeId,
+  onToggle,
+  value,
+  options,
+  onChange,
+  icon,
+  wrapClass = '',
+  title = '',
+}: CustomComboboxProps) {
+  const open = activeId === id;
   const ref = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
+        onToggle(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
+  }, [open, onToggle]);
 
   const currentOption = options.find((o) => o.value === value) ?? options[0];
 
@@ -89,7 +102,7 @@ function CustomCombobox({ value, options, onChange, icon, wrapClass = '', title 
       title={title}
       onClick={(e) => {
         e.stopPropagation();
-        setOpen(!open);
+        onToggle(open ? null : id);
       }}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -110,7 +123,7 @@ function CustomCombobox({ value, options, onChange, icon, wrapClass = '', title 
               onClick={(e) => {
                 e.stopPropagation();
                 onChange(opt.value);
-                setOpen(false);
+                onToggle(null);
               }}
             >
               <span>{opt.label}</span>
@@ -198,26 +211,14 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   const isVideoNode = isI2V || isInterpolation;
   const isDownload = data.kind === 'download';
 
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const popupRef = React.useRef<HTMLDivElement | null>(null);
-
-  // Click-outside listener to dismiss popup
-  React.useEffect(() => {
-    if (!showSettingsModal) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
-        setShowSettingsModal(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showSettingsModal]);
+  // Quản lý trạng thái chỉ cho phép tối đa 1 Combobox mở tại một thời điểm
+  const [activeComboboxId, setActiveComboboxId] = useState<string | null>(null);
 
   React.useEffect(() => {
     const handleToggle = (e: Event) => {
       const customEvent = e as CustomEvent<{ nodeId: string; open?: boolean }>;
       if (customEvent.detail?.nodeId === id) {
-        setShowSettingsModal((prev) => (customEvent.detail.open !== undefined ? customEvent.detail.open : !prev));
+        setActiveComboboxId((prev) => (customEvent.detail.open ? `${id}-model` : null));
       }
     };
     window.addEventListener('flowgraph:toggle-settings', handleToggle);
@@ -375,6 +376,9 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             <div className="inline-combobox-toolbar nodrag nopan">
               {/* 1. Custom Combobox Model */}
               <CustomCombobox
+                id={`${id}-model`}
+                activeId={activeComboboxId}
+                onToggle={setActiveComboboxId}
                 wrapClass="model-wrap"
                 title="Chọn Mô hình AI"
                 icon={<Box size={11} className="model-icon" />}
@@ -386,6 +390,9 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               {/* Video Extras: Duration & Resolution */}
               {isVideoNode && (
                 <CustomCombobox
+                  id={`${id}-duration`}
+                  activeId={activeComboboxId}
+                  onToggle={setActiveComboboxId}
                   wrapClass="duration-wrap"
                   title="Thời lượng video"
                   icon={<Clock3 size={10} />}
@@ -397,6 +404,9 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
               {isVideoNode && (
                 <CustomCombobox
+                  id={`${id}-resolution`}
+                  activeId={activeComboboxId}
+                  onToggle={setActiveComboboxId}
                   wrapClass="res-wrap"
                   title="Độ phân giải"
                   value={data.config.resolution || '720p'}
@@ -407,6 +417,9 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
               {/* 2. Custom Combobox Aspect Ratio */}
               <CustomCombobox
+                id={`${id}-aspectRatio`}
+                activeId={activeComboboxId}
+                onToggle={setActiveComboboxId}
                 wrapClass="aspect-wrap"
                 title="Tỷ lệ khung hình"
                 icon={<Square size={10} />}
@@ -417,6 +430,9 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
               {/* 3. Custom Combobox Batch Count */}
               <CustomCombobox
+                id={`${id}-batchCount`}
+                activeId={activeComboboxId}
+                onToggle={setActiveComboboxId}
                 wrapClass="batch-wrap"
                 title="Số lượng tạo"
                 value={data.config.batchCount || '1'}
