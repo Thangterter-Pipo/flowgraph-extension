@@ -1,0 +1,68 @@
+{
+  "task": "FG-1300",
+  "status": "RUNTIME_VERIFIED",
+  "verifiedAt": "2026-09-06",
+  "commit": "cee4fd7",
+  "environment": {
+    "cdp": "127.0.0.1:9222",
+    "studio": "FlowGraph Studio",
+    "flowProjectPath": "/project/a412e256-8534-43c7-bfb9-71f15a2944df"
+  },
+  "project": {
+    "projectId": "a412e256-8534-43c7-bfb9-71f15a2944df",
+    "title": "AI Creative Studio for Video, Images & Custom Tools"
+  },
+  "live": {
+    "LIVE-01": "PASS",
+    "LIVE-02": "PASS",
+    "LIVE-03": {
+      "status": "PASS",
+      "workspaces": [
+        "FLOWGRAPH",
+        "PROJECT",
+        "CONTINUITY",
+        "SHOTS",
+        "ASSETS",
+        "STORYBOARD",
+        "TIMELINE",
+        "RENDER"
+      ]
+    },
+    "LIVE-04": {
+      "status": "PASS",
+      "shot1": {
+        "workflowId": "workflow-shot-1788680744061",
+        "markerName": "FG1300-LIVE04-SHOT1",
+        "restoredAfterSwitch": true
+      },
+      "shot2": {
+        "workflowId": "workflow-shot-1788680877153",
+        "markerName": "FG1300-LIVE04-SHOT2",
+        "restoredAfterReload": true
+      }
+    },
+    "LIVE-05": {
+      "status": "PASS",
+      "filmProjectKey": "flowgraph.filmProject.v1.a412e256-8534-43c7-bfb9-71f15a2944df",
+      "workflowCount": 2,
+      "allWorkflowBindingsMatchProject": true,
+      "gateUnlockedAfterReload": true,
+      "signedPreviewUrlPersisted": false,
+      "crossProjectLeakageObserved": false
+    },
+    "LIVE-06": {
+      "vitest": "189/189 PASS (26/26 files)",
+      "typescript": "PASS",
+      "productionBuild": "PASS",
+      "studioBundle": "studio-L9uxOMe8.js",
+      "sidepanelBundle": "sidepanel-CxuoKja2.js",
+      "python": "User-reported 78 passed, 24 skipped; not independently rerun because the current accessible Python interpreter lacks pytest."
+    }
+  },
+  "security": {
+    "tokensExported": false,
+    "cookiesExported": false,
+    "recaptchaTokensExported": false,
+    "signedPreviewUrlsPersisted": false
+  }
+}
