@@ -71,7 +71,12 @@ async def run_live_t2i_60_matrix():
                         }};
                     }})()""")
 
-                    is_pass = check and check.get("validRatio") and check.get("validBatch")
+                    is_pass = bool(
+                        check
+                        and check.get("validModel")
+                        and check.get("validRatio")
+                        and check.get("validBatch")
+                    )
                     status = "PASS_UI_STATE" if is_pass else "FAIL"
                     if is_pass:
                         passed_cases += 1

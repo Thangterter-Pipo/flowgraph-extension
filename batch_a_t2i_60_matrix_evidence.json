@@ -2,8 +2,8 @@
   "batch": "BATCH_A_T2I",
   "total": 60,
   "passed": 60,
-  "elapsed_seconds": 3.15,
-  "timestamp": "2026-09-06 21:12:17",
+  "elapsed_seconds": 3.0,
+  "timestamp": "2026-09-06 21:21:22",
   "results": [
     {
       "case_id": "TC-T2I-001",
