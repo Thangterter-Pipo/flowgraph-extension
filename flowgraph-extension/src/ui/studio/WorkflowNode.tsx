@@ -80,6 +80,37 @@ function computeEstimatedCredits(kind: string, config: Record<string, string>): 
   return '12';
 }
 
+function SafeImage({ src, alt }: { src: string; alt: string }) {
+  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    if (!src) {
+      setBlobUrl(null);
+      return;
+    }
+    if (src.startsWith('blob:') || src.startsWith('data:')) {
+      setBlobUrl(src);
+      return;
+    }
+    fetch(src)
+      .then((res) => res.blob())
+      .then((blob) => {
+        if (active) {
+          setBlobUrl(URL.createObjectURL(blob));
+        }
+      })
+      .catch(() => {
+        if (active) setBlobUrl(src);
+      });
+    return () => {
+      active = false;
+    };
+  }, [src]);
+
+  return <img src={blobUrl || src} alt={alt} />;
+}
+
 export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   const result = inferredResult(data);
   const isPrompt = data.kind === 'prompt';
@@ -246,7 +277,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             ) : (
               <div className="image-preview-wrap">
                 {result?.previewUrl ? (
-                  <img src={result.previewUrl} alt="Generated Preview" />
+                  <SafeImage src={result.previewUrl} alt="Generated Preview" />
                 ) : (
                   <div className="placeholder-art car-bg">
                     <span className="mock-car-glow" />
