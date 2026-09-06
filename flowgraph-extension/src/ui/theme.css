@@ -585,125 +585,118 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   margin-left: 2px;
 }
 
-/* Node Settings Floating Popup Modal */
-.node-settings-popup {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  width: 100%;
-  margin-top: 6px;
-  background: #12161f;
-  border: 1px solid #283548;
-  border-radius: 10px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85);
-  z-index: 100;
-  padding: 10px 12px;
-  color: #dce7f5;
-  backdrop-filter: blur(12px);
-  animation: popupSlideIn 0.16s ease-out;
-}
-@keyframes popupSlideIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.popup-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 9px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding-bottom: 6px;
-}
-.popup-title {
+/* Inline Combobox Toolbar on Node Footer */
+.inline-combobox-toolbar {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
-  font-weight: 700;
-  color: #f1f5f9;
+  width: 100%;
 }
-.popup-title svg {
+
+.inline-combobox-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  background: #080d14;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 0 4px 0 6px;
+  height: 24px;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.inline-combobox-wrap:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: #0d1522;
+}
+
+/* Model Combobox: Nổi bật viền Cyan điện quang theo thiết kế */
+.inline-combobox-wrap.model-wrap {
+  flex: 1.35;
+  min-width: 0;
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.22);
+}
+.inline-combobox-wrap.model-wrap:hover {
+  border-color: #38bdf8;
+  background: rgba(14, 165, 233, 0.14);
+}
+
+.inline-combobox-wrap.aspect-wrap {
+  flex: 0.85;
+  min-width: 0;
+}
+
+.inline-combobox-wrap.duration-wrap {
+  flex: 0.8;
+  min-width: 0;
+}
+
+.inline-combobox-wrap.res-wrap {
+  flex: 0.75;
+  min-width: 0;
+}
+
+.inline-combobox-wrap.batch-wrap {
+  flex: 0.65;
+  min-width: 0;
+  padding-left: 5px;
+}
+
+.combobox-icon {
+  flex-shrink: 0;
+  color: #94a3b8;
+  pointer-events: none;
+}
+.combobox-icon.model-icon {
   color: #38bdf8;
 }
-.popup-close-btn {
-  background: transparent;
-  border: 0;
-  color: #64748b;
-  cursor: pointer;
-  padding: 2px;
-  display: grid;
-  place-items: center;
-}
-.popup-close-btn:hover { color: #ffffff; }
 
-.popup-body {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-.popup-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.row-label {
-  font-size: 8.5px;
-  color: #8b99ad;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.popup-select {
-  background: #090e17;
-  border: 1px solid #283548;
+.inline-combobox-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
   color: #f1f5f9;
-  font-size: 8.5px;
-  font-weight: 600;
-  border-radius: 5px;
-  padding: 3px 6px;
-  outline: 0;
+  font-size: 9px;
+  font-weight: 500;
+  outline: none;
   cursor: pointer;
-  max-width: 170px;
-}
-.popup-segmented {
-  display: flex;
-  background: #070b12;
-  border: 1px solid #243144;
-  border-radius: 5px;
-  padding: 1px;
+  width: 100%;
+  padding: 0 11px 0 4px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   overflow: hidden;
 }
-.popup-segmented button {
-  padding: 2px 5px;
-  font-size: 8px;
+
+.inline-combobox-select.model-select {
+  color: #38bdf8;
   font-weight: 600;
-  border: 0;
-  background: transparent;
-  color: #718296;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.12s;
-}
-.popup-segmented button:hover {
-  color: #cbd5e1;
-}
-.popup-segmented button.active {
-  background: #0284c7;
-  color: #ffffff;
 }
 
-.popup-cost-note {
-  margin-top: 5px;
-  text-align: center;
-  font-size: 8px;
-  color: #718296;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-  padding-top: 5px;
-}
-.popup-cost-note u {
-  color: #cbd5e1;
-  text-decoration: underline;
+.inline-combobox-select.batch-select {
   font-weight: 600;
+  padding-left: 1px;
+}
+
+.inline-combobox-select option {
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 11px;
+  padding: 6px 10px;
+}
+
+.combobox-caret {
+  position: absolute;
+  right: 4px;
+  pointer-events: none;
+  color: #64748b;
+  opacity: 0.8;
+}
+.inline-combobox-wrap.model-wrap .combobox-caret {
+  color: #38bdf8;
 }
 .meta-item {
   display: flex;

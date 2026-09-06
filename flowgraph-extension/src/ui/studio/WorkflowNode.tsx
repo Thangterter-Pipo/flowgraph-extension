@@ -224,18 +224,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
           ) : (
             <span className="badge-stitch ready">READY</span>
           )}
-          {!isPrompt && !isDownload && (
-            <button
-              className="kebab-btn"
-              title="Cài đặt cấu hình"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowSettingsModal(!showSettingsModal);
-              }}
-            >
-              <Settings2 size={12} />
-            </button>
-          )}
+          {/* Controls button in header removed - replaced by direct inline comboboxes in footer */}
         </div>
       </div>
 
@@ -305,176 +294,108 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               </button>
             </div>
           ) : (
-            <div
-              className="config-meta-toolbar-compact"
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowSettingsModal(!showSettingsModal);
-              }}
-              title="Click để mở cài đặt tham số"
-            >
-              <div className="meta-pill model" title="Mô hình đang chọn">
-                <Box size={11} />
-                <span>{compactModel(data.config.model) || (isT2I ? 'Nano Banana 2' : 'Omni 1.1 Flash')}</span>
-                <ChevronDown size={10} className="dropdown-caret" />
+            <div className="inline-combobox-toolbar nodrag nopan">
+              {/* 1. Combobox Model */}
+              <div className="inline-combobox-wrap model-wrap" title="Chọn Mô hình AI">
+                <Box size={11} className="combobox-icon model-icon" />
+                <select
+                  className="inline-combobox-select model-select"
+                  value={data.config.model || (isT2I ? '🍌 Nano Banana 2' : 'Omni 1.1 Flash')}
+                  onChange={(e) => dispatchUpdate('model', e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {availableModels.map((m) => (
+                    <option key={m} value={m}>
+                      {compactModel(m)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={10} className="combobox-caret" />
               </div>
+
+              {/* Video Extras: Duration & Resolution */}
               {isVideoNode && (
-                <div className="meta-pill duration" title="Thời lượng">
-                  <Clock3 size={10} />
-                  <span>{data.config.duration?.replace(' seconds', 's') || '8s'}</span>
+                <div className="inline-combobox-wrap duration-wrap" title="Thời lượng video">
+                  <Clock3 size={10} className="combobox-icon" />
+                  <select
+                    className="inline-combobox-select"
+                    value={data.config.duration || '8 seconds'}
+                    onChange={(e) => dispatchUpdate('duration', e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {availableDurations.map((d) => (
+                      <option key={d} value={d}>
+                        {d.replace(' seconds', 's')}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={9} className="combobox-caret" />
                 </div>
               )}
+
               {isVideoNode && (
-                <div className="meta-pill res" title="Độ phân giải">
-                  <span>{data.config.resolution || '720p'}</span>
+                <div className="inline-combobox-wrap res-wrap" title="Độ phân giải">
+                  <select
+                    className="inline-combobox-select"
+                    value={data.config.resolution || '720p'}
+                    onChange={(e) => dispatchUpdate('resolution', e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  >
+                    {availableResolutions.map((res) => (
+                      <option key={res} value={res}>
+                        {res}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={9} className="combobox-caret" />
                 </div>
               )}
-              <div className="meta-pill aspect" title="Tỷ lệ khung hình">
-                <Square size={10} />
-                <span>{shortAspect(data.config.aspectRatio) || '16:9'}</span>
+
+              {/* 2. Combobox Aspect Ratio */}
+              <div className="inline-combobox-wrap aspect-wrap" title="Tỷ lệ khung hình">
+                <Square size={10} className="combobox-icon" />
+                <select
+                  className="inline-combobox-select"
+                  value={shortAspect(data.config.aspectRatio) || '16:9'}
+                  onChange={(e) => dispatchUpdate('aspectRatio', e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {availableRatios.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={9} className="combobox-caret" />
               </div>
-              <div className="meta-pill batch" title="Số lượng tạo">
-                <span>x{data.config.batchCount || '1'}</span>
+
+              {/* 3. Combobox Batch Count */}
+              <div className="inline-combobox-wrap batch-wrap" title="Số lượng tạo">
+                <select
+                  className="inline-combobox-select batch-select"
+                  value={data.config.batchCount || '1'}
+                  onChange={(e) => dispatchUpdate('batchCount', e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                >
+                  {availableBatches.map((b) => (
+                    <option key={b} value={b}>
+                      x{b}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={9} className="combobox-caret" />
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* 4. Settings Popup Modal */}
-      {showSettingsModal && (
-        <div ref={popupRef} className="node-settings-popup nodrag nopan" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-          <div className="popup-header">
-            <div className="popup-title">
-              {isT2I ? (
-                <>
-                  <Image size={12} /> Cấu hình tạo ảnh
-                </>
-              ) : isInterpolation ? (
-                <>
-                  <Film size={12} /> Cấu hình nội suy khung hình
-                </>
-              ) : (
-                <>
-                  <Film size={12} /> Cấu hình tạo video
-                </>
-              )}
-            </div>
-            <button className="popup-close-btn" onClick={() => setShowSettingsModal(false)}>
-              <X size={12} />
-            </button>
-          </div>
-
-          <div className="popup-body">
-            {/* Model Selector Dropdown */}
-            <div className="popup-row">
-              <span className="row-label">Mô hình AI</span>
-              <select
-                className="popup-select"
-                value={data.config.model || (isT2I ? '🍌 Nano Banana 2' : 'Omni 1.1 Flash')}
-                onChange={(e) => dispatchUpdate('model', e.target.value)}
-              >
-                {availableModels.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Start/End Image Model for Interpolation only */}
-            {isInterpolation && (
-              <div className="popup-row">
-                <span className="row-label">Model khung hình</span>
-                <select
-                  className="popup-select"
-                  value={data.config.imageModel || '🍌 Nano Banana 2'}
-                  onChange={(e) => dispatchUpdate('imageModel', e.target.value)}
-                >
-                  {['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'].map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Aspect Ratio */}
-            <div className="popup-row">
-              <span className="row-label">Tỷ lệ khung hình</span>
-              <div className="popup-segmented">
-                {availableRatios.map((r) => (
-                  <button
-                    key={r}
-                    className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
-                    onClick={() => dispatchUpdate('aspectRatio', r)}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Resolution (for Video) */}
-            {isVideoNode && (
-              <div className="popup-row">
-                <span className="row-label">Độ phân giải</span>
-                <div className="popup-segmented">
-                  {availableResolutions.map((res) => (
-                    <button
-                      key={res}
-                      className={(data.config.resolution || '720p') === res ? 'active' : ''}
-                      onClick={() => dispatchUpdate('resolution', res)}
-                    >
-                      {res}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Duration (for Video) */}
-            {isVideoNode && (
-              <div className="popup-row">
-                <span className="row-label">Thời lượng</span>
-                <div className="popup-segmented">
-                  {availableDurations.map((d) => (
-                    <button
-                      key={d}
-                      className={(data.config.duration?.replace(' seconds', 's') || '8s') === d ? 'active' : ''}
-                      onClick={() => dispatchUpdate('duration', d.replace('s', ' seconds'))}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Batch Count Multiplier */}
-            <div className="popup-row">
-              <span className="row-label">Số lượng tạo</span>
-              <div className="popup-segmented">
-                {availableBatches.map((b) => (
-                  <button
-                    key={b}
-                    className={(data.config.batchCount || '1') === b ? 'active' : ''}
-                    onClick={() => dispatchUpdate('batchCount', b)}
-                  >
-                    x{b}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Cost note */}
-            <div className="popup-cost-note">
-              Estimated: <u>{estimatedCost} credits</u>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Settings Popup Modal removed - replaced by direct inline comboboxes */}
 
       {/* 5. Dynamic Typed Ports with sleek Port Labels */}
       <div className="dynamic-port-strip">
