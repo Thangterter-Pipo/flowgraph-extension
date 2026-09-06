@@ -211,8 +211,41 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .react-flow__controls { background:#0d1521 !important; border:1px solid #233148 !important; border-radius:9px !important; overflow:hidden; box-shadow:var(--shadow) !important; }
 .react-flow__controls-button { background:#0d1521 !important; border-color:#1e2a3d !important; fill:#a7b4c8 !important; }
 .react-flow__minimap { background:#0c131e !important; border:1px solid #26344c; border-radius:9px; overflow:hidden; }
-.react-flow__edge-path { stroke-width:2.2; }
+.react-flow__edge-path {
+  stroke-width: 2.2;
+  transition: stroke 0.3s ease, stroke-width 0.3s ease;
+}
 .react-flow__connection-path { stroke:#a961ff; stroke-width:2.4; }
+
+/* Dynamic Flow Animated Edge Curves (Active prompt/generation state) */
+.react-flow__edge.running .react-flow__edge-path {
+  stroke: #ad70ff !important;
+  stroke-width: 2.8 !important;
+  stroke-dasharray: 6 4 !important;
+  animation: flowEdgePulse 0.8s linear infinite !important;
+  filter: drop-shadow(0 0 5px rgba(173, 112, 255, 0.75));
+}
+.react-flow__edge.running-active .react-flow__edge-path {
+  stroke: #5aa8ff !important;
+  stroke-width: 3 !important;
+  stroke-dasharray: 7 3 !important;
+  animation: flowEdgePulse 0.6s linear infinite !important;
+  filter: drop-shadow(0 0 7px rgba(90, 168, 255, 0.85));
+}
+.react-flow__edge.running-success .react-flow__edge-path {
+  stroke: #48d7a8 !important;
+  stroke-width: 2.5 !important;
+  filter: drop-shadow(0 0 4px rgba(72, 215, 168, 0.5));
+}
+
+@keyframes flowEdgePulse {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
 
 .flow-node { width:205px; min-height:118px; border-radius:10px; background:linear-gradient(180deg,#121b29,#0e1621); border:1px solid #3d4b62; box-shadow:0 12px 28px rgba(0,0,0,.28); overflow:hidden; transition:.16s ease; }
 .flow-node:hover { transform:translateY(-1px); box-shadow:0 15px 34px rgba(0,0,0,.36); }
@@ -879,7 +912,7 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
 .project-create-row .form-control{min-width:0;height:30px;border:1px solid #28374c;border-radius:7px;background:#0a1119;color:#d4deeb;padding:0 9px;font-size:10px}
 .project-create-row .fg-btn{min-height:30px;font-size:9px;white-space:nowrap}
 
-.canvas-gate{position:relative;display:grid;grid-template-rows:minmax(0,1fr) auto;min-height:0}
+.canvas-gate{position:relative;display:grid;grid-template-rows:minmax(0,1fr);min-height:0;height:100%}
 .canvas-gate-overlay{position:absolute;inset:0;z-index:60;display:grid;place-items:center;background:rgba(4,7,12,.74);backdrop-filter:blur(4px)}
 .canvas-gate-card{width:min(440px,92%);display:grid;justify-items:center;text-align:center;gap:11px;padding:30px 26px;border:1px solid #2b3c56;border-radius:14px;background:#0c1420;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 .canvas-gate-card>svg{color:#9a74d3}

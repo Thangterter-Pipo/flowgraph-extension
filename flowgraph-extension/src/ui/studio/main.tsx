@@ -317,52 +317,7 @@ function Inspector({ node, edges, updateConfig, close, locked }: { node?: FlowNo
   );
 }
 
-function ExecutionPanel({ nodes, runStatus, elapsed, validationIssues, runError, creditsBefore, creditsAfter }: { nodes: FlowNode[]; runStatus: RunStatus; elapsed: number; validationIssues?: string[]; runError?: NodeErrorInfo; creditsBefore?: number; creditsAfter?: number }) {
-  const successCount = nodes.filter((node) => node.data.status === 'success').length;
-  const failedCount = nodes.filter((node) => node.data.status === 'failed').length;
-  const runLabel = runStatus === 'ready' ? 'CONFIGURING' : runStatus === 'running' ? 'RUNNING' : runStatus === 'success' ? 'SUCCESS' : 'FAILED';
-  return (
-    <section className="execution-panel">
-      <div className="execution-head"><h3>EXECUTION PANEL</h3><span className={`fg-badge ${runStatus}`}>{runLabel}</span></div>
-      <div className="execution-content">
-        <div className="run-summary fg-card">
-          <div className="run-summary-top"><strong>Run</strong><span className={`fg-badge ${runStatus}`}>{runLabel}</span></div>
-          <div className="summary-list">
-            <div className="summary-row"><span>Elapsed</span><strong>{elapsed.toString().padStart(2, '0')}s</strong></div>
-            <div className="summary-row"><span>Nodes</span><strong>{nodes.length}</strong></div>
-            <div className="summary-row"><span>Successful</span><strong>{successCount}</strong></div>
-            <div className="summary-row"><span>Failed</span><strong>{failedCount}</strong></div>
-            {creditsBefore !== undefined && (
-              <div className="summary-row"><span>Credits</span><strong>{creditsAfter ?? creditsBefore}{creditsAfter !== undefined && creditsAfter !== creditsBefore ? ` / ${creditsBefore}` : ''}</strong></div>
-            )}
-          </div>
-          {validationIssues && validationIssues.length > 0 && (
-            <div className="validation-report">
-              <strong>Pre-run report</strong>
-              {validationIssues.map((issue, index) => <div className="validation-issue" key={index}>{issue}</div>)}
-            </div>
-          )}
-          {runError && (
-            <div className="validation-report">
-              <strong>Run error</strong>
-              <div className="validation-issue">{runError.code}: {runError.message}</div>
-            </div>
-          )}
-        </div>
-        <div className="execution-track">
-          {nodes.map((node, index) => (
-            <div className={`run-node-card ${node.data.status}`} key={node.id}>
-              <div className="run-node-title"><span>{index + 1}</span><NodeIcon kind={node.data.kind} size={12} /><span>{node.data.title}</span></div>
-              <div style={{ marginTop: 7 }}><span className={`fg-badge ${node.data.status}`}>{node.data.status === 'idle' ? 'pending' : node.data.status}</span>{node.data.cacheHit && node.data.status === 'success' && <span className="fg-badge cache-hit">CACHE HIT</span>}</div>
-              {node.data.status === 'running' && <div className="run-progress"><span style={{ width: '72%' }} /></div>}
-              <div className="run-node-meta">{node.data.status === 'success' ? 'Completed' : node.data.status === 'failed' ? node.data.errorMessage ?? 'Provider error' : node.data.status === 'skipped' ? 'Skipped downstream' : '—'}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
+
 
 
 interface NodeErrorInfo {
@@ -1136,7 +1091,7 @@ function Studio() {
     if (!connection.isCanvasUnlocked) return;
     if (!isValidConnection(candidate)) return;
     const source = nodes.find((node) => node.id === candidate.source);
-    setEdges((current) => addEdge({ ...candidate, type: 'smoothstep', style: { stroke: colorForTone(source?.data.tone ?? 'purple') } }, current));
+    setEdges((current) => addEdge({ ...candidate, type: 'default', style: { stroke: colorForTone(source?.data.tone ?? 'purple') } }, current));
   }, [connection.isCanvasUnlocked, isValidConnection, nodes, setEdges]);
 
   const onDrop = useCallback((event: React.DragEvent) => {
@@ -1218,6 +1173,37 @@ function Studio() {
         ? 'DESYNCED'
         : 'SYNC IDLE';
 
+  const computedEdges = useMemo(() => {
+    return edges.map((edge) => {
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+      const targetNode = nodes.find((n) => n.id === edge.target);
+      const isSourceRunning = sourceNode?.data.status === 'running';
+      const isTargetRunning = targetNode?.data.status === 'running';
+      const isSourceSuccess = sourceNode?.data.status === 'success';
+      const isRunning = runStatus === 'running';
+
+      let className = '';
+      let animated = false;
+
+      if (isRunning && (isSourceRunning || isTargetRunning)) {
+        className = 'running-active';
+        animated = true;
+      } else if (isRunning) {
+        className = 'running';
+        animated = true;
+      } else if (isSourceSuccess) {
+        className = 'running-success';
+      }
+
+      return {
+        ...edge,
+        type: 'default', // Bézier curve
+        animated,
+        className,
+      };
+    });
+  }, [edges, nodes, runStatus]);
+
   return (
     <div className="fg-shell studio-app">
       <header className="studio-topbar">
@@ -1270,7 +1256,7 @@ function Studio() {
               </div>
               <ReactFlow<FlowNode, FlowEdge>
                 nodes={nodes}
-                edges={edges}
+                edges={computedEdges}
                 nodeTypes={nodeTypes}
                 onNodesChange={connection.isCanvasUnlocked ? onNodesChange : undefined}
                 onEdgesChange={connection.isCanvasUnlocked ? onEdgesChange : undefined}
@@ -1290,7 +1276,6 @@ function Studio() {
                 <MiniMap position="top-right" pannable zoomable nodeColor={(node) => colorForTone((node.data as FlowNode['data']).tone)} maskColor="rgba(5,9,14,.60)" />
               </ReactFlow>
             </div>
-            <ExecutionPanel nodes={nodes} runStatus={runStatus} elapsed={elapsed} validationIssues={validationIssues} runError={runError} creditsBefore={creditsBefore} creditsAfter={creditsAfter} />
           </ProjectGateOverlay>
         </section>
 
