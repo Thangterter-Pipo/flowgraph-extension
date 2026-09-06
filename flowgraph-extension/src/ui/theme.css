@@ -397,15 +397,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .flow-card-stitch.prompt .flow-card-body {
   padding: 6px;
 }
-.prompt-text-box {
+.prompt-textarea {
+  width: 100%;
+  box-sizing: border-box;
   background: #06090f;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 6px;
-  padding: 8px;
-  font-size: 9.5px;
+  padding: 8px 58px 8px 8px; /* chừa 58px bên phải để không bị nhãn Output đè chữ */
+  font-size: 10px;
   line-height: 1.48;
-  color: #94a3b8;
-  min-height: 58px;
+  color: #dce7f5;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 62px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.prompt-textarea:focus {
+  border-color: #a855f7;
+  box-shadow: 0 0 0 1px #a855f7, 0 0 12px rgba(168, 85, 247, 0.25);
+  background: #090e17;
 }
 
 .media-preview-container {
@@ -782,21 +793,39 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background: #172133;
 }
 
-/* Dynamic port inline tags */
-.port-label-inline {
+/* Dynamic port anchor & tags */
+.port-anchor-wrap {
   position: absolute;
-  font-size: 8px;
-  font-weight: 600;
-  color: #64748b;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
   pointer-events: none;
+  z-index: 10;
+}
+.port-anchor-wrap.in {
+  left: 0;
+}
+.port-anchor-wrap.out {
+  right: 0;
+}
+
+.port-badge-tag {
+  font-size: 8px;
+  font-weight: 700;
   letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(10, 15, 26, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: #94a3b8;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
 }
-.port-label-inline.in {
-  left: 12px;
+.port-badge-tag.in {
+  margin-left: 9px;
 }
-.port-label-inline.out {
-  right: 12px;
+.port-badge-tag.out {
+  margin-right: 9px;
 }
 
 /* Ports/Handles */

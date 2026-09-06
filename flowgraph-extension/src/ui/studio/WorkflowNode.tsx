@@ -445,32 +445,38 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
         </div>
       )}
 
-      {/* 5. Dynamic Typed Ports based on portsForKind() */}
+      {/* 5. Dynamic Typed Ports with sleek Port Labels */}
       <div className="dynamic-port-strip">
         {/* Left Inputs */}
         {portsForKind(data.kind).inputs.map((port, idx) => (
-          <Handle
-            key={port.id}
-            type="target"
-            position={Position.Left}
-            id={port.id}
-            className={`stitch-port-handle in ${portTypeClass(port.type)}`}
-            style={{ top: `${42 + idx * 24}px` }}
-            title={`${port.label} (${port.type}${port.required ? ' · bắt buộc' : ''})`}
-          />
+          <div key={port.id} className="port-anchor-wrap in" style={{ top: `${38 + idx * 26}px` }}>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={port.id}
+              className={`stitch-port-handle in ${portTypeClass(port.type)}`}
+              title={`${port.label} (${port.type}${port.required ? ' · bắt buộc' : ''})`}
+            />
+            <span className="port-badge-tag in" title={port.type}>
+              {port.label}
+            </span>
+          </div>
         ))}
 
         {/* Right Outputs */}
         {portsForKind(data.kind).outputs.map((port, idx) => (
-          <Handle
-            key={port.id}
-            type="source"
-            position={Position.Right}
-            id={port.id}
-            className={`stitch-port-handle out ${portTypeClass(port.type)}`}
-            style={{ top: `${42 + idx * 24}px` }}
-            title={`${port.label} (${port.type})`}
-          />
+          <div key={port.id} className="port-anchor-wrap out" style={{ top: `${38 + idx * 26}px` }}>
+            <span className="port-badge-tag out" title={port.type}>
+              {port.label}
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={port.id}
+              className={`stitch-port-handle out ${portTypeClass(port.type)}`}
+              title={`${port.label} (${port.type})`}
+            />
+          </div>
         ))}
       </div>
     </div>
