@@ -1305,7 +1305,7 @@ function Studio() {
           </ProjectGateOverlay>
         </section>
 
-        <Inspector node={selectedNode} edges={edges} updateConfig={updateConfig} close={() => setSelectedNodeId('')} locked={!connection.isCanvasUnlocked} />
+        {/* Inspector panel removed to maximize infinite canvas workspace as requested */}
       </main>
 
       {confirmRerun.length > 0 && (
