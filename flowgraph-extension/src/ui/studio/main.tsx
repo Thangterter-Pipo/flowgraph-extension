@@ -33,6 +33,22 @@ import {
 } from 'lucide-react';
 import '../theme.css';
 import WorkflowNode, { NodeIcon } from './WorkflowNode';
+import FilmWorkspace from './FilmWorkspace';
+import AssetWorkspace from './AssetWorkspace';
+import StoryboardWorkspace from './StoryboardWorkspace';
+import TimelineWorkspace from './TimelineWorkspace';
+import RenderWorkspace from './RenderWorkspace';
+import ProductionWorkspace from './ProductionWorkspace';
+import ContinuityWorkspace from './ContinuityWorkspace';
+import { useFilmProject } from './useFilmProject';
+import { updateShot } from './filmModel';
+import {
+  WORKFLOW_SCHEMA_VERSION,
+  buildSavedWorkflow,
+  persistWorkflow,
+  restoreWorkflow,
+} from './workflowPersistence';
+import type { FilmShot } from '../../types/film';
 import {
   cloneInitialNodes,
   hydrateNodeData,
@@ -78,12 +94,10 @@ function colorForTone(tone: PaletteSpec['tone']) {
 // v4: the V1 graph now wires the Prompt node into the Image-to-Video node too.
 // Bumping this discards previously saved graphs that lack the edge, which is the
 // point — a stale saved graph would keep reproducing the empty-prompt bug.
-export const WORKFLOW_SCHEMA_VERSION = 4;
-
 // FG-1103 — run history (project-scoped, no secrets/signed URLs).
 const RUN_HISTORY_KEY = 'flowgraph.runHistory.v1';
 
-function recordRun(events: RuntimeEvent[], startedAt: string, workflowName: string, activeProject?: ActiveProjectState) {
+function recordRun(events: RuntimeEvent[], startedAt: string, workflowId: string, workflowName: string, activeProject?: ActiveProjectState) {
   if (!activeProject) return;
   const runEvent = [...events].reverse().find((event): event is Extract<RuntimeEvent, { type: 'run' }> => event.type === 'run');
   const status = runEvent?.type === 'run' ? (runEvent.state === 'validating' ? 'failed' : runEvent.state) : 'failed';
@@ -100,7 +114,7 @@ function recordRun(events: RuntimeEvent[], startedAt: string, workflowName: stri
     }));
   const record = {
     runId: runEvent?.type === 'run' ? runEvent.runId : crypto.randomUUID(),
-    workflowId: workflowName,
+    workflowId,
     workflowName,
     status: status === 'cancelled' ? 'cancelled' as const : status === 'success' ? 'success' as const : 'failed' as const,
     projectId: activeProject.projectId,
@@ -119,46 +133,19 @@ function recordRun(events: RuntimeEvent[], startedAt: string, workflowName: stri
   }
 }
 
-export interface SavedWorkflow {
-  schemaVersion: number;
-  name: string;
-  savedAt: string;
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-  projectBinding?: { projectId: string; projectName: string };
-  runtimeResults?: Record<string, { type: 'image' | 'video'; mediaId: string; previewUrl?: string; mimeType?: string; fileName?: string }>;
-}
-
-function useWorkflowPersistence(nodes: FlowNode[], edges: FlowEdge[], workflowName: string, projectBinding?: { projectId: string; projectName: string }) {
+function useWorkflowPersistence(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  workflowId: string,
+  workflowName: string,
+  projectBinding?: { projectId: string; projectName: string },
+) {
   const save = useCallback(() => {
-    const runtimeResults: SavedWorkflow['runtimeResults'] = {};
-    for (const node of nodes) {
-      if (node.data.result?.mediaId) {
-        // Persist media id + metadata; never the signed preview URL.
-        runtimeResults[node.id] = { type: node.data.result.type, mediaId: node.data.result.mediaId, mimeType: node.data.result.mimeType, fileName: node.data.result.fileName };
-      }
-    }
-    const payload: SavedWorkflow = {
-      schemaVersion: WORKFLOW_SCHEMA_VERSION,
-      name: workflowName,
-      savedAt: new Date().toISOString(),
-      nodes,
-      edges,
-      projectBinding,
-      runtimeResults: Object.keys(runtimeResults).length ? runtimeResults : undefined,
-    };
-    localStorage.setItem('flowgraph.demo.workflow', JSON.stringify(payload));
-  }, [nodes, edges, workflowName, projectBinding]);
+    persistWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
+  }, [nodes, edges, workflowId, workflowName, projectBinding]);
 
   const exportJson = useCallback(() => {
-    const payload: SavedWorkflow = {
-      schemaVersion: WORKFLOW_SCHEMA_VERSION,
-      name: workflowName,
-      savedAt: new Date().toISOString(),
-      nodes,
-      edges,
-      projectBinding,
-    };
+    const payload = buildSavedWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -166,7 +153,7 @@ function useWorkflowPersistence(nodes: FlowNode[], edges: FlowEdge[], workflowNa
     anchor.download = `${workflowName.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'flowgraph-workflow'}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
-  }, [nodes, edges, workflowName, projectBinding]);
+  }, [nodes, edges, workflowId, workflowName, projectBinding]);
 
   return { save, exportJson };
 }
@@ -389,32 +376,6 @@ function ExecutionPanel({ nodes, runStatus, elapsed, validationIssues, runError,
 
 type Workspace = 'production' | 'continuity' | 'shots' | 'assets' | 'storyboard' | 'timeline' | 'render' | 'flow';
 
-const comingSoonMeta: Record<Exclude<Workspace, 'flow'>, { title: string; summary: string }> = {
-  production: { title: 'Project Management', summary: 'Project packaging, media health, proxies and version history are planned for a later phase.' },
-  continuity: { title: 'Continuity', summary: 'Continuity supervision, shot dependencies and render preflight are planned for a later phase.' },
-  shots: { title: 'Shot Manager', summary: 'Scene and shot production management is planned for a later phase.' },
-  assets: { title: 'Asset Library', summary: 'Character, location, prop and reference asset management is planned for a later phase.' },
-  storyboard: { title: 'Storyboard', summary: 'Storyboard planning and shot visualization is planned for a later phase.' },
-  timeline: { title: 'Timeline', summary: 'Professional editing and assembly tools are planned for a later phase.' },
-  render: { title: 'Render & Export', summary: 'Final mastering and delivery workflows are planned for a later phase.' },
-};
-
-function ComingSoonWorkspace({ workspace, openFlowGraph }: { workspace: Exclude<Workspace, 'flow'>; openFlowGraph: () => void }) {
-  const meta = comingSoonMeta[workspace];
-  return (
-    <main className="coming-soon-workspace">
-      <div className="coming-soon-card">
-        <div className="coming-soon-badge">COMING SOON</div>
-        <Workflow size={38} />
-        <h2>{meta.title}</h2>
-        <p>{meta.summary}</p>
-        <div className="coming-soon-focus">Current development focus: <strong>FlowGraph</strong></div>
-        <button className="fg-btn fg-btn-primary" onClick={openFlowGraph}><Workflow size={14} /> Back to FlowGraph</button>
-      </div>
-    </main>
-  );
-}
-
 interface NodeErrorInfo {
   code: string;
   message: string;
@@ -423,36 +384,11 @@ interface NodeErrorInfo {
 }
 
 function restoreSavedNodes(): FlowNode[] {
-  try {
-    const raw = localStorage.getItem('flowgraph.demo.workflow');
-    if (!raw) return cloneInitialNodes();
-    const saved = JSON.parse(raw) as SavedWorkflow;
-    if (saved.schemaVersion !== WORKFLOW_SCHEMA_VERSION || !Array.isArray(saved.nodes) || !saved.nodes.length) return cloneInitialNodes();
-    return saved.nodes.map((node) => {
-      const restored = { ...node, data: { ...node.data, status: 'idle' as NodeStatus } } as FlowNode;
-      // Rehydrate media results: persisted metadata only (no signed preview URLs).
-      if (saved.runtimeResults?.[node.id]) {
-        const media = saved.runtimeResults[node.id];
-        restored.data.result = { type: media.type, previewUrl: media.previewUrl ?? '', mediaId: media.mediaId, mimeType: media.mimeType, fileName: media.fileName };
-        restored.data.status = 'success';
-      }
-      return restored;
-    });
-  } catch {
-    return cloneInitialNodes();
-  }
+  return restoreWorkflow().nodes;
 }
 
 function restoreSavedEdges(): FlowEdge[] {
-  try {
-    const raw = localStorage.getItem('flowgraph.demo.workflow');
-    if (!raw) return initialEdges;
-    const saved = JSON.parse(raw) as SavedWorkflow;
-    if (saved.schemaVersion !== WORKFLOW_SCHEMA_VERSION || !Array.isArray(saved.edges)) return initialEdges;
-    return saved.edges;
-  } catch {
-    return initialEdges;
-  }
+  return restoreWorkflow().edges;
 }
 
 function ratioForFlow(value: string | undefined): string | undefined {
@@ -554,11 +490,15 @@ function initialSelectedNodeId(): string {
 
 function Studio() {
   const [workspace, setWorkspace] = useState<Workspace>('flow');
+  const [selectedSceneId, setSelectedSceneId] = useState('');
+  const [selectedShotId, setSelectedShotId] = useState('');
+  const [selectedAssetId, setSelectedAssetId] = useState('');
   // FG-1102 — restore a saved workflow on mount (schema 3; earlier schemas reset to the V1 chain).
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(restoreSavedNodes());
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(restoreSavedEdges());
   const [selectedNodeId, setSelectedNodeId] = useState<string>(initialSelectedNodeId);
   const [search, setSearch] = useState('');
+  const [activeWorkflowId, setActiveWorkflowId] = useState('main');
   const [workflowName, setWorkflowName] = useState('FlowGraph V1 Pipeline');
   const [runStatus, setRunStatus] = useState<RunStatus>('ready');
   const [elapsed, setElapsed] = useState(0);
@@ -580,9 +520,43 @@ function Studio() {
     }
   }, []);
   const connection = useStudioConnection();
-  const { save, exportJson } = useWorkflowPersistence(nodes, edges, workflowName, connection.activeProject ? { projectId: connection.activeProject.projectId, projectName: connection.activeProject.projectName } : undefined);
+  const { project: filmProject, setProject: setFilmProject } = useFilmProject(connection.activeProject);
+  const { save, exportJson } = useWorkflowPersistence(
+    nodes,
+    edges,
+    activeWorkflowId,
+    workflowName,
+    connection.activeProject ? { projectId: connection.activeProject.projectId, projectName: connection.activeProject.projectName } : undefined,
+  );
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
+
+  useEffect(() => {
+    const activeProject = connection.activeProject;
+    if (!activeProject?.projectId) return;
+    const restored = restoreWorkflow(activeProject.projectId, 'main');
+    setNodes(restored.nodes);
+    setEdges(restored.edges);
+    setActiveWorkflowId('main');
+    setWorkflowName(restored.name ?? `${activeProject.projectName} · FlowGraph`);
+    setSelectedNodeId(restored.nodes.find((node) => isSyncGenerationNode(node.data.kind))?.id ?? restored.nodes[0]?.id ?? '');
+    setRunStatus('ready');
+    setRunError(undefined);
+  }, [connection.activeProject?.projectId, connection.activeProject?.projectName, setEdges, setNodes]);
+
+  useEffect(() => {
+    if (!filmProject) {
+      setSelectedSceneId('');
+      setSelectedShotId('');
+      setSelectedAssetId('');
+      return;
+    }
+    const scenes = filmProject.sequences.flatMap((sequence) => sequence.scenes);
+    const shots = scenes.flatMap((scene) => scene.shots);
+    if (!scenes.some((scene) => scene.id === selectedSceneId)) setSelectedSceneId(scenes[0]?.id ?? '');
+    if (!shots.some((shot) => shot.id === selectedShotId)) setSelectedShotId(shots[0]?.id ?? '');
+    if (!filmProject.assets.some((asset) => asset.id === selectedAssetId)) setSelectedAssetId(filmProject.assets[0]?.id ?? '');
+  }, [filmProject, selectedAssetId, selectedSceneId, selectedShotId]);
 
   // Realtime sync: the pure controller owns conflict/loop rules; this React layer
   // only maps node config, applies Flow-originated writes, and verifies UI state.
@@ -1055,10 +1029,38 @@ function Studio() {
         if (event.creditsUsed !== undefined) {
           setCreditsAfter((value) => (value ?? creditsBefore ?? 0) - event.creditsUsed!);
         }
+
+        // Forward to extension runtime / Side Panel via chrome.runtime.sendMessage
+        try {
+          if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            void chrome.runtime.sendMessage({
+              type: 'FLOWGRAPH_EVENT',
+              runId: event.runId,
+              kind: event.state === 'success' ? 'node:result' : 'node:status',
+              nodeId: event.nodeId,
+              status: event.state,
+              error: event.error ? { code: event.error.code, message: event.error.message, retryable: event.error.retryable } : undefined,
+              result: event.result ? { type: event.result.type, mediaId: event.result.mediaId, fileName: event.result.fileName } : undefined,
+            }).catch(() => {});
+          }
+        } catch {}
       } else if (event.type === 'run') {
         if (event.state === 'success') setRunStatus('success');
         if (event.state === 'failed') setRunStatus('error');
         if (event.state === 'cancelled') setRunStatus('ready');
+
+        // Forward run state change to extension runtime / Side Panel
+        try {
+          if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+            void chrome.runtime.sendMessage({
+              type: 'FLOWGRAPH_EVENT',
+              runId: event.runId,
+              kind: event.state === 'failed' ? 'run:error' : 'run:state',
+              status: event.state,
+              error: event.issues && event.issues.length > 0 ? { code: 'VALIDATION_FAILED', message: event.issues[0].message, retryable: false } : undefined,
+            }).catch(() => {});
+          }
+        } catch {}
       }
     };
 
@@ -1068,7 +1070,7 @@ function Studio() {
         specs,
         edges,
         {
-          workflowId: workflowName,
+          workflowId: activeWorkflowId,
           activeProject: connection.activeProject!,
           account: connection.account,
           flow: connection.flow,
@@ -1084,9 +1086,9 @@ function Studio() {
       setRunStatus('error');
     } finally {
       if (timerRef.current) window.clearInterval(timerRef.current);
-      recordRun(runEvents, startedAt, workflowName, connection.activeProject);
+      recordRun(runEvents, startedAt, activeWorkflowId, workflowName, connection.activeProject);
     }
-  }, [nodes, edges, runStatus, connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, connection, updateStatus, applyResult, applyError, runtime, setNodes, setRunStatus, workflowName, validate, recordRun]);
+  }, [nodes, edges, runStatus, connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, connection, updateStatus, applyResult, applyError, runtime, setNodes, setRunStatus, activeWorkflowId, workflowName, validate, recordRun]);
 
   const stopWorkflow = () => {
     cancelRef.current = true;
@@ -1114,7 +1116,7 @@ function Studio() {
     });
     try {
       await runtime().retryNode(nodeId, specs, edges, {
-        workflowId: workflowName,
+        workflowId: activeWorkflowId,
         activeProject: connection.activeProject!,
         account: connection.account,
         flow: connection.flow,
@@ -1133,7 +1135,7 @@ function Studio() {
     } finally {
       if (timerRef.current) window.clearInterval(timerRef.current);
     }
-  }, [connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, nodes, edges, updateStatus, applyResult, applyError, runtime, setRunStatus, workflowName]);
+  }, [connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, nodes, edges, updateStatus, applyResult, applyError, runtime, setRunStatus, activeWorkflowId]);
 
   useEffect(() => {
     const onRetryEvent = (event: Event) => {
@@ -1229,6 +1231,97 @@ function Studio() {
   const saveCurrent = () => save();
   const exportCurrent = () => exportJson();
 
+  const openFlowForShot = (shot: FilmShot) => {
+    const activeProject = connection.activeProject;
+    if (!activeProject?.projectId || !filmProject) return;
+
+    // Save the currently open graph before switching workflow namespaces.
+    save();
+
+    const workflowId = shot.workflowId ?? `workflow-${shot.id}`;
+    if (!shot.workflowId) {
+      setFilmProject((current) => updateShot(current, shot.id, (item) => ({ ...item, workflowId })));
+    }
+
+    const restored = restoreWorkflow(activeProject.projectId, workflowId);
+    setNodes(restored.nodes);
+    setEdges(restored.edges);
+    setActiveWorkflowId(workflowId);
+    setWorkflowName(restored.name ?? `${filmProject.title} · Shot ${shot.shotNumber}`);
+    setSelectedNodeId(restored.nodes.find((node) => isSyncGenerationNode(node.data.kind))?.id ?? restored.nodes[0]?.id ?? '');
+    setRunStatus('ready');
+    setRunError(undefined);
+    setSelectedShotId(shot.id);
+    setWorkspace('flow');
+  };
+
+  const openShotManagerById = (shotId: string) => {
+    setSelectedShotId(shotId);
+    setWorkspace('shots');
+  };
+
+  const renderFilmWorkspace = () => {
+    if (!filmProject) {
+      return (
+        <main className="coming-soon-workspace">
+          <div className="coming-soon-card">
+            <Workflow size={38} />
+            <h2>Google Flow Project Required</h2>
+            <p>Select or create a Google Flow project first. Film production data is isolated by projectId and will never be mixed across projects.</p>
+            <button className="fg-btn fg-btn-primary" onClick={() => setWorkspace('flow')}><Workflow size={14} /> Open FlowGraph</button>
+          </div>
+        </main>
+      );
+    }
+
+    switch (workspace) {
+      case 'production':
+        return <ProductionWorkspace project={filmProject} setProject={setFilmProject} />;
+      case 'continuity':
+        return <ContinuityWorkspace project={filmProject} setProject={setFilmProject} openShotManager={openShotManagerById} />;
+      case 'shots':
+        return (
+          <FilmWorkspace
+            project={filmProject}
+            setProject={setFilmProject}
+            selectedSceneId={selectedSceneId}
+            setSelectedSceneId={setSelectedSceneId}
+            selectedShotId={selectedShotId}
+            setSelectedShotId={setSelectedShotId}
+            openFlowForShot={openFlowForShot}
+          />
+        );
+      case 'assets':
+        return (
+          <AssetWorkspace
+            project={filmProject}
+            setProject={setFilmProject}
+            selectedAssetId={selectedAssetId}
+            setSelectedAssetId={setSelectedAssetId}
+            selectedShotId={selectedShotId}
+          />
+        );
+      case 'storyboard':
+        return (
+          <StoryboardWorkspace
+            project={filmProject}
+            selectedSceneId={selectedSceneId}
+            setSelectedSceneId={setSelectedSceneId}
+            selectedShotId={selectedShotId}
+            setSelectedShotId={setSelectedShotId}
+            openShotManager={(shot) => openShotManagerById(shot.id)}
+            openFlowForShot={openFlowForShot}
+          />
+        );
+      case 'timeline':
+        return <TimelineWorkspace project={filmProject} setProject={setFilmProject} openShotManager={openShotManagerById} />;
+      case 'render':
+        return <RenderWorkspace project={filmProject} />;
+      default:
+        return null;
+    }
+  };
+
   const accountState = connection.account.state;
   const flowState = connection.flow.state;
   const syncPillState = syncStatus.state === 'synced'
@@ -1253,19 +1346,19 @@ function Studio() {
         <div className="topbar-center film-topbar-center">
           <div className="workspace-switch flowgraph-first">
             <button className={workspace === 'flow' ? 'active' : ''} onClick={() => setWorkspace('flow')}>FLOWGRAPH</button>
-            <button className={workspace === 'production' ? 'active coming' : 'coming'} onClick={() => setWorkspace('production')}>PROJECT <span>SOON</span></button>
-            <button className={workspace === 'continuity' ? 'active coming' : 'coming'} onClick={() => setWorkspace('continuity')}>CONTINUITY <span>SOON</span></button>
-            <button className={workspace === 'shots' ? 'active coming' : 'coming'} onClick={() => setWorkspace('shots')}>SHOTS <span>SOON</span></button>
-            <button className={workspace === 'assets' ? 'active coming' : 'coming'} onClick={() => setWorkspace('assets')}>ASSETS <span>SOON</span></button>
-            <button className={workspace === 'storyboard' ? 'active coming' : 'coming'} onClick={() => setWorkspace('storyboard')}>STORYBOARD <span>SOON</span></button>
-            <button className={workspace === 'timeline' ? 'active coming' : 'coming'} onClick={() => setWorkspace('timeline')}>TIMELINE <span>SOON</span></button>
-            <button className={workspace === 'render' ? 'active coming' : 'coming'} onClick={() => setWorkspace('render')}>RENDER <span>SOON</span></button>
+            <button className={workspace === 'production' ? 'active' : ''} onClick={() => setWorkspace('production')}>PROJECT</button>
+            <button className={workspace === 'continuity' ? 'active' : ''} onClick={() => setWorkspace('continuity')}>CONTINUITY</button>
+            <button className={workspace === 'shots' ? 'active' : ''} onClick={() => setWorkspace('shots')}>SHOTS</button>
+            <button className={workspace === 'assets' ? 'active' : ''} onClick={() => setWorkspace('assets')}>ASSETS</button>
+            <button className={workspace === 'storyboard' ? 'active' : ''} onClick={() => setWorkspace('storyboard')}>STORYBOARD</button>
+            <button className={workspace === 'timeline' ? 'active' : ''} onClick={() => setWorkspace('timeline')}>TIMELINE</button>
+            <button className={workspace === 'render' ? 'active' : ''} onClick={() => setWorkspace('render')}>RENDER</button>
           </div>
           <div className="workflow-title">
             {workspace === 'flow' ? (
               <input value={workflowName} onChange={(event) => setWorkflowName(event.target.value)} />
             ) : (
-              <input value={`${comingSoonMeta[workspace].title} · Coming Soon`} readOnly />
+              <input value={filmProject?.title ?? connection.activeProject?.projectName ?? 'Film Production'} readOnly />
             )}
             <span className="fg-version">v1.3</span>
           </div>
@@ -1340,7 +1433,7 @@ function Studio() {
         <Inspector node={selectedNode} edges={edges} updateConfig={updateConfig} close={() => setSelectedNodeId('')} locked={!connection.isCanvasUnlocked} />
       </main>
       ) : (
-        <ComingSoonWorkspace workspace={workspace} openFlowGraph={() => setWorkspace('flow')} />
+        renderFilmWorkspace()
       )}
 
       {confirmRerun.length > 0 && workspace === 'flow' && (
