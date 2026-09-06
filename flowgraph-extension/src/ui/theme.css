@@ -256,7 +256,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
    Stitch AI Compact Node Design (Clean, high-density HUD style)
    ========================================================================== */
 .flow-card-stitch {
-  width: 290px;
+  width: 336px;
   background: #0b111a;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
@@ -589,8 +589,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .inline-combobox-toolbar {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 .inline-combobox-wrap {
@@ -600,7 +601,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background: #080d14;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
-  padding: 0 4px 0 6px;
+  padding: 0 16px 0 5px; /* Để chừa chỗ rộng rãi cho chevron caret */
   height: 24px;
   box-sizing: border-box;
   transition: all 0.15s ease;
@@ -613,7 +614,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 /* Model Combobox: Nổi bật viền Cyan điện quang theo thiết kế */
 .inline-combobox-wrap.model-wrap {
-  flex: 1.35;
+  flex: 1.6;
   min-width: 0;
   background: rgba(14, 165, 233, 0.08);
   border: 1px solid rgba(56, 189, 248, 0.6);
@@ -625,30 +626,32 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .inline-combobox-wrap.aspect-wrap {
-  flex: 0.85;
-  min-width: 0;
+  flex: 0.95;
+  min-width: 52px;
 }
 
 .inline-combobox-wrap.duration-wrap {
-  flex: 0.8;
-  min-width: 0;
+  flex: 0.85;
+  min-width: 46px;
 }
 
 .inline-combobox-wrap.res-wrap {
-  flex: 0.75;
-  min-width: 0;
+  flex: 0.85;
+  min-width: 48px;
+  padding-left: 4px;
 }
 
 .inline-combobox-wrap.batch-wrap {
-  flex: 0.65;
-  min-width: 0;
-  padding-left: 5px;
+  flex: 0.75;
+  min-width: 40px;
+  padding-left: 4px;
 }
 
 .combobox-icon {
   flex-shrink: 0;
   color: #94a3b8;
   pointer-events: none;
+  margin-right: 2px;
 }
 .combobox-icon.model-icon {
   color: #38bdf8;
@@ -660,25 +663,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background: transparent;
   border: none;
   color: #f1f5f9;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
   outline: none;
   cursor: pointer;
   width: 100%;
-  padding: 0 11px 0 4px;
+  padding: 0;
   white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: hidden;
+  text-overflow: clip; /* Không cắt chữ bằng dấu 3 chấm gây khó đọc */
+  overflow: visible;
 }
 
 .inline-combobox-select.model-select {
   color: #38bdf8;
   font-weight: 600;
+  font-size: 9.5px;
 }
 
 .inline-combobox-select.batch-select {
   font-weight: 600;
-  padding-left: 1px;
+  font-size: 10px;
 }
 
 .inline-combobox-select option {
