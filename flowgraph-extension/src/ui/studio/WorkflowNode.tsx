@@ -77,6 +77,18 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   const isDownload = data.kind === 'download';
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  React.useEffect(() => {
+    const handleToggle = (e: Event) => {
+      const customEvent = e as CustomEvent<{ nodeId: string; open?: boolean }>;
+      if (customEvent.detail?.nodeId === id) {
+        setShowSettingsModal((prev) => (customEvent.detail.open !== undefined ? customEvent.detail.open : !prev));
+      }
+    };
+    window.addEventListener('flowgraph:toggle-settings', handleToggle);
+    return () => window.removeEventListener('flowgraph:toggle-settings', handleToggle);
+  }, [id]);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
