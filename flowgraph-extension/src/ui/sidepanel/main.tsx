@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowRight,
@@ -25,10 +25,13 @@ import {
   X,
 } from 'lucide-react';
 import '../theme.css';
+import { RealGoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
+import type { AccountStatus, FlowStatus, CreditsData } from '../../shared/bridge';
 
 type ConnectionStage = 'signed-out' | 'flow-disconnected' | 'connected';
 
 const storageKey = 'flowgraph.ui.connectionStage';
+const adapter = new RealGoogleFlowAdapter();
 
 function MiniGraph() {
   return (
@@ -136,7 +139,22 @@ function SignedOut({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-function FlowDisconnected({ onConnect, onOpenStudio }: { onConnect: () => void; onOpenStudio: () => void }) {
+function FlowDisconnected({
+  account,
+  flow,
+  onCheckConnection,
+  onOpenStudio,
+}: {
+  account: AccountStatus;
+  flow: FlowStatus;
+  onCheckConnection: () => void;
+  onOpenStudio: () => void;
+}) {
+  const isAccountReady = account.state === 'CONNECTED';
+  const isFlowReady = flow.state === 'READY';
+  const accountEmail = account.email || (isAccountReady ? 'Google Account Connected' : 'Not signed in');
+  const flowStateText = isFlowReady ? 'Connected' : flow.state === 'CHECKING' ? 'Checking…' : 'Not connected';
+
   return (
     <>
       <div>
@@ -145,44 +163,95 @@ function FlowDisconnected({ onConnect, onOpenStudio }: { onConnect: () => void; 
       </div>
 
       <div className="connection-grid">
-        <section className="connection-card connected fg-card">
-          <div className="top"><CircleUserRound size={18} color="#62e49e" /><span className="fg-badge success">Connected</span></div>
-          <div className="title">Google Account</div><div className="value">user@example.com</div>
+        <section className={`connection-card ${isAccountReady ? 'connected' : 'disconnected'} fg-card`}>
+          <div className="top">
+            <CircleUserRound size={18} color={isAccountReady ? '#62e49e' : '#aa66ff'} />
+            <span className={`fg-badge ${isAccountReady ? 'success' : ''}`}>{isAccountReady ? 'Connected' : 'Offline'}</span>
+          </div>
+          <div className="title">Google Account</div>
+          <div className="value" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{accountEmail}</div>
         </section>
-        <section className="connection-card disconnected fg-card">
-          <div className="top"><Unplug size={18} color="#aa66ff" /><span className="fg-badge">Offline</span></div>
-          <div className="title">Google Flow</div><div className="value">Not connected</div>
+        <section className={`connection-card ${isFlowReady ? 'connected' : 'disconnected'} fg-card`}>
+          <div className="top">
+            <Unplug size={18} color={isFlowReady ? '#62e49e' : '#aa66ff'} />
+            <span className={`fg-badge ${isFlowReady ? 'success' : ''}`}>{isFlowReady ? 'Connected' : 'Offline'}</span>
+          </div>
+          <div className="title">Google Flow</div>
+          <div className="value">{flowStateText}</div>
         </section>
       </div>
 
       <section className="connection-banner fg-card">
         <h3>Connect Google Flow</h3>
         <p>The extension will use the authorized Google Flow tab as its generation runtime. No Flow password, cookie or reCAPTCHA token is stored in workflow data.</p>
-        <button className="fg-btn fg-btn-primary" onClick={() => openTab('https://labs.google/fx/tools/flow')}><ArrowRight size={15} /> Open Google Flow</button>
-        <button className="fg-btn" onClick={onConnect}><RefreshCcw size={14} /> Recheck Connection</button>
+        <button className="fg-btn fg-btn-primary" onClick={() => openTab('https://flow.google.com')}><ArrowRight size={15} /> Open Google Flow</button>
+        <button className="fg-btn" onClick={onCheckConnection}><RefreshCcw size={14} /> Recheck Connection</button>
       </section>
 
       <section className="dashboard-section fg-card">
         <div className="section-head"><h3>Connection requirements</h3><Settings size={14} className="fg-muted" /></div>
         <div className="log-list">
-          <div className="log-row"><span className="fg-status-dot online" /><strong>Google account</strong><span>Ready</span></div>
-          <div className="log-row"><span className="fg-status-dot warn" /><strong>Flow session</strong><span>Required</span></div>
-          <div className="log-row"><span className="fg-status-dot" /><strong>Active project</strong><span>Detected after connection</span></div>
+          <div className="log-row">
+            <span className={`fg-status-dot ${isAccountReady ? 'online' : 'warn'}`} />
+            <strong>Google account</strong>
+            <span>{isAccountReady ? 'Ready' : 'Required'}</span>
+          </div>
+          <div className="log-row">
+            <span className={`fg-status-dot ${isFlowReady ? 'online' : 'warn'}`} />
+            <strong>Flow session</strong>
+            <span>{isFlowReady ? 'Ready' : 'Required'}</span>
+          </div>
+          <div className="log-row">
+            <span className={`fg-status-dot ${flow.projectId ? 'online' : ''}`} />
+            <strong>Active project</strong>
+            <span>{flow.projectId ? 'Detected' : 'Required'}</span>
+          </div>
         </div>
       </section>
 
-      <button className="fg-btn fg-btn-primary" disabled onClick={onOpenStudio}><Workflow size={15} /> Open Workflow Studio</button>
+      <button className="fg-btn fg-btn-primary" disabled={!isAccountReady || !isFlowReady} onClick={onOpenStudio}><Workflow size={15} /> Open Workflow Studio</button>
     </>
   );
 }
 
-function Connected({ onOpenStudio, onDisconnect }: { onOpenStudio: () => void; onDisconnect: () => void }) {
-  const logs = [
-    ['10:32:45', 'Workflow completed successfully'],
-    ['10:31:12', 'Download node completed'],
-    ['10:30:25', 'Extend Video node completed'],
-    ['10:29:54', 'Image to Video node completed'],
-  ];
+function Connected({
+  account,
+  flow,
+  credits,
+  projectName,
+  onOpenStudio,
+  onDisconnect,
+}: {
+  account: AccountStatus;
+  flow: FlowStatus;
+  credits?: CreditsData;
+  projectName: string;
+  onOpenStudio: () => void;
+  onDisconnect: () => void;
+}) {
+  const [logs, setLogs] = useState<Array<[string, string]>>([]);
+  const [lastRun, setLastRun] = useState<{ title: string; meta: string; status: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      const historyRaw = localStorage.getItem('flowgraph.runHistory');
+      if (historyRaw) {
+        const parsed = JSON.parse(historyRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const latest = parsed[0];
+          setLastRun({
+            title: latest.workflowName || latest.projectName || projectName || 'Workflow Run',
+            meta: `${latest.state === 'success' ? 'Completed' : 'Finished'} · ${new Date(latest.timestamp || Date.now()).toLocaleTimeString()}`,
+            status: latest.state === 'success' ? 'Done' : latest.state === 'cancelled' ? 'Canceled' : 'Failed',
+          });
+        }
+      }
+    } catch {}
+  }, [projectName]);
+
+  const creditText = credits?.credits !== undefined ? String(credits.credits) : 'Available';
+  const accountEmail = account.email || 'Connected';
+
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -193,55 +262,49 @@ function Connected({ onOpenStudio, onDisconnect }: { onOpenStudio: () => void; o
       <div className="connection-grid">
         <section className="connection-card connected fg-card">
           <div className="top"><CircleUserRound size={18} color="#62e49e" /><ChevronRight size={14} className="fg-muted" /></div>
-          <div className="title">Google Account</div><div className="value">user@example.com</div>
+          <div className="title">Google Account</div><div className="value" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{accountEmail}</div>
         </section>
         <section className="connection-card connected fg-card">
           <div className="top"><Network size={18} color="#62e49e" /><ChevronRight size={14} className="fg-muted" /></div>
           <div className="title">Google Flow</div><div className="value">Connected</div>
         </section>
         <section className="connection-card fg-card">
-          <div className="top"><FolderOpen size={18} color="#68aaff" /><span className="fg-version">v1.2</span></div>
-          <div className="title">Current Project</div><div className="value">Cinematic Car Video</div>
+          <div className="top"><FolderOpen size={18} color="#68aaff" /><span className="fg-version">Active</span></div>
+          <div className="title">Current Project</div><div className="value" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectName}</div>
         </section>
         <section className="connection-card fg-card">
           <div className="top"><Gauge size={18} color="#ffad5d" /><span className="fg-badge ready">Live</span></div>
-          <div className="title">Available Credits</div><div className="value">1,250</div>
+          <div className="title">Available Credits</div><div className="value">{creditText}</div>
         </section>
       </div>
 
-      <section className="dashboard-section fg-card">
-        <div className="section-head"><h3>Last Run Summary</h3><ChevronRight size={14} className="fg-muted" /></div>
-        <div className="last-run">
-          <div className="preview-thumb" />
-          <div><div className="run-title">Cinematic Car Video</div><div className="run-meta">Completed today · 01:24<br />6 / 6 nodes successful</div></div>
-          <span className="fg-badge success">Done</span>
-        </div>
-      </section>
+      {lastRun && (
+        <section className="dashboard-section fg-card">
+          <div className="section-head"><h3>Last Run Summary</h3><ChevronRight size={14} className="fg-muted" /></div>
+          <div className="last-run">
+            <div className="preview-thumb" />
+            <div>
+              <div className="run-title">{lastRun.title}</div>
+              <div className="run-meta">{lastRun.meta}</div>
+            </div>
+            <span className={`fg-badge ${lastRun.status === 'Done' ? 'success' : 'warn'}`}>{lastRun.status}</span>
+          </div>
+        </section>
+      )}
 
       <section className="dashboard-section fg-card">
         <div className="section-head"><h3>Quick Actions</h3></div>
         <div className="quick-actions">
           <button className="fg-btn quick-action primary" onClick={onOpenStudio}><Workflow size={18} /><span>Open Studio</span></button>
-          <button className="fg-btn quick-action"><Play size={18} color="#62aaff" /><span>Run Last</span></button>
-          <button className="fg-btn quick-action"><Sparkles size={18} color="#5be0ab" /><span>New Workflow</span></button>
-          <button className="fg-btn quick-action"><History size={18} /><span>Run History</span></button>
-          <button className="fg-btn quick-action"><Image size={18} /><span>Outputs</span></button>
-          <button className="fg-btn quick-action"><CloudDownload size={18} /><span>Downloads</span></button>
-        </div>
-      </section>
-
-      <section className="dashboard-section fg-card">
-        <div className="section-head"><h3>Workflow Preview</h3><span className="fg-muted" style={{ fontSize: 9 }}>6 nodes</span></div>
-        <div className="workflow-mini-preview">
-          <div className="purple">Prompt</div><div className="purple">Gemini</div><div className="blue">Text to Image</div>
-          <div className="green">Image to Video</div><div>Extend</div><div className="blue">Download</div>
-        </div>
-      </section>
-
-      <section className="dashboard-section fg-card">
-        <div className="section-head"><h3>Recent Execution Log</h3><span className="fg-muted" style={{ fontSize: 9 }}>View all</span></div>
-        <div className="log-list">
-          {logs.map(([time, message]) => <div className="log-row" key={time}><span className="fg-status-dot online" /><span>{time}</span><strong>{message}</strong></div>)}
+          <button className="fg-btn quick-action" onClick={() => openTab('https://flow.google.com')}><Play size={18} color="#62aaff" /><span>Flow Web</span></button>
+          <button className="fg-btn quick-action" onClick={onOpenStudio}><Sparkles size={18} color="#5be0ab" /><span>New Graph</span></button>
+          <button className="fg-btn quick-action" onClick={() => {
+            try {
+              if (typeof chrome !== 'undefined' && chrome.downloads) {
+                chrome.downloads.showDefaultFolder();
+              }
+            } catch {}
+          }}><CloudDownload size={18} /><span>Downloads</span></button>
         </div>
       </section>
 
@@ -252,6 +315,33 @@ function Connected({ onOpenStudio, onDisconnect }: { onOpenStudio: () => void; o
 
 function App() {
   const [stage, setStage] = useState<ConnectionStage>('signed-out');
+  const [account, setAccount] = useState<AccountStatus>({ state: 'CHECKING' });
+  const [flow, setFlow] = useState<FlowStatus>({ state: 'CHECKING' });
+  const [credits, setCredits] = useState<CreditsData | undefined>();
+  const [projectName, setProjectName] = useState<string>('Flow project');
+
+  const checkLiveStatus = useCallback(async () => {
+    try {
+      const health = await adapter.healthCheck();
+      setAccount(health.account);
+      setFlow(health.flow);
+      setCredits(health.credits);
+
+      if (health.flow.state === 'READY' && health.account.state === 'CONNECTED') {
+        setStage('connected');
+        void persistStage('connected');
+      } else if (health.account.state === 'CONNECTED') {
+        setStage('flow-disconnected');
+        void persistStage('flow-disconnected');
+      }
+
+      if (health.flow.title) {
+        setProjectName(health.flow.title.replace(/^Google Flow\s*[-–]\s*/i, '').trim() || 'Flow project');
+      }
+    } catch {
+      // Keep fail-closed or preview state
+    }
+  }, []);
 
   useEffect(() => {
     const local = localStorage.getItem(storageKey) as ConnectionStage | null;
@@ -266,7 +356,11 @@ function App() {
     } catch {
       // Browser preview mode.
     }
-  }, []);
+
+    void checkLiveStatus();
+    const timer = setInterval(() => void checkLiveStatus(), 4000);
+    return () => clearInterval(timer);
+  }, [checkLiveStatus]);
 
   const changeStage = (next: ConnectionStage) => {
     setStage(next);
@@ -289,9 +383,25 @@ function App() {
     <div className="fg-shell sidepanel-app">
       <Header onReset={() => changeStage('signed-out')} />
       {stage === 'signed-out' && <SignedOut onContinue={() => changeStage('flow-disconnected')} />}
-      {stage === 'flow-disconnected' && <FlowDisconnected onConnect={() => changeStage('connected')} onOpenStudio={openStudio} />}
-      {stage === 'connected' && <Connected onOpenStudio={openStudio} onDisconnect={() => changeStage('flow-disconnected')} />}
-      <footer className="sidepanel-footer"><span>FlowGraph v0.1</span><span>UI Prototype · MV3</span></footer>
+      {stage === 'flow-disconnected' && (
+        <FlowDisconnected
+          account={account}
+          flow={flow}
+          onCheckConnection={checkLiveStatus}
+          onOpenStudio={openStudio}
+        />
+      )}
+      {stage === 'connected' && (
+        <Connected
+          account={account}
+          flow={flow}
+          credits={credits}
+          projectName={projectName}
+          onOpenStudio={openStudio}
+          onDisconnect={() => changeStage('flow-disconnected')}
+        />
+      )}
+      <footer className="sidepanel-footer"><span>FlowGraph v0.1</span><span>Live Companion · MV3</span></footer>
     </div>
   );
 }
