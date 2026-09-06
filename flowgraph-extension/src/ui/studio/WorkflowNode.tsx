@@ -180,36 +180,48 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             </div>
           ) : (
             <div className="config-meta-toolbar">
-              <div className="meta-item" title="Model">
-                <Box size={12} />
+              <div className="meta-item model-selector" title="Model">
+                <Box size={11} />
                 <span>{compactModel(data.config.model) || (isT2I ? 'Nano Banana 2' : 'Omni Flash')}</span>
               </div>
+              {isT2I && (
+                <div className="size-segmented-control batch-control" title="Số lượng tạo">
+                  {(['1', '2', '3', '4'] as const).map((b) => (
+                    <button
+                      key={b}
+                      className={(data.config.batchCount || '1') === b ? 'active' : ''}
+                      title={`Tạo x${b}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'batchCount', value: b } }));
+                      }}
+                    >
+                      x{b}
+                    </button>
+                  ))}
+                </div>
+              )}
               {isI2V && (
                 <div className="meta-item" title="Duration">
                   <Clock3 size={11} />
                   <span>{data.config.duration || '8s'}</span>
                 </div>
               )}
-              <div className="meta-item" title="Aspect Ratio">
-                <Square size={11} />
-                <span>{shortAspect(data.config.aspectRatio) || '16:9'}</span>
+              <div className="size-segmented-control ratio-control">
+                {(['16:9', '4:3', '1:1', '3:4', '9:16'] as const).map((r) => (
+                  <button
+                    key={r}
+                    className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
+                    title={`Tỷ lệ ${r}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'aspectRatio', value: r } }));
+                    }}
+                  >
+                    {r}
+                  </button>
+                ))}
               </div>
-              {isT2I && (
-                <div className="size-segmented-control">
-                  {(['S', 'M', 'L'] as const).map((s) => (
-                    <button
-                      key={s}
-                      className={selectedSize === s ? 'active' : ''}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedSize(s);
-                      }}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </div>

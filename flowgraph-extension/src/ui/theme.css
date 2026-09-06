@@ -524,8 +524,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   padding: 1px;
 }
 .size-segmented-control button {
-  padding: 1px 5px;
-  font-size: 7.5px;
+  padding: 2px 6px;
+  font-size: 8px;
   font-weight: 700;
   border: 0;
   background: transparent;
@@ -533,10 +533,27 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   border-radius: 3px;
   cursor: pointer;
   transition: all 0.12s;
+  white-space: nowrap;
 }
 .size-segmented-control button.active {
   background: #0284c7;
   color: #ffffff;
+}
+
+.size-segmented-control.batch-control button {
+  padding: 1px 4px;
+  font-size: 8px;
+}
+.size-segmented-control.batch-control button.active {
+  background: #2563eb;
+}
+
+.size-segmented-control.ratio-control button {
+  padding: 1px 4px;
+  font-size: 7.5px;
+}
+.size-segmented-control.ratio-control button.active {
+  background: #0284c7;
 }
 
 /* Download Action Footer */

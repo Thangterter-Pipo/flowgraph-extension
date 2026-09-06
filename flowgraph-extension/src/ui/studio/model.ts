@@ -77,7 +77,14 @@ export const palette: PaletteSpec[] = [
     tone: 'blue',
     group: 'Generative',
     preview: 'image',
-    config: { model: '🍌 Nano Banana 2', serviceTier: 'SERVICE_TIER_INTERMEDIATE', aspectRatio: '16:9 (Landscape)', promptSource: 'Input' },
+    config: {
+      model: '🍌 Nano Banana 2',
+      serviceTier: 'SERVICE_TIER_INTERMEDIATE',
+      aspectRatio: '16:9',
+      batchCount: '1',
+      costCredits: '0',
+      promptSource: 'Input',
+    },
   },
   {
     kind: 'uploadImage',
@@ -326,9 +333,18 @@ const node = (id: string, kind: string, x: number, y: number, extra?: Partial<Fl
 // V1 real pipeline: Prompt → Text-to-Image → Image-to-Video → Download.
 export const initialNodes: FlowNode[] = [
   node('1', 'prompt', 80, 140),
-  node('2', 't2i', 380, 140),
-  node('3', 'i2v', 720, 140),
-  node('4', 'download', 1060, 140),
+  node('2', 't2i', 380, 140, {
+    config: {
+      model: '🍌 Nano Banana 2',
+      serviceTier: 'SERVICE_TIER_INTERMEDIATE',
+      aspectRatio: '16:9',
+      batchCount: '1',
+      costCredits: '0',
+      promptSource: 'Input',
+    },
+  }),
+  node('3', 'i2v', 740, 140),
+  node('4', 'download', 1100, 140),
 ];
 
 export const initialEdges: FlowEdge[] = [

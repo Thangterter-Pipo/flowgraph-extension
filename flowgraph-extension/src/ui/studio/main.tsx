@@ -214,10 +214,11 @@ function Inspector({ node, edges, updateConfig, close, locked }: { node?: FlowNo
   const registryRatios = registryBacked ? aspectRatioOptions(data.kind, data.config) : [];
 
   const optionMap: Record<string, string[]> = {
-    model: modelOptions,
+    model: modelOptions.length ? modelOptions : ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'],
     serviceTier: serviceTierOptions,
     style: ['Cinematic', 'Realistic', 'Artistic', 'Advertising', 'Anime', 'Custom'],
-    aspectRatio: registryRatios.length ? registryRatios : ['16:9 (Landscape)', '9:16 (Portrait)', '1:1 (Square)', '3:4 (Portrait)', '4:3 (Landscape)'],
+    aspectRatio: ['16:9', '4:3', '1:1', '3:4', '9:16'],
+    batchCount: ['1', '2', '3', '4'],
     duration: registryDurations.length ? registryDurations : ['4 seconds', '5 seconds', '6 seconds', '8 seconds', '10 seconds'],
     frameRate: ['24 fps'],
     mode: data.kind === 'creationAgent' ? ['streamChat', 'Session'] : ['Extend Forward', 'Edit Video'],
@@ -1113,10 +1114,11 @@ function Studio() {
     setSelectedNodeId(id);
   }, [connection.isCanvasUnlocked, reactFlow, setNodes]);
 
-  const updateConfig = (key: string, value: string) => {
+  const updateConfig = (key: string, value: string, targetNodeId?: string) => {
     if (!connection.isCanvasUnlocked) return;
+    const effectiveId = targetNodeId ?? selectedNodeId;
     setNodes((current) => current.map((node) => {
-      if (node.id !== selectedNodeId) return node;
+      if (node.id !== effectiveId) return node;
       let config = { ...node.data.config, [key]: value };
 
       if (node.data.kind === 'imageUpscale' && key === 'targetResolution') {
@@ -1155,6 +1157,17 @@ function Studio() {
 
   const saveCurrent = () => save();
   const exportCurrent = () => exportJson();
+
+  useEffect(() => {
+    const handleUpdateConfig = (e: Event) => {
+      const customEvent = e as CustomEvent<{ nodeId: string; key: string; value: string }>;
+      if (!customEvent.detail) return;
+      const { nodeId, key, value } = customEvent.detail;
+      updateConfig(key, value, nodeId);
+    };
+    window.addEventListener('flowgraph:update-config', handleUpdateConfig);
+    return () => window.removeEventListener('flowgraph:update-config', handleUpdateConfig);
+  }, [updateConfig]);
 
   const accountState = connection.account.state;
   const flowState = connection.flow.state;
