@@ -146,6 +146,12 @@ function useWorkflowPersistence(
     persistWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
   }, [nodes, edges, workflowId, workflowName, projectBinding]);
 
+  // Auto-persist on changes so reloading the tab never loses in-flight progress
+  useEffect(() => {
+    if (!projectBinding?.projectId) return;
+    persistWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
+  }, [nodes, edges, workflowId, workflowName, projectBinding]);
+
   const exportJson = useCallback(() => {
     const payload = buildSavedWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -349,12 +355,25 @@ interface NodeErrorInfo {
   diagnosticId?: string;
 }
 
+function getStoredActiveProjectId(): string | undefined {
+  try {
+    const raw = localStorage.getItem('flowgraph.activeProject');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return parsed.projectId;
+    }
+  } catch {}
+  return undefined;
+}
+
 function restoreSavedNodes(): FlowNode[] {
-  return restoreWorkflow().nodes;
+  const projectId = getStoredActiveProjectId();
+  return restoreWorkflow(projectId, 'main').nodes;
 }
 
 function restoreSavedEdges(): FlowEdge[] {
-  return restoreWorkflow().edges;
+  const projectId = getStoredActiveProjectId();
+  return restoreWorkflow(projectId, 'main').edges;
 }
 
 function ratioForFlow(value: string | undefined): string | undefined {

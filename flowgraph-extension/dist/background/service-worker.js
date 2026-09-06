@@ -595,9 +595,9 @@
           if (el) {
             const img = el.tagName === "IMG" ? el : el.querySelector("img");
             const s = img ? img.currentSrc || img.getAttribute("src") : null;
-            if (isAsb(s)) return { ok: true, url: s };
+            if (s) return { ok: true, url: s };
           }
-          const editorImg = Array.from(document.querySelectorAll("img")).find((i) => isAsb(i.currentSrc || i.src) && (i.naturalWidth > 600 || (i.src || "").includes("=s1600")));
+          const editorImg = Array.from(document.querySelectorAll("img")).find((i) => (isAsb(i.currentSrc || i.src) || (i.src || "").includes("flow-content.google")) && (i.naturalWidth > 600 || (i.src || "").includes("=s1600")));
           if (editorImg) {
             return { ok: true, url: editorImg.currentSrc || editorImg.src };
           }
