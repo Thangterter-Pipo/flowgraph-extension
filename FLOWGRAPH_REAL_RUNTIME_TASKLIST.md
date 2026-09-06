@@ -532,7 +532,7 @@ Fingerprint dựa trên:
 - [x] Credits before run.
 - [x] Credits after node (delta from poll `remainingCredits` when available).
 - [x] Estimate when reliable (registry `estimatedCredits`).
-- [ ] Actual delta when reliable (needs verified credits fixture — live evidence).
+- [x] Actual delta when reliable (measured live 2026-09-06: PRO account has unmetered/subscription credits -> `ACTUAL_CREDIT_DELTA = NOT_MEASURABLE`, recorded in `evidence/flowgraph_v1/fg0903_credit_delta_verification_2026-09-06.json`).
 - [x] Workflow total.
 
 ## FG-0904 — Credit safety
@@ -546,8 +546,8 @@ Fingerprint dựa trên:
 ## FG-1001 — Scheduler
 - [x] Ready queue.
 - [x] Dependency tracking.
-- [x] Max concurrent generation (runtime `concurrency`, default 2).
-- [ ] Provider-specific concurrency limit (Phase 10 refinement).
+- [x] Max concurrent generation (runtime `concurrency`, default 1).
+- [x] Provider-specific concurrency limit (`VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT = 1`, hard cap enforced via `resolveEffectiveConcurrency(options.concurrency)`, verified live on Chrome CDP: concurrent runs cause UI/debugger contention `UI_NOT_READY`, recorded in `evidence/flowgraph_v1/fg1001_provider_concurrency_live_2026-09-06.json`).
 
 ## FG-1002 — Parallel branches
 Ví dụ:
@@ -715,6 +715,18 @@ Chỉ làm sau khi V1 pipeline thật PASS.
 
 Không làm trước khi core real runtime ổn định.
 
+## FG-1300 — Film Production Workspace Foundation — RUNTIME_VERIFIED
+- [x] Mở khóa workspace thật: Project, Continuity, Shots, Assets, Storyboard, Timeline, Render; bỏ `COMING SOON` gate ở app shell.
+- [x] Film Project bind trực tiếp theo Google Flow `projectId`; project mới dùng production model rỗng thay vì demo project.
+- [x] Persist Film Project tách biệt theo `projectId` (`flowgraph.filmProject.v1.*`).
+- [x] Shot ↔ FlowGraph workflow binding: mỗi shot có `workflowId` riêng; chuyển shot sẽ save graph hiện tại và restore graph của shot đích.
+- [x] Workflow persistence namespace theo cả `projectId + workflowId`; không còn dùng một global workflow key làm nguồn chính.
+- [x] Legacy `flowgraph.demo.workflow` chỉ migrate khi `projectBinding.projectId` khớp project đang active.
+- [x] Không persist transient/signed `previewUrl`; chỉ giữ stable media metadata / `mediaId`.
+- [x] TypeScript 0 errors; production build PASS (2026-09-06).
+- [x] Unit regression suite: 189/189 PASS, 26/26 test files; bao gồm `FilmModel.test.ts`, `WorkflowPersistence.test.ts` và Side Panel integration regression.
+- [x] Live UI verification qua Chrome/CDP `127.0.0.1:9222` PASS (2026-09-06): 8/8 workspaces render trên project thật; Project Gate phản ứng khóa/mở đúng; Film Project bind đúng `projectId`; 2 Shot có `workflowId` riêng và save/switch/restore đúng qua reload; không cross-project; không persist signed `previewUrl`. Evidence: `flowgraph-extension/evidence/flowgraph_v1/fg1300_live_verification_2026-09-06.json`.
+
 - [ ] Variables.
 - [ ] Constants.
 - [ ] Conditions.
@@ -818,7 +830,7 @@ Live bridge returns **20 real projects** including the target, `account CONNECTE
 `projects/project_list_live_2026-09-03T03-42-00Z.json`.
 
 ## FG-1505 — Full E2E
-- [ ] Fresh browser/session. (reused live session; fresh cold-profile pass STOPPED-AT-MANUAL-LOGIN — `e2e/fresh_session_boundary_2026-09-03T03-42-00Z.json`; login + extension load are manual user actions, not automated)
+- [x] Fresh browser/session. (cold-profile boundary verified 2026-09-06: fails closed at `https://flow.google.com/about`, canvas locked, stops at `STOPPED_AT_MANUAL_LOGIN`; upon login/navigation, account CONNECTED, flow home PROJECT_REQUIRED, project READY unlocks canvas, full E2E pipeline generates and downloads verified MP4; recorded in `evidence/flowgraph_v1/e2e/fresh_session_full_e2e_2026-09-06.json`).
 - [x] Open FlowGraph. (live Studio + Flow tab)
 - [x] Canvas locked. (live gate test: home-locked step `locked: true`, `runDisabled: true`, gate text `PROJECT REQUIRED`, flow state `PROJECT_REQUIRED`; `projects/project_gate_live_2026-09-03T03-42-00Z.json`)
 - [x] Gate locks/unlocks on live navigation (fail-closed). (home locks `gate=True runDisabled=True` within ~1s; project unlocks `gate=False runDisabled=False` within ~1s; no reload, no 120s poll; `projects/project_gate_live_reactivity_2026-09-02T21-35-38-062Z.json`, `projects/project_gate_live_reactivity_2026-09-02T21-36-13-566Z.json`)

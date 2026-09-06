@@ -1,0 +1,59 @@
+{
+  "milestone": "FG-1505",
+  "name": "Fresh Browser Profile and Session Boundary Live Verification",
+  "verificationDate": "2026-09-06T09:05:00.000Z",
+  "freshProfile": true,
+  "extensionLoaded": true,
+  "beforeLogin": {
+    "accountConnected": false,
+    "canvasLocked": true,
+    "flowUrl": "https://flow.google.com/about",
+    "flowState": "LANDING_REQUIRE_LOGIN",
+    "failClosed": true
+  },
+  "manualLoginBoundary": {
+    "boundaryRespected": true,
+    "credentialsAutomated": false,
+    "securityBypassed": false,
+    "status": "STOPPED_AT_MANUAL_LOGIN"
+  },
+  "afterLogin": {
+    "accountConnected": true,
+    "accountEmail": "nhom8digitalmarketing1@gmail.com",
+    "accountState": "CONNECTED"
+  },
+  "flowHome": {
+    "url": "https://flow.google.com/",
+    "projectRequired": true,
+    "canvasLocked": true,
+    "reactive": true
+  },
+  "project": {
+    "projectId": "a412e256-8534-43c7-bfb9-71f15a2944df",
+    "projectName": "AI Creative Studio for Video, Images & Custom Tools",
+    "canvasUnlocked": true,
+    "flowState": "READY"
+  },
+  "run": {
+    "workflow": "Prompt -> T2I -> I2V -> Download",
+    "concurrencyEnforced": 1,
+    "cacheBypassed": true,
+    "runId": "3bf976c5",
+    "imageMediaId": "fb3650ad-553a-4f46-a564-6f756c3dda98",
+    "videoMediaId": "b8db27b9-d9cb-4270-b128-49c2a783378b",
+    "downloadId": 35,
+    "artifactFilename": "flowgraph-output (12).mp4",
+    "artifactBytes": 7933254,
+    "artifactFtyp": "00 00 00 20 66 74 79 70 69 73 6f 6d",
+    "status": "success"
+  },
+  "secretsCaptured": false,
+  "featureExpansion": 0,
+  "regression": {
+    "vitest": "191/191 passed (27 test files)",
+    "typescript": "0 errors (tsc -b clean)",
+    "productionBuild": "passed",
+    "pythonCore": "78 passed, 24 skipped"
+  },
+  "conclusion": "FG-1505 Fresh browser/session lifecycle is RUNTIME_VERIFIED. The cold profile boundary correctly fails closed until user logs in, home navigation locks canvas, live project navigation unlocks canvas reactively, and full E2E pipeline produces verified media and binary MP4 artifact."
+}
