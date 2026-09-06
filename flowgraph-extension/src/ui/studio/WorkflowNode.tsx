@@ -56,6 +56,72 @@ function inferredResult(data: FlowNodeData): NodeMediaResult | undefined {
   };
 }
 
+interface CustomComboboxProps {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onChange: (val: string) => void;
+  icon?: React.ReactNode;
+  wrapClass?: string;
+  title?: string;
+}
+
+function CustomCombobox({ value, options, onChange, icon, wrapClass = '', title = '' }: CustomComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  const currentOption = options.find((o) => o.value === value) ?? options[0];
+
+  return (
+    <div
+      ref={ref}
+      className={`custom-combobox-wrap ${wrapClass} ${open ? 'is-open' : ''} nodrag nopan`}
+      title={title}
+      onClick={(e) => {
+        e.stopPropagation();
+        setOpen(!open);
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      {icon && <div className="custom-combobox-icon">{icon}</div>}
+      <span className="custom-combobox-label">{currentOption?.label ?? value}</span>
+      <ChevronDown size={9} className="custom-combobox-caret" />
+
+      {open && (
+        <div
+          className="custom-combobox-dropdown nodrag nopan"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {options.map((opt) => (
+            <div
+              key={opt.value}
+              className={`custom-combobox-option ${opt.value === value ? 'selected' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(opt.value);
+                setOpen(false);
+              }}
+            >
+              <span>{opt.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function compactModel(value?: string) {
   if (!value) return undefined;
   return value
@@ -307,101 +373,56 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             </div>
           ) : (
             <div className="inline-combobox-toolbar nodrag nopan">
-              {/* 1. Combobox Model */}
-              <div className="inline-combobox-wrap model-wrap" title="Chọn Mô hình AI">
-                <Box size={11} className="combobox-icon model-icon" />
-                <select
-                  className="inline-combobox-select model-select"
-                  value={data.config.model || (isT2I ? '🍌 Nano Banana 2' : 'Omni 1.1 Flash')}
-                  onChange={(e) => dispatchUpdate('model', e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  {availableModels.map((m) => (
-                    <option key={m} value={m}>
-                      {compactModel(m)}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={10} className="combobox-caret" />
-              </div>
+              {/* 1. Custom Combobox Model */}
+              <CustomCombobox
+                wrapClass="model-wrap"
+                title="Chọn Mô hình AI"
+                icon={<Box size={11} className="model-icon" />}
+                value={data.config.model || (isT2I ? '🍌 Nano Banana 2' : 'Omni 1.1 Flash')}
+                options={availableModels.map((m) => ({ value: m, label: compactModel(m) ?? m }))}
+                onChange={(val) => dispatchUpdate('model', val)}
+              />
 
               {/* Video Extras: Duration & Resolution */}
               {isVideoNode && (
-                <div className="inline-combobox-wrap duration-wrap" title="Thời lượng video">
-                  <Clock3 size={10} className="combobox-icon" />
-                  <select
-                    className="inline-combobox-select"
-                    value={data.config.duration || '8 seconds'}
-                    onChange={(e) => dispatchUpdate('duration', e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    {availableDurations.map((d) => (
-                      <option key={d} value={d}>
-                        {d.replace(' seconds', 's')}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={9} className="combobox-caret" />
-                </div>
+                <CustomCombobox
+                  wrapClass="duration-wrap"
+                  title="Thời lượng video"
+                  icon={<Clock3 size={10} />}
+                  value={data.config.duration || '8 seconds'}
+                  options={availableDurations.map((d) => ({ value: d, label: d.replace(' seconds', 's') }))}
+                  onChange={(val) => dispatchUpdate('duration', val)}
+                />
               )}
 
               {isVideoNode && (
-                <div className="inline-combobox-wrap res-wrap" title="Độ phân giải">
-                  <select
-                    className="inline-combobox-select"
-                    value={data.config.resolution || '720p'}
-                    onChange={(e) => dispatchUpdate('resolution', e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    {availableResolutions.map((res) => (
-                      <option key={res} value={res}>
-                        {res}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={9} className="combobox-caret" />
-                </div>
+                <CustomCombobox
+                  wrapClass="res-wrap"
+                  title="Độ phân giải"
+                  value={data.config.resolution || '720p'}
+                  options={availableResolutions.map((res) => ({ value: res, label: res }))}
+                  onChange={(val) => dispatchUpdate('resolution', val)}
+                />
               )}
 
-              {/* 2. Combobox Aspect Ratio */}
-              <div className="inline-combobox-wrap aspect-wrap" title="Tỷ lệ khung hình">
-                <Square size={10} className="combobox-icon" />
-                <select
-                  className="inline-combobox-select"
-                  value={shortAspect(data.config.aspectRatio) || '16:9'}
-                  onChange={(e) => dispatchUpdate('aspectRatio', e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  {availableRatios.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={9} className="combobox-caret" />
-              </div>
+              {/* 2. Custom Combobox Aspect Ratio */}
+              <CustomCombobox
+                wrapClass="aspect-wrap"
+                title="Tỷ lệ khung hình"
+                icon={<Square size={10} />}
+                value={shortAspect(data.config.aspectRatio) || '16:9'}
+                options={availableRatios.map((r) => ({ value: r, label: r }))}
+                onChange={(val) => dispatchUpdate('aspectRatio', val)}
+              />
 
-              {/* 3. Combobox Batch Count */}
-              <div className="inline-combobox-wrap batch-wrap" title="Số lượng tạo">
-                <select
-                  className="inline-combobox-select batch-select"
-                  value={data.config.batchCount || '1'}
-                  onChange={(e) => dispatchUpdate('batchCount', e.target.value)}
-                  onClick={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                >
-                  {availableBatches.map((b) => (
-                    <option key={b} value={b}>
-                      x{b}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={9} className="combobox-caret" />
-              </div>
+              {/* 3. Custom Combobox Batch Count */}
+              <CustomCombobox
+                wrapClass="batch-wrap"
+                title="Số lượng tạo"
+                value={data.config.batchCount || '1'}
+                options={availableBatches.map((b) => ({ value: b, label: `x${b}` }))}
+                onChange={(val) => dispatchUpdate('batchCount', val)}
+              />
             </div>
           )}
         </div>
