@@ -33,22 +33,12 @@ import {
 } from 'lucide-react';
 import '../theme.css';
 import WorkflowNode, { NodeIcon } from './WorkflowNode';
-import FilmWorkspace from './FilmWorkspace';
-import AssetWorkspace from './AssetWorkspace';
-import StoryboardWorkspace from './StoryboardWorkspace';
-import TimelineWorkspace from './TimelineWorkspace';
-import RenderWorkspace from './RenderWorkspace';
-import ProductionWorkspace from './ProductionWorkspace';
-import ContinuityWorkspace from './ContinuityWorkspace';
-import { useFilmProject } from './useFilmProject';
-import { updateShot } from './filmModel';
 import {
   WORKFLOW_SCHEMA_VERSION,
   buildSavedWorkflow,
   persistWorkflow,
   restoreWorkflow,
 } from './workflowPersistence';
-import type { FilmShot } from '../../types/film';
 import {
   cloneInitialNodes,
   hydrateNodeData,
@@ -374,7 +364,6 @@ function ExecutionPanel({ nodes, runStatus, elapsed, validationIssues, runError,
   );
 }
 
-type Workspace = 'production' | 'continuity' | 'shots' | 'assets' | 'storyboard' | 'timeline' | 'render' | 'flow';
 
 interface NodeErrorInfo {
   code: string;
@@ -489,10 +478,6 @@ function initialSelectedNodeId(): string {
 }
 
 function Studio() {
-  const [workspace, setWorkspace] = useState<Workspace>('flow');
-  const [selectedSceneId, setSelectedSceneId] = useState('');
-  const [selectedShotId, setSelectedShotId] = useState('');
-  const [selectedAssetId, setSelectedAssetId] = useState('');
   // FG-1102 — restore a saved workflow on mount (schema 3; earlier schemas reset to the V1 chain).
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(restoreSavedNodes());
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(restoreSavedEdges());
@@ -520,7 +505,6 @@ function Studio() {
     }
   }, []);
   const connection = useStudioConnection();
-  const { project: filmProject, setProject: setFilmProject } = useFilmProject(connection.activeProject);
   const { save, exportJson } = useWorkflowPersistence(
     nodes,
     edges,
@@ -543,20 +527,6 @@ function Studio() {
     setRunStatus('ready');
     setRunError(undefined);
   }, [connection.activeProject?.projectId, connection.activeProject?.projectName, setEdges, setNodes]);
-
-  useEffect(() => {
-    if (!filmProject) {
-      setSelectedSceneId('');
-      setSelectedShotId('');
-      setSelectedAssetId('');
-      return;
-    }
-    const scenes = filmProject.sequences.flatMap((sequence) => sequence.scenes);
-    const shots = scenes.flatMap((scene) => scene.shots);
-    if (!scenes.some((scene) => scene.id === selectedSceneId)) setSelectedSceneId(scenes[0]?.id ?? '');
-    if (!shots.some((shot) => shot.id === selectedShotId)) setSelectedShotId(shots[0]?.id ?? '');
-    if (!filmProject.assets.some((asset) => asset.id === selectedAssetId)) setSelectedAssetId(filmProject.assets[0]?.id ?? '');
-  }, [filmProject, selectedAssetId, selectedSceneId, selectedShotId]);
 
   // Realtime sync: the pure controller owns conflict/loop rules; this React layer
   // only maps node config, applies Flow-originated writes, and verifies UI state.
@@ -1231,97 +1201,6 @@ function Studio() {
   const saveCurrent = () => save();
   const exportCurrent = () => exportJson();
 
-  const openFlowForShot = (shot: FilmShot) => {
-    const activeProject = connection.activeProject;
-    if (!activeProject?.projectId || !filmProject) return;
-
-    // Save the currently open graph before switching workflow namespaces.
-    save();
-
-    const workflowId = shot.workflowId ?? `workflow-${shot.id}`;
-    if (!shot.workflowId) {
-      setFilmProject((current) => updateShot(current, shot.id, (item) => ({ ...item, workflowId })));
-    }
-
-    const restored = restoreWorkflow(activeProject.projectId, workflowId);
-    setNodes(restored.nodes);
-    setEdges(restored.edges);
-    setActiveWorkflowId(workflowId);
-    setWorkflowName(restored.name ?? `${filmProject.title} · Shot ${shot.shotNumber}`);
-    setSelectedNodeId(restored.nodes.find((node) => isSyncGenerationNode(node.data.kind))?.id ?? restored.nodes[0]?.id ?? '');
-    setRunStatus('ready');
-    setRunError(undefined);
-    setSelectedShotId(shot.id);
-    setWorkspace('flow');
-  };
-
-  const openShotManagerById = (shotId: string) => {
-    setSelectedShotId(shotId);
-    setWorkspace('shots');
-  };
-
-  const renderFilmWorkspace = () => {
-    if (!filmProject) {
-      return (
-        <main className="coming-soon-workspace">
-          <div className="coming-soon-card">
-            <Workflow size={38} />
-            <h2>Google Flow Project Required</h2>
-            <p>Select or create a Google Flow project first. Film production data is isolated by projectId and will never be mixed across projects.</p>
-            <button className="fg-btn fg-btn-primary" onClick={() => setWorkspace('flow')}><Workflow size={14} /> Open FlowGraph</button>
-          </div>
-        </main>
-      );
-    }
-
-    switch (workspace) {
-      case 'production':
-        return <ProductionWorkspace project={filmProject} setProject={setFilmProject} />;
-      case 'continuity':
-        return <ContinuityWorkspace project={filmProject} setProject={setFilmProject} openShotManager={openShotManagerById} />;
-      case 'shots':
-        return (
-          <FilmWorkspace
-            project={filmProject}
-            setProject={setFilmProject}
-            selectedSceneId={selectedSceneId}
-            setSelectedSceneId={setSelectedSceneId}
-            selectedShotId={selectedShotId}
-            setSelectedShotId={setSelectedShotId}
-            openFlowForShot={openFlowForShot}
-          />
-        );
-      case 'assets':
-        return (
-          <AssetWorkspace
-            project={filmProject}
-            setProject={setFilmProject}
-            selectedAssetId={selectedAssetId}
-            setSelectedAssetId={setSelectedAssetId}
-            selectedShotId={selectedShotId}
-          />
-        );
-      case 'storyboard':
-        return (
-          <StoryboardWorkspace
-            project={filmProject}
-            selectedSceneId={selectedSceneId}
-            setSelectedSceneId={setSelectedSceneId}
-            selectedShotId={selectedShotId}
-            setSelectedShotId={setSelectedShotId}
-            openShotManager={(shot) => openShotManagerById(shot.id)}
-            openFlowForShot={openFlowForShot}
-          />
-        );
-      case 'timeline':
-        return <TimelineWorkspace project={filmProject} setProject={setFilmProject} openShotManager={openShotManagerById} />;
-      case 'render':
-        return <RenderWorkspace project={filmProject} />;
-      default:
-        return null;
-    }
-  };
-
   const accountState = connection.account.state;
   const flowState = connection.flow.state;
   const syncPillState = syncStatus.state === 'synced'
@@ -1343,23 +1222,9 @@ function Studio() {
     <div className="fg-shell studio-app">
       <header className="studio-topbar">
         <div className="fg-brand"><div className="fg-logo"><Workflow size={19} /></div><div className="fg-brand-title">FlowGraph <span>Studio</span></div></div>
-        <div className="topbar-center film-topbar-center">
-          <div className="workspace-switch flowgraph-first">
-            <button className={workspace === 'flow' ? 'active' : ''} onClick={() => setWorkspace('flow')}>FLOWGRAPH</button>
-            <button className={workspace === 'production' ? 'active' : ''} onClick={() => setWorkspace('production')}>PROJECT</button>
-            <button className={workspace === 'continuity' ? 'active' : ''} onClick={() => setWorkspace('continuity')}>CONTINUITY</button>
-            <button className={workspace === 'shots' ? 'active' : ''} onClick={() => setWorkspace('shots')}>SHOTS</button>
-            <button className={workspace === 'assets' ? 'active' : ''} onClick={() => setWorkspace('assets')}>ASSETS</button>
-            <button className={workspace === 'storyboard' ? 'active' : ''} onClick={() => setWorkspace('storyboard')}>STORYBOARD</button>
-            <button className={workspace === 'timeline' ? 'active' : ''} onClick={() => setWorkspace('timeline')}>TIMELINE</button>
-            <button className={workspace === 'render' ? 'active' : ''} onClick={() => setWorkspace('render')}>RENDER</button>
-          </div>
+        <div className="topbar-center">
           <div className="workflow-title">
-            {workspace === 'flow' ? (
-              <input value={workflowName} onChange={(event) => setWorkflowName(event.target.value)} />
-            ) : (
-              <input value={filmProject?.title ?? connection.activeProject?.projectName ?? 'Film Production'} readOnly />
-            )}
+            <input value={workflowName} onChange={(event) => setWorkflowName(event.target.value)} />
             <span className="fg-version">v1.3</span>
           </div>
         </div>
@@ -1383,17 +1248,16 @@ function Studio() {
             title={syncStatus.message}
             icon={<Workflow size={14} />}
           />
-          {workspace === 'flow' && <button className="fg-btn fg-icon-btn" title="Undo"><Undo2 size={14} /></button>}
-          {workspace === 'flow' && <button className="fg-btn fg-icon-btn" title="Redo"><Redo2 size={14} /></button>}
-          {workspace === 'flow' && <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Save</button>}
-          {workspace === 'flow' && <button className="fg-btn"><Share2 size={14} /> Share</button>}
-          {workspace === 'flow' && <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Export</button>}
-          {workspace === 'flow' && (runStatus === 'running' ? <button className="fg-btn fg-btn-primary" onClick={stopWorkflow}><Square size={13} /> Stop Workflow</button> : <button className="fg-btn fg-btn-primary" disabled={!connection.isCanvasUnlocked} onClick={() => void runWorkflow(false)}><Play size={14} /> Run Workflow</button>)}
+          <button className="fg-btn fg-icon-btn" title="Undo"><Undo2 size={14} /></button>
+          <button className="fg-btn fg-icon-btn" title="Redo"><Redo2 size={14} /></button>
+          <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Save</button>
+          <button className="fg-btn"><Share2 size={14} /> Share</button>
+          <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Export</button>
+          {runStatus === 'running' ? <button className="fg-btn fg-btn-primary" onClick={stopWorkflow}><Square size={13} /> Stop Workflow</button> : <button className="fg-btn fg-btn-primary" disabled={!connection.isCanvasUnlocked} onClick={() => void runWorkflow(false)}><Play size={14} /> Run Workflow</button>}
           <button className="fg-btn fg-icon-btn"><EllipsisVertical size={14} /></button>
         </div>
       </header>
 
-      {workspace === 'flow' ? (
       <main className="studio-main">
         <NodeLibrary search={search} setSearch={setSearch} locked={!connection.isCanvasUnlocked} />
 
@@ -1432,11 +1296,8 @@ function Studio() {
 
         <Inspector node={selectedNode} edges={edges} updateConfig={updateConfig} close={() => setSelectedNodeId('')} locked={!connection.isCanvasUnlocked} />
       </main>
-      ) : (
-        renderFilmWorkspace()
-      )}
 
-      {confirmRerun.length > 0 && workspace === 'flow' && (
+      {confirmRerun.length > 0 && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Confirm rerun">
           <div className="experimental-modal">
             <div className="experimental-modal-icon">⚡</div>
@@ -1456,7 +1317,7 @@ function Studio() {
         </div>
       )}
 
-      {experimentalGate.open && workspace === 'flow' && (
+      {experimentalGate.open && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Experimental capability warning">
           <div className="experimental-modal">
             <div className="experimental-modal-icon">!</div>
