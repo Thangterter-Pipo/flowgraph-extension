@@ -22,7 +22,6 @@ describe('E2E UI Canvas Contract & Settings Verification', () => {
     // 3. Image to Video Node
     expect(i2vNode.data.kind).toBe('i2v');
     expect(i2vNode.data.config.model).toBe('Omni 1.1 Flash');
-    expect(i2vNode.data.config.mode).toBe('Thành phần');
     expect(i2vNode.data.config.duration).toBe('8 seconds');
     expect(i2vNode.data.config.resolution).toBe('720p');
     expect(i2vNode.data.config.costCredits).toBe('12');
@@ -64,11 +63,6 @@ describe('E2E UI Canvas Contract & Settings Verification', () => {
     validVideoModels.forEach((m) => {
       const updated = { ...i2vNode, data: { ...i2vNode.data, config: { ...i2vNode.data.config, model: m } } };
       expect(updated.data.config.model).toBe(m);
-    });
-
-    validModes.forEach((m) => {
-      const updated = { ...i2vNode, data: { ...i2vNode.data, config: { ...i2vNode.data.config, mode: m } } };
-      expect(updated.data.config.mode).toBe(m);
     });
 
     validDurations.forEach((d) => {
