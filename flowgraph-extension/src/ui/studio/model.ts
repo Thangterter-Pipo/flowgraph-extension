@@ -332,13 +332,13 @@ export const initialNodes: FlowNode[] = [
 ];
 
 export const initialEdges: FlowEdge[] = [
-  { id: 'e1-2', source: '1', sourceHandle: 'prompt', target: '2', targetHandle: 'prompt', type: 'smoothstep', animated: false, style: { stroke: '#9a52f8' } },
-  { id: 'e2-3', source: '2', sourceHandle: 'image', target: '3', targetHandle: 'image', type: 'smoothstep', animated: false, style: { stroke: '#4e9fff' } },
-  { id: 'e3-4', source: '3', sourceHandle: 'video', target: '4', targetHandle: 'media', type: 'smoothstep', animated: false, style: { stroke: '#3ad39c' } },
+  { id: 'e1-2', source: '1', sourceHandle: 'prompt', target: '2', targetHandle: 'prompt', type: 'default', animated: false, style: { stroke: '#9a52f8' } },
+  { id: 'e2-3', source: '2', sourceHandle: 'image', target: '3', targetHandle: 'image', type: 'default', animated: false, style: { stroke: '#4e9fff' } },
+  { id: 'e3-4', source: '3', sourceHandle: 'video', target: '4', targetHandle: 'media', type: 'default', animated: false, style: { stroke: '#3ad39c' } },
   // The I2V node exposes a Prompt input, so the graph has to feed it. Without
   // this edge node 3 submitted an empty prompt and the old service-worker
   // fallback silently invented one (see run a82e1b01).
-  { id: 'e1-3', source: '1', sourceHandle: 'prompt', target: '3', targetHandle: 'prompt', type: 'smoothstep', animated: false, style: { stroke: '#9a52f8' } },
+  { id: 'e1-3', source: '1', sourceHandle: 'prompt', target: '3', targetHandle: 'prompt', type: 'default', animated: false, style: { stroke: '#9a52f8' } },
 ];
 
 export function cloneInitialNodes(): FlowNode[] {
