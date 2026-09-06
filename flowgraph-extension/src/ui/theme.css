@@ -201,8 +201,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .palette-copy span { display:block; font-size:8px; color:#6f7d92; margin-top:2px; }
 .exp-tag { font-size:7px; color:#e7aa59; border:1px solid rgba(231,170,89,.3); border-radius:4px; padding:2px 4px; }
 
-.studio-center { min-width:0; min-height:0; display:grid; grid-template-rows:minmax(0,1fr) 205px; }
-.canvas-wrap { position:relative; min-height:0; overflow:hidden; border-bottom:1px solid #1e2a3c; background:#080d15; }
+.studio-center { min-width:0; min-height:0; display:grid; grid-template-rows:minmax(0,1fr); height:100%; }
+.canvas-wrap { position:relative; min-height:0; height:100%; overflow:hidden; background:#080d15; }
 .canvas-toolbar { position:absolute; z-index:10; left:12px; top:11px; display:flex; gap:4px; background:#0d1521; border:1px solid #233148; border-radius:9px; padding:4px; box-shadow:var(--shadow); }
 .canvas-state-actions { position:absolute; z-index:10; right:12px; top:11px; display:flex; gap:5px; }
 .demo-chip { min-height:29px; padding:0 9px; border-radius:7px; border:1px solid #26344c; background:#0e1623; font-size:9px; cursor:pointer; color:#8897ad; }
@@ -812,7 +812,7 @@ textarea.form-control { padding-top:8px; min-height:90px; resize:vertical; line-
 .palette-copy strong { font-size: 9px; }
 .palette-copy span { font-size: 7px; max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.studio-center { grid-template-rows: minmax(0,1fr) 160px; }
+.studio-center { grid-template-rows: minmax(0,1fr); }
 .canvas-toolbar { left: 9px; top: 8px; padding: 3px; border-radius: 7px; }
 .canvas-state-actions { right: 9px; top: 8px; gap: 4px; }
 .demo-chip { min-height: 26px; padding: 0 7px; font-size: 8px; }
