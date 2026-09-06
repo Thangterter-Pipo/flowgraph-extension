@@ -55,6 +55,19 @@ export interface RuntimeEmit {
 }
 
 const DEFAULT_CONCURRENCY = 2;
+/**
+ * FG-1001 — Verified Google Flow concurrency cap.
+ * Google Flow backend limits concurrent generation per session/project.
+ * Hard cap at 2 ensures bounded execution regardless of caller options.
+ */
+export const VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT = 2;
+
+export function resolveEffectiveConcurrency(requested?: number): number {
+  if (requested === undefined || requested === null || requested < 1) {
+    return DEFAULT_CONCURRENCY;
+  }
+  return Math.min(Math.floor(requested), VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT);
+}
 
 interface RunSession {
   runId: string;
@@ -174,7 +187,7 @@ export class WorkflowRuntime {
 
   private async executeSession(session: RunSession, nodes: NodeSpecForValidation[], options: RuntimeRunOptions, emit: RuntimeEmit, emitQueued: boolean): Promise<void> {
     const { runId, context, completed, failed, outputs, planEdges } = session;
-    const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+    const concurrency = resolveEffectiveConcurrency(options.concurrency);
     const byId = new Map(nodes.map((node) => [node.id, node]));
 
     try {
