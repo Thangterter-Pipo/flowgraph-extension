@@ -255,6 +255,8 @@
     'FLOWGRAPH_SYNC_SET_MODE',
     'FLOWGRAPH_SYNC_SET_MODEL',
     'FLOWGRAPH_SYNC_SET_ASPECT_RATIO',
+    'FLOWGRAPH_SYNC_SET_BATCH',
+    'FLOWGRAPH_SYNC_SET_BATCH_COUNT',
     'FLOWGRAPH_SYNC_SET_DURATION',
     'FLOWGRAPH_SYNC_SET_SEED',
     'FLOWGRAPH_SYNC_SET_RESOLUTION',
@@ -591,11 +593,29 @@
 
   function aspectRatioFromChip(chip) {
     if (!chip) return null;
+    // 1. Check icon names (e.g. crop_16_9, crop_9_16, crop_square, crop_landscape, crop_portrait)
     const icon = Array.from(chip.querySelectorAll('i.google-symbols, .google-symbols'))
       .map((candidate) => normalizeSettingText(candidate.textContent))
-      .find((text) => /^crop_(?:\d+_\d+|free)$/i.test(text));
-    if (!icon || icon.toLowerCase() === 'crop_free') return null;
-    return icon.replace(/^crop_/i, '').replace('_', ':');
+      .find((text) => /^crop_(?:\d+_\d+|free|square|landscape|portrait)$/i.test(text));
+    if (icon) {
+      const lower = icon.toLowerCase();
+      if (lower === 'crop_16_9') return '16:9';
+      if (lower === 'crop_9_16') return '9:16';
+      if (lower === 'crop_square') return '1:1';
+      if (lower === 'crop_landscape') return '4:3';
+      if (lower === 'crop_portrait') return '3:4';
+      if (lower === 'crop_free') return null;
+      return icon.replace(/^crop_/i, '').replace('_', ':');
+    }
+    // 2. Check innerText for explicit ratio (e.g. "16:9", "4:3", "1:1", "3:4", "9:16")
+    const match = normalizeSettingText(chip?.innerText).match(/\b(\d{1,2}:\d{1,2})\b/);
+    return match ? match[1] : null;
+  }
+
+  function batchFromChip(chip) {
+    const text = normalizeSettingText(chip?.innerText);
+    const match = text.match(/x([1-4])/i);
+    return match ? match[1] : null;
   }
 
   function durationFromChip(chip) {
@@ -842,15 +862,19 @@
   }
 
   function clickMenuItemLike(element) {
+    if (!element) return;
     const fire = (type) => {
       const EventCtor = type.startsWith('pointer') ? PointerEvent : MouseEvent;
-      element.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
+      element.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, view: window }));
     };
     fire('pointerdown');
     fire('mousedown');
     fire('pointerup');
     fire('mouseup');
     element.click();
+    try {
+      element.focus();
+    } catch {}
   }
 
   function findSettingsChip() {
@@ -918,9 +942,19 @@
 
   function findSettingsTab(menu, expected) {
     const wanted = normalizeSettingText(expected).toLowerCase();
-    return Array.from(menu.querySelectorAll('[role="tab"]')).find((tab) => {
-      const text = normalizeSettingText(tab.innerText).toLowerCase();
-      return text === wanted || text.endsWith(` ${wanted}`) || text.includes(wanted);
+    // Angular Flow uses buttons inside mat-button-toggle-group for aspect ratio and batch
+    return Array.from(menu.querySelectorAll('button, [role="tab"], [role="radio"], .mat-button-toggle-button')).find((tab) => {
+      const text = normalizeSettingText(tab.innerText || tab.textContent || '').toLowerCase();
+      const lines = text.split(/\s+/);
+      const aria = normalizeSettingText(tab.getAttribute('aria-label') || '').toLowerCase();
+      return (
+        text === wanted
+        || lines.includes(wanted)
+        || text.endsWith(` ${wanted}`)
+        || text.includes(wanted)
+        || aria === wanted
+        || aria.includes(wanted)
+      );
     });
   }
 
@@ -947,11 +981,13 @@
             .map((candidate) => normalizeSettingText(candidate.innerText));
           const hasCounterpart = field === 'aspectRatio'
             ? texts.some((text) => /\b\d{1,2}:\d{1,2}\b/.test(text))
-            : field === 'durationSeconds'
-              ? texts.some((text) => /\b\d+s\b/i.test(text))
-              : field === 'targetResolution'
-                ? texts.some((text) => /\b\d{3,4}p\b/i.test(text))
-                : false;
+            : field === 'batchCount'
+              ? texts.some((text) => /\bx[1-4]\b/i.test(text))
+              : field === 'durationSeconds'
+                ? texts.some((text) => /\b\d+s\b/i.test(text))
+                : field === 'targetResolution'
+                  ? texts.some((text) => /\b\d{3,4}p\b/i.test(text))
+                  : false;
           return hasCounterpart ? 'INVALID_VALUE' : 'NO_UI_COUNTERPART';
         })(),
         message: `Flow ${field} control "${tabText}" not found.`,
@@ -960,14 +996,14 @@
     }
     const fire = (type) => {
       const EventCtor = type.startsWith('pointer') ? PointerEvent : MouseEvent;
-      tab.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
+      tab.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, view: window }));
     };
     fire('pointerdown');
     fire('mousedown');
     fire('pointerup');
     fire('mouseup');
     tab.click();
-    await syncSleep(300);
+    await syncSleep(500);
 
     const applied = readApplied();
     if (applied !== value) {
@@ -1100,13 +1136,85 @@
     if (!/^\d{1,2}:\d{1,2}$/.test(requested)) {
       return { ok: false, code: 'INVALID_VALUE', message: 'Aspect ratio must use NN:NN format.', originEventId };
     }
-    return writeComposerSetting(
-      'aspectRatio',
-      requested,
-      requested,
-      () => aspectRatioFromChip(findModelChip()),
-      originEventId,
-    );
+    const chip = findModelChip();
+    if (aspectRatioFromChip(chip) === requested) {
+      suppressEcho('aspectRatio', requested);
+      emitSyncState();
+      return { ok: true, value: requested, originEventId };
+    }
+
+    const opened = await openComposerSettings();
+    if (!opened.ok) {
+      return { ok: false, code: 'UI_NOT_READY', message: opened.message, originEventId };
+    }
+    suppressEcho('aspectRatio', requested);
+
+    // Find the toggle button specifically containing this ratio
+    const btns = Array.from(opened.menu.querySelectorAll('button.mat-button-toggle-button, [role="radio"], button'));
+    const btn = btns.find((b) => {
+      const text = normalizeSettingText(b.innerText || '').toLowerCase();
+      return text.split(/\s+/).includes(requested.toLowerCase()) || text.includes(requested.toLowerCase());
+    });
+
+    if (!btn) {
+      echoSuppression.delete('aspectRatio');
+      await closeOpenMenus();
+      return { ok: false, code: 'INVALID_VALUE', message: `Flow aspectRatio control "${requested}" not found.`, originEventId };
+    }
+
+    clickMenuItemLike(btn);
+    await syncSleep(400);
+
+    const applied = aspectRatioFromChip(findModelChip());
+    if (applied !== requested) {
+      echoSuppression.delete('aspectRatio');
+      await closeOpenMenus();
+      return { ok: false, code: 'UI_NOT_READY', message: 'Flow aspectRatio did not commit the value.', originEventId };
+    }
+    await closeOpenMenus();
+    emitSyncState();
+    return { ok: true, value: requested, originEventId };
+  }
+
+  async function writeBatch(value, originEventId) {
+    const requested = String(value).replace(/^x/i, '').trim();
+    if (!/^[1-4]$/.test(requested)) {
+      return { ok: false, code: 'INVALID_VALUE', message: 'Batch must be 1, 2, 3, or 4.', originEventId };
+    }
+    const chip = findModelChip();
+    if (batchFromChip(chip) === requested) {
+      suppressEcho('batchCount', requested);
+      emitSyncState();
+      return { ok: true, value: requested, originEventId };
+    }
+
+    const opened = await openComposerSettings();
+    if (!opened.ok) {
+      return { ok: false, code: 'UI_NOT_READY', message: opened.message, originEventId };
+    }
+    suppressEcho('batchCount', requested);
+
+    const btns = Array.from(opened.menu.querySelectorAll('button.mat-button-toggle-button, [role="radio"], button'));
+    const btn = btns.find((b) => normalizeSettingText(b.innerText || '').toLowerCase() === `x${requested}`);
+
+    if (!btn) {
+      echoSuppression.delete('batchCount');
+      await closeOpenMenus();
+      return { ok: false, code: 'INVALID_VALUE', message: `Flow batch control "x${requested}" not found.`, originEventId };
+    }
+
+    clickMenuItemLike(btn);
+    await syncSleep(400);
+
+    const applied = batchFromChip(findModelChip());
+    if (applied !== requested) {
+      echoSuppression.delete('batchCount');
+      await closeOpenMenus();
+      return { ok: false, code: 'UI_NOT_READY', message: 'Flow batch did not commit the value.', originEventId };
+    }
+    await closeOpenMenus();
+    emitSyncState();
+    return { ok: true, value: requested, originEventId };
   }
 
   async function writeDuration(value, originEventId) {
@@ -1172,6 +1280,9 @@
         return writeModel(payload.value, originEventId);
       case 'FLOWGRAPH_SYNC_SET_ASPECT_RATIO':
         return writeAspectRatio(payload.value, originEventId);
+      case 'FLOWGRAPH_SYNC_SET_BATCH':
+      case 'FLOWGRAPH_SYNC_SET_BATCH_COUNT':
+        return writeBatch(payload.value, originEventId);
       case 'FLOWGRAPH_SYNC_SET_DURATION':
         return writeDuration(payload.value, originEventId);
       case 'FLOWGRAPH_SYNC_SET_SEED':

@@ -26,17 +26,17 @@ export const SYNC_NODE_CAPABILITIES: Readonly<Record<string, SyncNodeCapability>
   t2i: {
     kind: 't2i',
     mode: 'IMAGE',
-    fields: ['prompt', 'model', 'aspectRatio', 'seed', 'targetResolution'],
+    fields: ['prompt', 'model', 'aspectRatio', 'batchCount', 'seed', 'targetResolution'],
   },
   t2v: {
     kind: 't2v',
     mode: 'VIDEO',
-    fields: ['prompt', 'model', 'aspectRatio', 'durationSeconds', 'seed', 'targetResolution'],
+    fields: ['prompt', 'model', 'aspectRatio', 'batchCount', 'durationSeconds', 'seed', 'targetResolution'],
   },
   i2v: {
     kind: 'i2v',
     mode: 'VIDEO',
-    fields: ['prompt', 'model', 'aspectRatio', 'durationSeconds', 'seed', 'startImage', 'endImage'],
+    fields: ['prompt', 'model', 'aspectRatio', 'batchCount', 'durationSeconds', 'seed', 'startImage', 'endImage'],
   },
   reference: {
     kind: 'reference',
@@ -113,6 +113,7 @@ export function validateSyncFieldValue(
         : { ok: false, code: 'INVALID_VALUE', reason: 'mode must be IMAGE or VIDEO' };
     case 'model':
     case 'aspectRatio':
+    case 'batchCount':
     case 'targetResolution':
       return isNonEmptyString(value)
         ? { ok: true }

@@ -435,6 +435,8 @@ function syncValuesForNode(
     } else if (field === 'aspectRatio') {
       const ratio = ratioForFlow(config.aspectRatio);
       if (ratio) values.aspectRatio = ratio;
+    } else if (field === 'batchCount' && config.batchCount) {
+      values.batchCount = config.batchCount;
     } else if (field === 'durationSeconds' && config.duration) {
       const duration = Number.parseInt(config.duration, 10);
       if (Number.isFinite(duration)) values.durationSeconds = duration;
@@ -1196,6 +1198,7 @@ function Studio() {
       prompt: 'prompt',
       model: 'model',
       aspectRatio: 'aspectRatio',
+      batchCount: 'batchCount',
       duration: 'durationSeconds',
       seed: 'seed',
       targetResolution: 'targetResolution',
@@ -1205,13 +1208,21 @@ function Studio() {
     const targetNode = nodes.find((n) => n.id === effectiveId) ?? selectedNode;
     const syncTarget = resolveSelectedSyncTarget(targetNode, nodes, edges);
     if (!field || !syncTarget) return;
+
+    // Ensure syncController has the target node actively selected
+    if (syncControllerRef.current?.getActiveSnapshot()?.nodeId !== syncTarget.id) {
+      syncControllerRef.current?.setActiveNode(syncTarget.id, syncTarget.data.kind as SyncNodeKind);
+    }
+
     const syncValue = field === 'durationSeconds' || field === 'seed'
       ? Number.parseInt(value, 10)
       : field === 'model'
         ? normalizeFlowUiModelLabel(value)
         : field === 'aspectRatio'
           ? ratioForFlow(value)
-          : value;
+          : field === 'batchCount'
+            ? String(value).replace(/^x/i, '').trim()
+            : value;
     if (syncValue === undefined || (typeof syncValue === 'number' && !Number.isFinite(syncValue))) return;
     void syncControllerRef.current?.handleStudioChange({ nodeId: syncTarget.id, field, value: syncValue });
   };

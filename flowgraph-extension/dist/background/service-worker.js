@@ -1801,6 +1801,9 @@
           return makeResponse(request.requestId, await downloadMedia(request.payload));
         case "FLOWGRAPH_CANCEL":
           return makeResponse(request.requestId, await handleCancel(request.payload));
+        case "FLOWGRAPH_SYNC_SET_BATCH":
+        case "FLOWGRAPH_SYNC_SET_BATCH_COUNT":
+          return makeResponse(request.requestId, await forwardSyncWrite(request));
         default:
           return makeError(request.requestId, "UNSUPPORTED_MESSAGE", `Unsupported message type: ${request.type}`);
       }
@@ -1814,6 +1817,8 @@
     "FLOWGRAPH_SYNC_SET_MODE",
     "FLOWGRAPH_SYNC_SET_MODEL",
     "FLOWGRAPH_SYNC_SET_ASPECT_RATIO",
+    "FLOWGRAPH_SYNC_SET_BATCH",
+    "FLOWGRAPH_SYNC_SET_BATCH_COUNT",
     "FLOWGRAPH_SYNC_SET_DURATION",
     "FLOWGRAPH_SYNC_SET_SEED",
     "FLOWGRAPH_SYNC_SET_RESOLUTION",
@@ -1829,6 +1834,8 @@
     "FLOWGRAPH_SYNC_SET_MODE",
     "FLOWGRAPH_SYNC_SET_MODEL",
     "FLOWGRAPH_SYNC_SET_ASPECT_RATIO",
+    "FLOWGRAPH_SYNC_SET_BATCH",
+    "FLOWGRAPH_SYNC_SET_BATCH_COUNT",
     "FLOWGRAPH_SYNC_SET_DURATION",
     "FLOWGRAPH_SYNC_SET_RESOLUTION",
     "FLOWGRAPH_SYNC_BIND_MEDIA",

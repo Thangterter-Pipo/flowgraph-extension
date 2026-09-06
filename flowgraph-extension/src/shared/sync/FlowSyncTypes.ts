@@ -9,6 +9,7 @@ export type FlowSyncField =
   | 'mode'
   | 'model'
   | 'aspectRatio'
+  | 'batchCount'
   | 'durationSeconds'
   | 'seed'
   | 'targetResolution'

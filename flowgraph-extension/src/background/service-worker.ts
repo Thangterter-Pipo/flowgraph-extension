@@ -540,10 +540,10 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
         if (el) {
           const img = (el.tagName === 'IMG' ? el : el.querySelector('img')) as HTMLImageElement | null;
           const s = img ? (img.currentSrc || img.getAttribute('src')) : null;
-          if (isAsb(s)) return { ok: true, url: s };
+          if (s) return { ok: true, url: s };
         }
         // In /edit/<mediaId> editor, read the active editor main image directly
-        const editorImg = Array.from(document.querySelectorAll('img')).find((i) => isAsb(i.currentSrc || i.src) && (i.naturalWidth > 600 || (i.src || '').includes('=s1600')));
+        const editorImg = Array.from(document.querySelectorAll('img')).find((i) => (isAsb(i.currentSrc || i.src) || (i.src || '').includes('flow-content.google')) && (i.naturalWidth > 600 || (i.src || '').includes('=s1600')));
         if (editorImg) {
           return { ok: true, url: editorImg.currentSrc || editorImg.src };
         }
@@ -2043,6 +2043,9 @@ async function handleRequest(request: BridgeRequest): Promise<BridgeResponse<unk
         return makeResponse(request.requestId, await downloadMedia(request.payload as MediaDownloadPayload));
       case 'FLOWGRAPH_CANCEL':
         return makeResponse(request.requestId, await handleCancel(request.payload as { projectId: string; mediaId: string }));
+      case 'FLOWGRAPH_SYNC_SET_BATCH':
+      case 'FLOWGRAPH_SYNC_SET_BATCH_COUNT':
+        return makeResponse(request.requestId, await forwardSyncWrite(request));
       default:
         return makeError(request.requestId, 'UNSUPPORTED_MESSAGE', `Unsupported message type: ${request.type}`);
     }
@@ -2061,6 +2064,8 @@ const SYNC_WRITE_TYPES = new Set<string>([
   'FLOWGRAPH_SYNC_SET_MODE',
   'FLOWGRAPH_SYNC_SET_MODEL',
   'FLOWGRAPH_SYNC_SET_ASPECT_RATIO',
+  'FLOWGRAPH_SYNC_SET_BATCH',
+  'FLOWGRAPH_SYNC_SET_BATCH_COUNT',
   'FLOWGRAPH_SYNC_SET_DURATION',
   'FLOWGRAPH_SYNC_SET_SEED',
   'FLOWGRAPH_SYNC_SET_RESOLUTION',
@@ -2077,6 +2082,8 @@ const SYNC_FOREGROUND_TYPES = new Set<string>([
   'FLOWGRAPH_SYNC_SET_MODE',
   'FLOWGRAPH_SYNC_SET_MODEL',
   'FLOWGRAPH_SYNC_SET_ASPECT_RATIO',
+  'FLOWGRAPH_SYNC_SET_BATCH',
+  'FLOWGRAPH_SYNC_SET_BATCH_COUNT',
   'FLOWGRAPH_SYNC_SET_DURATION',
   'FLOWGRAPH_SYNC_SET_RESOLUTION',
   'FLOWGRAPH_SYNC_BIND_MEDIA',

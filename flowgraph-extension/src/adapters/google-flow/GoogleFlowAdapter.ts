@@ -165,6 +165,7 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
       mode: 'FLOWGRAPH_SYNC_SET_MODE',
       model: 'FLOWGRAPH_SYNC_SET_MODEL',
       aspectRatio: 'FLOWGRAPH_SYNC_SET_ASPECT_RATIO',
+      batchCount: 'FLOWGRAPH_SYNC_SET_BATCH',
       durationSeconds: 'FLOWGRAPH_SYNC_SET_DURATION',
       seed: 'FLOWGRAPH_SYNC_SET_SEED',
       targetResolution: 'FLOWGRAPH_SYNC_SET_RESOLUTION',
