@@ -30,25 +30,30 @@ export class DownloadExecutor implements NodeExecutor {
     if (!media) throw new RuntimeError('INVALID_INPUT', 'Download received no media input.', { nodeId: context.nodeId });
 
     const fileName = String(context.config.fileName ?? `flowgraph-${media.mediaId.slice(0, 8)}`);
-    // Reuse the same-origin /asb/ preview URL the generate step already resolved
-    // while the tile was fresh; the worker falls back to re-resolving from the
-    // page only when it is missing.
-    const result = await this.adapter.downloadMedia({
-      mediaId: media.mediaId,
-      projectId: media.projectId,
-      fileName,
-      mediaType: media.type,
-      url: media.previewUrl,
-    });
-    if (!result.ok) {
-      throw new RuntimeError('MEDIA_FAILED', result.error ?? 'Download failed.', { nodeId: context.nodeId });
+
+    // Only download if autoDownload is explicitly requested; default is false to avoid unintended browser download popups
+    const autoDownload = context.config.autoDownload === 'true' || context.config.autoDownload === true;
+    let savedFilename = fileName;
+
+    if (autoDownload) {
+      const result = await this.adapter.downloadMedia({
+        mediaId: media.mediaId,
+        projectId: media.projectId,
+        fileName,
+        mediaType: media.type,
+        url: media.previewUrl,
+      });
+      if (!result.ok) {
+        throw new RuntimeError('MEDIA_FAILED', result.error ?? 'Download failed.', { nodeId: context.nodeId });
+      }
+      if (result.filename) savedFilename = result.filename;
     }
 
     return {
       outputs: {
         file: {
           type: 'text' as const,
-          value: result.filename ?? fileName,
+          value: savedFilename,
         },
       },
       result: {
