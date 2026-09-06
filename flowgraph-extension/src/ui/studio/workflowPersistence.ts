@@ -30,8 +30,9 @@ export function workflowStorageKey(projectId: string, workflowId: string) {
 
 function nodesForPersistence(nodes: FlowNode[]): FlowNode[] {
   return nodes.map((node) => {
-    // Strip transient preview URL from result
+    // Strip transient preview URL from result (it gets rehydrated from mediaId on restore)
     const result = node.data.result ? { ...node.data.result, previewUrl: '' } : undefined;
+
     // Strip any signed URLs or transient data from config
     const config = { ...node.data.config };
     delete config.signedPreviewUrl;
@@ -137,16 +138,20 @@ export function restoreWorkflow(
   const saved = readSavedWorkflow(projectId, workflowId, storage);
   const nodes = saved?.nodes?.length
     ? saved.nodes.map((node) => {
-        const restored = { ...node, data: { ...node.data, status: 'idle' as NodeStatus } } as FlowNode;
+        const restored = { ...node, data: { ...node.data } } as FlowNode;
         if (saved.runtimeResults?.[node.id]) {
           const media = saved.runtimeResults[node.id];
           restored.data.result = {
             type: media.type,
-            previewUrl: '',
+            previewUrl: media.type === 'video'
+              ? `https://flow-content.google/image/${media.mediaId}`
+              : `https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(media.mediaId)}`,
             mediaId: media.mediaId,
             mimeType: media.mimeType,
             fileName: media.fileName,
           };
+          restored.data.status = 'success';
+        } else if (node.data.result?.mediaId) {
           restored.data.status = 'success';
         }
         return restored;
