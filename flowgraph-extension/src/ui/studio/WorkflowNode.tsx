@@ -58,7 +58,19 @@ function inferredResult(data: FlowNodeData): NodeMediaResult | undefined {
 
 function compactModel(value?: string) {
   if (!value) return undefined;
-  return value.replace('🍌 ', '').replace('SERVICE_TIER_', '').replace(' (NARWHAL)', '').replace(' (Landscape)', '').replace(' (Portrait)', '');
+  return value
+    .replace('🍌 ', '')
+    .replace('SERVICE_TIER_', '')
+    .replace(' (NARWHAL)', '')
+    .replace(' (Landscape)', '')
+    .replace(' (Portrait)', '')
+    .replace('Veo 3.1 - ', 'Veo ')
+    .replace('Veo 3.1 – ', 'Veo ')
+    .replace('Omni 1.1 Flash', 'Omni')
+    .replace('Omni Flash', 'Omni')
+    .replace('Nano Banana 2 Lite', 'Banana Lite')
+    .replace('Nano Banana 2', 'Banana 2')
+    .replace('Nano Banana Pro', 'Banana Pro');
 }
 
 function shortAspect(value?: string) {
