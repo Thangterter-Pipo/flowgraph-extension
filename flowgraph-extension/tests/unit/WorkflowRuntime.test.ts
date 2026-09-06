@@ -41,7 +41,7 @@ const V1_NODES = [
   spec('prompt', '1', { prompt: 'A paper boat on a lake' }),
   spec('t2i', '2', { model: 'Nano Banana 2', usageKey: 'NARWHAL' }),
   spec('i2v', '3', { model: 'Omni Flash', usageKey: 'abra_i2v_8s' }),
-  spec('download', '4', { fileName: 'boat' }),
+  spec('download', '4', { fileName: 'boat', autoDownload: 'true' }),
 ];
 const V1_EDGES = [
   { id: 'e1', source: '1', sourceHandle: 'prompt', target: '2', targetHandle: 'prompt' },
@@ -62,7 +62,7 @@ const T2V_NODES = [
     duration: '8 seconds',
     resolution: '720p',
   }),
-  spec('download', '3', { fileName: 't2v-boat' }),
+  spec('download', '3', { fileName: 't2v-boat', autoDownload: 'true' }),
 ];
 const T2V_EDGES = [
   { id: 'e1', source: '1', sourceHandle: 'prompt', target: '2', targetHandle: 'prompt' },
