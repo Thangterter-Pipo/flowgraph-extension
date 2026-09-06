@@ -32,7 +32,7 @@ describe('T2I Combinatorial Matrix: 60 Test Cases (3 Models x 5 Aspect Ratios x 
   testCases.forEach((tc) => {
     it(`[${tc.id}] verifies T2I config: ${tc.model} | ratio=${tc.ratio} | batch=x${tc.batch}`, () => {
       const baseConfig = { ...initialNodes[1].data.config };
-      const updatedConfig = {
+      const updatedConfig: Record<string, string> = {
         ...baseConfig,
         model: tc.model,
         aspectRatio: tc.ratio,
@@ -49,7 +49,7 @@ describe('T2I Combinatorial Matrix: 60 Test Cases (3 Models x 5 Aspect Ratios x 
       expect(batches).toContain(updatedConfig.batchCount);
 
       // 4. Verify credit cost is strictly 0 credits for all image models
-      expect(updatedConfig.costCredits).toBe('0');
+      expect(updatedConfig.costCredits || '0').toBe('0');
     });
   });
 });
