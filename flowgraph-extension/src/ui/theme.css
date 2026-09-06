@@ -180,6 +180,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .topbar-actions { display:flex; align-items:center; gap:7px; }
 .connection-pill { min-height:34px; display:flex; align-items:center; gap:8px; padding:0 10px; border:1px solid #243149; border-radius:9px; background:#0f1622; font-size:10px; color:#b4bfce; }
 .studio-main { min-height:0; display:grid; grid-template-columns: 220px 1fr; background:#080c13; }
+.film-workspace-full { grid-column: 1 / -1; height: 100%; overflow: auto; background: #080c13; }
+.workspace-select { background: #0c1421; border: 1px solid #233148; color: #c0cde0; font-size: 10px; font-weight: 600; padding: 4px 8px; border-radius: 8px; cursor: pointer; outline: none; }
+.workspace-select:hover { border-color: #38bdf8; }
 .node-library { border-right:1px solid #1e2a3d; background:#0b111b; padding:12px 10px; overflow-y:auto; }
 .library-title { font-size:10px; font-weight:750; letter-spacing:.07em; color:#aab6c9; margin-bottom:9px; }
 .library-search { position:relative; margin-bottom:13px; }
@@ -572,24 +575,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   padding-bottom: 6px;
 }
-.popup-tabs {
-  display: flex;
-  gap: 6px;
-}
-.popup-tab {
+.popup-title {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-size: 9px;
+  gap: 5px;
+  font-size: 10px;
   font-weight: 700;
-  color: #64748b;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: #090e17;
+  color: #f1f5f9;
 }
-.popup-tab.active {
-  color: #ffffff;
-  background: #2563eb;
+.popup-title svg {
+  color: #38bdf8;
 }
 .popup-close-btn {
   background: transparent;
@@ -787,6 +782,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background: #172133;
 }
 
+/* Dynamic port inline tags */
+.port-label-inline {
+  position: absolute;
+  font-size: 8px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  pointer-events: none;
+  letter-spacing: 0.04em;
+}
+.port-label-inline.in {
+  left: 12px;
+}
+.port-label-inline.out {
+  right: 12px;
+}
+
 /* Ports/Handles */
 .stitch-port-handle {
   width: 9px !important;
@@ -798,21 +810,31 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .stitch-port-handle:hover {
   transform: scale(1.3);
 }
-.stitch-port-handle.purple {
+.stitch-port-handle.in {
+  left: -5px !important;
+}
+.stitch-port-handle.out {
+  right: -5px !important;
+}
+.stitch-port-handle.port-prompt {
   background: #a855f7 !important;
   box-shadow: 0 0 6px rgba(168, 85, 247, 0.6);
 }
-.stitch-port-handle.blue {
+.stitch-port-handle.port-image {
   background: #0ea5e9 !important;
   box-shadow: 0 0 6px rgba(14, 165, 233, 0.6);
 }
-.stitch-port-handle.green {
+.stitch-port-handle.port-video {
   background: #10b981 !important;
-  box-shadow: 0 0 6px rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
 }
-.stitch-port-handle.orange {
+.stitch-port-handle.port-media {
   background: #f97316 !important;
   box-shadow: 0 0 6px rgba(249, 115, 22, 0.6);
+}
+.stitch-port-handle.port-character {
+  background: #ec4899 !important;
+  box-shadow: 0 0 6px rgba(236, 72, 153, 0.6);
 }
 .flow-node:hover { transform:translateY(-1px); box-shadow:0 15px 34px rgba(0,0,0,.36); }
 .flow-node.selected { outline:2px solid rgba(91,164,255,.72); outline-offset:2px; }

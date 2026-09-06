@@ -20,6 +20,13 @@ import {
   X,
 } from 'lucide-react';
 import type { FlowNode, FlowNodeData, NodeMediaResult } from './model';
+import {
+  modelFamilyOptions,
+  durationOptions,
+  aspectRatioOptions,
+  resolveVariant,
+} from './flowModelRegistry';
+import { portsForKind, portTypeClass } from './ports';
 
 function NodeIcon({ kind, size = 13 }: { kind: string; size?: number }) {
   if (kind === 'prompt') return <MessageSquareText size={size} />;
@@ -59,13 +66,19 @@ function shortAspect(value?: string) {
   return value.match(/\d+:\d+/)?.[0] ?? value;
 }
 
-const IMAGE_MODELS = ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'];
-const VIDEO_MODELS = ['Omni 1.1 Flash', 'Veo 3.1 – Lite', 'Veo 3.1 – Fast', 'Veo 3.1 – Quality'];
-const ASPECT_RATIOS_IMAGE = ['16:9', '4:3', '1:1', '3:4', '9:16'];
-const ASPECT_RATIOS_VIDEO = ['16:9', '9:16'];
-const DURATIONS = ['4s', '6s', '8s', '10s'];
-const RESOLUTIONS = ['720p', '360p'];
-const BATCH_COUNTS = ['1', '2', '3', '4'];
+// Helper to compute registry-backed estimated credits
+function computeEstimatedCredits(kind: string, config: Record<string, string>): string {
+  if (kind === 't2i') return '0';
+  const variant = resolveVariant(kind, config);
+  if (!variant) return '12';
+  const tier = (config.serviceTier as any) || 'SERVICE_TIER_INTERMEDIATE';
+  const cost = variant.creditMapping[tier as keyof typeof variant.creditMapping];
+  if (typeof cost === 'number') {
+    const batch = Number.parseInt(config.batchCount || '1', 10) || 1;
+    return String(cost * batch);
+  }
+  return '12';
+}
 
 export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   const result = inferredResult(data);
@@ -77,6 +90,19 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   const isDownload = data.kind === 'download';
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const popupRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Click-outside listener to dismiss popup
+  React.useEffect(() => {
+    if (!showSettingsModal) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(e.target as Node)) {
+        setShowSettingsModal(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSettingsModal]);
 
   React.useEffect(() => {
     const handleToggle = (e: Event) => {
@@ -89,6 +115,17 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
     return () => window.removeEventListener('flowgraph:toggle-settings', handleToggle);
   }, [id]);
 
+  const availableModels = modelFamilyOptions(data.kind, data.config).length
+    ? modelFamilyOptions(data.kind, data.config)
+    : isVideoNode
+      ? ['Omni 1.1 Flash', 'Veo 3.1 – Lite', 'Veo 3.1 – Fast', 'Veo 3.1 – Quality']
+      : ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'];
+
+  const availableRatios = isVideoNode ? ['16:9', '9:16'] : ['16:9', '4:3', '1:1', '3:4', '9:16'];
+  const availableDurations = ['4s', '6s', '8s', '10s'];
+  const availableResolutions = data.config.model?.includes('Veo') ? ['720p'] : ['720p', '360p'];
+  const availableBatches = ['1', '2', '3', '4'];
+  const estimatedCost = computeEstimatedCredits(data.kind, data.config);
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
 
@@ -269,15 +306,22 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
       {/* 4. Settings Popup Modal */}
       {showSettingsModal && (
-        <div className="node-settings-popup" onClick={(e) => e.stopPropagation()}>
+        <div ref={popupRef} className="node-settings-popup" onClick={(e) => e.stopPropagation()}>
           <div className="popup-header">
-            <div className="popup-tabs">
-              <span className={`popup-tab ${isT2I ? 'active' : ''}`}>
-                <Image size={11} /> Hình ảnh
-              </span>
-              <span className={`popup-tab ${isVideoNode ? 'active' : ''}`}>
-                <Film size={11} /> Video
-              </span>
+            <div className="popup-title">
+              {isT2I ? (
+                <>
+                  <Image size={12} /> Cấu hình tạo ảnh
+                </>
+              ) : isInterpolation ? (
+                <>
+                  <Film size={12} /> Cấu hình nội suy khung hình
+                </>
+              ) : (
+                <>
+                  <Film size={12} /> Cấu hình tạo video
+                </>
+              )}
             </div>
             <button className="popup-close-btn" onClick={() => setShowSettingsModal(false)}>
               <X size={12} />
@@ -285,24 +329,6 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
           </div>
 
           <div className="popup-body">
-            {/* Mode selection for Video */}
-            {isVideoNode && (
-              <div className="popup-row">
-                <span className="row-label">Chế độ</span>
-                <div className="popup-segmented">
-                  {(['Khung hình', 'Thành phần'] as const).map((m) => (
-                    <button
-                      key={m}
-                      className={(data.config.mode || (isInterpolation ? 'Khung hình' : 'Thành phần')) === m ? 'active' : ''}
-                      onClick={() => dispatchUpdate('mode', m)}
-                    >
-                      {m === 'Khung hình' ? '🔲 Khung hình' : '🧩 Thành phần'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Model Selector Dropdown */}
             <div className="popup-row">
               <span className="row-label">Mô hình AI</span>
@@ -311,7 +337,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                 value={data.config.model || (isT2I ? '🍌 Nano Banana 2' : 'Omni 1.1 Flash')}
                 onChange={(e) => dispatchUpdate('model', e.target.value)}
               >
-                {(isT2I ? IMAGE_MODELS : VIDEO_MODELS).map((m) => (
+                {availableModels.map((m) => (
                   <option key={m} value={m}>
                     {m}
                   </option>
@@ -319,7 +345,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               </select>
             </div>
 
-            {/* Start/End Image Model for Interpolation */}
+            {/* Start/End Image Model for Interpolation only */}
             {isInterpolation && (
               <div className="popup-row">
                 <span className="row-label">Model khung hình</span>
@@ -328,7 +354,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                   value={data.config.imageModel || '🍌 Nano Banana 2'}
                   onChange={(e) => dispatchUpdate('imageModel', e.target.value)}
                 >
-                  {IMAGE_MODELS.map((m) => (
+                  {['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'].map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
@@ -341,7 +367,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             <div className="popup-row">
               <span className="row-label">Tỷ lệ khung hình</span>
               <div className="popup-segmented">
-                {(isT2I ? ASPECT_RATIOS_IMAGE : ASPECT_RATIOS_VIDEO).map((r) => (
+                {availableRatios.map((r) => (
                   <button
                     key={r}
                     className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
@@ -358,7 +384,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               <div className="popup-row">
                 <span className="row-label">Độ phân giải</span>
                 <div className="popup-segmented">
-                  {RESOLUTIONS.map((res) => (
+                  {availableResolutions.map((res) => (
                     <button
                       key={res}
                       className={(data.config.resolution || '720p') === res ? 'active' : ''}
@@ -376,7 +402,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               <div className="popup-row">
                 <span className="row-label">Thời lượng</span>
                 <div className="popup-segmented">
-                  {DURATIONS.map((d) => (
+                  {availableDurations.map((d) => (
                     <button
                       key={d}
                       className={(data.config.duration?.replace(' seconds', 's') || '8s') === d ? 'active' : ''}
@@ -393,7 +419,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             <div className="popup-row">
               <span className="row-label">Số lượng tạo</span>
               <div className="popup-segmented">
-                {BATCH_COUNTS.map((b) => (
+                {availableBatches.map((b) => (
                   <button
                     key={b}
                     className={(data.config.batchCount || '1') === b ? 'active' : ''}
@@ -407,29 +433,46 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
             {/* Cost note */}
             <div className="popup-cost-note">
-              Quá trình tạo sẽ tốn <u>{data.config.costCredits || (isT2I ? '0' : '12')} tín dụng</u>
+              Estimated: <u>{estimatedCost} credits</u>
             </div>
           </div>
         </div>
       )}
 
-      {/* 5. Handles (Ports) */}
-      {!isPrompt && (
-        <Handle
-          type="target"
-          position={Position.Left}
-          id={isT2I ? 'prompt' : isI2V ? 'image' : 'media'}
-          className={`stitch-port-handle in ${data.tone}`}
-        />
-      )}
-      {!isDownload && (
-        <Handle
-          type="source"
-          position={Position.Right}
-          id={isPrompt ? 'prompt' : isT2I ? 'image' : 'video'}
-          className={`stitch-port-handle out ${data.tone}`}
-        />
-      )}
+      {/* 5. Dynamic Typed Ports based on portsForKind() */}
+      <div className="dynamic-port-strip">
+        {/* Left Inputs */}
+        <div className="port-column inputs">
+          {portsForKind(data.kind).inputs.map((port, idx) => (
+            <div key={port.id} className="port-item-row input" title={`${port.label} (${port.type}${port.required ? ' · bắt buộc' : ''})`}>
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={port.id}
+                className={`stitch-port-handle in ${portTypeClass(port.type)}`}
+                style={{ top: `${35 + idx * 22}px` }}
+              />
+              <span className="port-label-inline in">{port.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Right Outputs */}
+        <div className="port-column outputs">
+          {portsForKind(data.kind).outputs.map((port, idx) => (
+            <div key={port.id} className="port-item-row output" title={`${port.label} (${port.type})`}>
+              <span className="port-label-inline out">{port.label}</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={port.id}
+                className={`stitch-port-handle out ${portTypeClass(port.type)}`}
+                style={{ top: `${35 + idx * 22}px` }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
