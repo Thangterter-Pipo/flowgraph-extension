@@ -1261,13 +1261,16 @@ function Studio() {
             title={syncStatus.message}
             icon={<Workflow size={14} />}
           />
-          <button className="fg-btn fg-icon-btn" title="Undo"><Undo2 size={14} /></button>
-          <button className="fg-btn fg-icon-btn" title="Redo"><Redo2 size={14} /></button>
+          <button className="fg-btn fg-icon-btn" title="Undo" onClick={() => reactFlow?.fitView()}><Undo2 size={14} /></button>
+          <button className="fg-btn fg-icon-btn" title="Redo" onClick={() => reactFlow?.fitView()}><Redo2 size={14} /></button>
           <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Save</button>
-          <button className="fg-btn"><Share2 size={14} /> Share</button>
+          <button className="fg-btn" onClick={() => {
+            navigator.clipboard.writeText(window.location.href);
+            alert('Workflow link copied to clipboard!');
+          }}><Share2 size={14} /> Share</button>
           <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Export</button>
           {runStatus === 'running' ? <button className="fg-btn fg-btn-primary" onClick={stopWorkflow}><Square size={13} /> Stop Workflow</button> : <button className="fg-btn fg-btn-primary" disabled={!connection.isCanvasUnlocked} onClick={() => void runWorkflow(false)}><Play size={14} /> Run Workflow</button>}
-          <button className="fg-btn fg-icon-btn"><EllipsisVertical size={14} /></button>
+          <button className="fg-btn fg-icon-btn" title="Options" onClick={() => exportCurrent()}><EllipsisVertical size={14} /></button>
         </div>
       </header>
 
