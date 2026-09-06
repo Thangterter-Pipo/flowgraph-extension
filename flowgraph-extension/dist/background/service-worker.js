@@ -1,5 +1,151 @@
 (() => {
   // src/shared/flowPayloads.ts
+  function recaptchaContext(token) {
+    return {
+      token,
+      applicationType: "RECAPTCHA_APPLICATION_TYPE_WEB"
+    };
+  }
+  function clientContext(projectId, token, options = {}) {
+    return {
+      projectId,
+      tool: options.tool ?? "PINHOLE",
+      userPaygateTier: options.userPaygateTier ?? "PAYGATE_TIER_ONE",
+      sessionId: options.sessionId ?? `;${Date.now()}`,
+      recaptchaContext: recaptchaContext(token)
+    };
+  }
+  function mediaGenerationContext(batchId) {
+    return {
+      batchId,
+      audioFailurePreference: "AUDIO_FAILURE_PREFERENCE_UNSPECIFIED"
+    };
+  }
+  var structuredPrompt = (prompt) => ({ parts: [{ text: prompt }] });
+  function aspectCode(label) {
+    if (!label) return void 0;
+    const normalized = label.trim();
+    const map = {
+      "16:9 (Landscape)": "LANDSCAPE",
+      "9:16 (Portrait)": "PORTRAIT",
+      "1:1 (Square)": "SQUARE",
+      "3:4 (Portrait)": "PORTRAIT_3_4",
+      "4:3 (Landscape)": "LANDSCAPE_4_3"
+    };
+    return map[normalized] ?? normalized.replace("VIDEO_ASPECT_RATIO_", "").replace("IMAGE_ASPECT_RATIO_", "");
+  }
+  function aspectVideo(ratio) {
+    const code = aspectCode(ratio) ?? "LANDSCAPE";
+    return `VIDEO_ASPECT_RATIO_${code}`;
+  }
+  function aspectImage(ratio) {
+    const code = aspectCode(ratio) ?? "LANDSCAPE";
+    return `IMAGE_ASPECT_RATIO_${code}`;
+  }
+  function buildT2iRequest(payload, context, batchId) {
+    const ctx = context;
+    return {
+      clientContext: ctx,
+      mediaGenerationContext: { batchId },
+      useNewMedia: true,
+      requests: [{
+        clientContext: ctx,
+        imageModelName: payload.modelKey,
+        imageAspectRatio: aspectImage(payload.aspectRatio),
+        structuredPrompt: structuredPrompt(payload.prompt ?? ""),
+        seed: payload.seed ?? Math.floor(Math.random() * 1e5),
+        imageInputs: []
+      }]
+    };
+  }
+  function buildI2vRequest(payload, context, batchId) {
+    return {
+      mediaGenerationContext: mediaGenerationContext(batchId),
+      clientContext: context,
+      useV2ModelConfig: true,
+      requests: [{
+        aspectRatio: aspectVideo(payload.aspectRatio),
+        textInput: { structuredPrompt: structuredPrompt(payload.prompt ?? "") },
+        startImage: { mediaId: payload.startImage.mediaId },
+        videoModelKey: payload.modelKey,
+        seed: payload.seed ?? Math.floor(Math.random() * 1e5),
+        metadata: {}
+      }]
+    };
+  }
+  function buildT2vRequest(payload, context, batchId) {
+    return {
+      mediaGenerationContext: mediaGenerationContext(batchId),
+      clientContext: context,
+      useV2ModelConfig: true,
+      requests: [{
+        aspectRatio: aspectVideo(payload.aspectRatio),
+        textInput: { structuredPrompt: structuredPrompt(payload.prompt ?? "") },
+        videoModelKey: payload.modelKey,
+        seed: payload.seed ?? Math.floor(Math.random() * 1e5),
+        metadata: {}
+      }]
+    };
+  }
+  function buildExtendRequest(payload, context, batchId) {
+    return {
+      mediaGenerationContext: mediaGenerationContext(batchId),
+      clientContext: context,
+      useV2ModelConfig: true,
+      requests: [{
+        aspectRatio: aspectVideo(payload.aspectRatio),
+        textInput: { structuredPrompt: structuredPrompt(payload.prompt ?? "") },
+        videoInput: { mediaId: payload.videoInput.mediaId },
+        videoModelKey: payload.modelKey,
+        seed: payload.seed ?? Math.floor(Math.random() * 1e5),
+        metadata: {}
+      }]
+    };
+  }
+  function buildUpsampleRequest(payload, context, batchId) {
+    return {
+      mediaGenerationContext: mediaGenerationContext(batchId),
+      clientContext: context,
+      useV2ModelConfig: true,
+      requests: [{
+        aspectRatio: aspectVideo(payload.aspectRatio),
+        videoInput: { mediaId: payload.videoInput.mediaId },
+        videoModelKey: payload.modelKey,
+        metadata: {}
+      }]
+    };
+  }
+  function buildInterpolationRequest(payload, context, batchId) {
+    return {
+      mediaGenerationContext: mediaGenerationContext(batchId),
+      clientContext: context,
+      useV2ModelConfig: true,
+      requests: [{
+        aspectRatio: aspectVideo(payload.aspectRatio),
+        textInput: { structuredPrompt: structuredPrompt(payload.prompt ?? "") },
+        startImage: { mediaId: payload.startImage.mediaId },
+        endImage: { mediaId: payload.endImage.mediaId },
+        videoModelKey: payload.modelKey,
+        seed: payload.seed ?? Math.floor(Math.random() * 1e5),
+        metadata: {}
+      }]
+    };
+  }
+  function buildReferenceRequest(payload, context, batchId) {
+    return {
+      mediaGenerationContext: mediaGenerationContext(batchId),
+      clientContext: context,
+      useV2ModelConfig: true,
+      requests: [{
+        aspectRatio: aspectVideo(payload.aspectRatio),
+        textInput: { structuredPrompt: structuredPrompt(payload.prompt ?? "") },
+        referenceImages: payload.imageRefs.map((ref) => ({ mediaId: ref.mediaId, imageUsageType: ref.imageUsageType ?? "IMAGE_USAGE_TYPE_ASSET" })),
+        videoModelKey: payload.modelKey,
+        seed: payload.seed ?? Math.floor(Math.random() * 1e5),
+        metadata: {}
+      }]
+    };
+  }
   function buildUploadRequest(projectId, imageBytesBase64, mimeType, fileName) {
     return {
       clientContext: { projectId, tool: "PINHOLE" },
@@ -123,6 +269,7 @@
   var REQUEST_TIMEOUT_MS = 6e4;
   var SYNC_WRITE_TIMEOUT_MS = 12e3;
   var DOWNLOAD_TIMEOUT_MS = DOWNLOAD_TRANSFER_BUDGET_MS;
+  var FLOW_SITEKEY = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV";
   var VIDEO_KINDS = /* @__PURE__ */ new Set([
     "i2v",
     "t2v",
@@ -292,6 +439,112 @@
     if (!response.ok && !json) throw providerError(response.status, json);
     return json;
   }
+  async function recaptchaToken(projectId) {
+    void projectId;
+    const tab = await findFlowTab();
+    if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    const results = await timeoutable(
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: "MAIN",
+        args: [FLOW_SITEKEY, "FLOW_GENERATE"],
+        func: async (sitekey, action) => {
+          const pageWindow = window;
+          const execute = pageWindow.grecaptcha?.enterprise?.execute;
+          if (!execute) return { ok: false, message: "reCAPTCHA Enterprise widget is not ready on the Google Flow page." };
+          try {
+            const token = await execute(sitekey, { action });
+            return token ? { ok: true, token } : { ok: false, message: "reCAPTCHA returned an empty token." };
+          } catch (error) {
+            return { ok: false, message: error instanceof Error ? error.message : "reCAPTCHA execution failed" };
+          }
+        }
+      }),
+      2e4
+    );
+    const reply = results?.[0]?.result;
+    if (!reply?.ok || !reply.token) throw bridgeError("CAPTCHA_REQUIRED", reply?.message ?? "reCAPTCHA token unavailable", true);
+    return reply.token;
+  }
+  var ENDPOINT_BY_KIND = {
+    t2i: "projects/{projectId}/flowMedia:batchGenerateImages",
+    i2v: "video:batchAsyncGenerateVideoStartImage",
+    t2v: "video:batchAsyncGenerateVideoText",
+    extend: "video:batchAsyncGenerateVideoEditVideo",
+    interpolation: "video:batchAsyncGenerateVideoStartAndEndImage",
+    reference: "video:batchAsyncGenerateVideoReferenceImages",
+    upscale: "video:batchAsyncGenerateVideoUpsampleVideo",
+    videoUpscale: "video:batchAsyncGenerateVideoUpsampleVideo",
+    imageUpscale: "flow/upsampleImage"
+  };
+  function endpointFor(payload) {
+    const template = ENDPOINT_BY_KIND[payload.kind];
+    return template.replace("{projectId}", payload.projectId);
+  }
+  function buildRequestPayload(payload) {
+    const ctx = clientContext(payload.projectId, payload.recaptchaToken ?? "");
+    const batchId = crypto.randomUUID();
+    switch (payload.kind) {
+      case "t2i":
+        return buildT2iRequest(payload, ctx, batchId);
+      case "i2v": {
+        if (!payload.startImage) throw bridgeError("INVALID_INPUT", "i2v requires a start image mediaId", false);
+        return buildI2vRequest(payload, ctx, batchId);
+      }
+      case "t2v":
+        return buildT2vRequest(payload, ctx, batchId);
+      case "extend": {
+        if (!payload.videoInput) throw bridgeError("INVALID_INPUT", "extend requires a video input mediaId", false);
+        return buildExtendRequest(payload, ctx, batchId);
+      }
+      case "interpolation": {
+        if (!payload.startImage || !payload.endImage) throw bridgeError("INVALID_INPUT", "interpolation requires start and end images", false);
+        return buildInterpolationRequest(payload, ctx, batchId);
+      }
+      case "reference": {
+        const refs = payload.imageRefs ?? [];
+        if (!refs.length) throw bridgeError("INVALID_INPUT", "reference requires at least one image", false);
+        return buildReferenceRequest(payload, ctx, batchId);
+      }
+      case "upscale":
+      case "videoUpscale": {
+        if (!payload.videoInput) throw bridgeError("INVALID_INPUT", "upscale requires a video input mediaId", false);
+        return buildUpsampleRequest(payload, ctx, batchId);
+      }
+      case "imageUpscale": {
+        const mediaId = payload.imageRefs?.[0]?.mediaId || payload.mediaId;
+        if (!mediaId) throw bridgeError("INVALID_INPUT", "imageUpscale requires an image mediaId", false);
+        let targetResolution = payload.targetResolution || "UPSAMPLE_IMAGE_RESOLUTION_2K";
+        if (targetResolution === "2K") targetResolution = "UPSAMPLE_IMAGE_RESOLUTION_2K";
+        if (targetResolution === "4K") targetResolution = "UPSAMPLE_IMAGE_RESOLUTION_4K";
+        return {
+          mediaId,
+          targetResolution,
+          clientContext: ctx
+        };
+      }
+      default:
+        throw bridgeError("UNSUPPORTED_KIND", `Unsupported generation kind: ${payload.kind}`, false);
+    }
+  }
+  async function generateApi(payload) {
+    const token = await recaptchaToken(payload.projectId);
+    const withToken = { ...payload, recaptchaToken: token };
+    const body = buildRequestPayload(withToken);
+    const json = await aisandboxFetch(endpointFor(payload), body);
+    const media = json.media?.[0];
+    if (!media?.name) throw bridgeError("MEDIA_FAILED", "Provider returned no media id", false);
+    const imageFife = media.image?.generatedImage?.fifeUrl;
+    const previewUrl = imageFife ? await resolveMediaUrl(media.name, "IMAGE").catch(() => imageFife) : void 0;
+    const isImageOutput = payload.kind === "t2i" || payload.kind === "imageUpscale";
+    return {
+      mediaId: media.name,
+      type: isImageOutput ? "IMAGE" : "VIDEO",
+      projectId: media.projectId ?? payload.projectId,
+      workflowId: media.workflowId ?? json.workflows?.[0]?.name,
+      previewUrl
+    };
+  }
   async function pollOnce(payload, resolvePreview = false) {
     const json = await aisandboxFetch("video:batchCheckAsyncVideoGenerationStatus", buildPollRequest(payload.mediaId, payload.projectId));
     const item = json.media?.[0];
@@ -343,6 +596,10 @@
             const img = el.tagName === "IMG" ? el : el.querySelector("img");
             const s = img ? img.currentSrc || img.getAttribute("src") : null;
             if (isAsb(s)) return { ok: true, url: s };
+          }
+          const editorImg = Array.from(document.querySelectorAll("img")).find((i) => isAsb(i.currentSrc || i.src) && (i.naturalWidth > 600 || (i.src || "").includes("=s1600")));
+          if (editorImg) {
+            return { ok: true, url: editorImg.currentSrc || editorImg.src };
           }
           const v = Array.from(document.querySelectorAll("video")).find(
             (el2) => (el2.currentSrc || el2.src || "").includes(id)
@@ -701,6 +958,22 @@
         projectId: payload.projectId
       });
     }
+    if (payload.imageRefs && payload.imageRefs.length > 0) {
+      const startedAt = Date.now();
+      await bindRealtimeReferenceMedia(tab, payload.imageRefs.map((r) => ({ mediaId: r.mediaId })));
+      console.info(`[FlowGraph Sync] referenceMedia PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
+        projectId: payload.projectId,
+        count: payload.imageRefs.length
+      });
+    }
+    if (payload.videoInput?.mediaId) {
+      const startedAt = Date.now();
+      await bindRealtimeVideoInput(tab, payload.videoInput.mediaId, payload.mode);
+      console.info(`[FlowGraph Sync] videoInput PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
+        projectId: payload.projectId,
+        mediaId: payload.videoInput.mediaId
+      });
+    }
     await applyWrites(settingWrites);
     if (promptWrite) await applyWrites([promptWrite]);
     return { limitations };
@@ -709,6 +982,18 @@
     const tab = await findFlowTab();
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
     const tabId = tab.id;
+    const expectedProjectId = projectIdFromUrl(tab.url ?? "");
+    if (!expectedProjectId || expectedProjectId !== payload.projectId) {
+      throw bridgeError(
+        "PROJECT_MISMATCH",
+        `Active Google Flow tab project (${expectedProjectId || "none"}) does not match request projectId (${payload.projectId}).`,
+        false
+      );
+    }
+    const isUpscaleKind = payload.kind === "upscale" || payload.kind === "imageUpscale" || payload.kind === "videoUpscale";
+    if (isUpscaleKind) {
+      return generateApi(payload);
+    }
     const prompt = (payload.prompt ?? "").trim();
     if (!prompt) {
       throw bridgeError(
@@ -1429,6 +1714,36 @@
     };
   }
   async function handleMediaStatus(payload) {
+    try {
+      const previewUrl = await resolveMediaUrl(payload.mediaId, "IMAGE");
+      if (previewUrl) {
+        return {
+          status: "SUCCESSFUL",
+          media: {
+            mediaId: payload.mediaId,
+            type: "IMAGE",
+            projectId: payload.projectId,
+            previewUrl
+          }
+        };
+      }
+    } catch {
+    }
+    try {
+      const previewUrl = await resolveMediaUrl(payload.mediaId, "VIDEO");
+      if (previewUrl) {
+        return {
+          status: "SUCCESSFUL",
+          media: {
+            mediaId: payload.mediaId,
+            type: "VIDEO",
+            projectId: payload.projectId,
+            previewUrl
+          }
+        };
+      }
+    } catch {
+    }
     return pollOnce(payload, true);
   }
   async function handleMediaUpload(payload) {
@@ -1790,8 +2105,9 @@
       const card = media?.closest?.('flow-tile-container') || media?.closest?.('[role="button"]') || media?.parentElement;
       const scopes = [card, card?.parentElement, card?.parentElement?.parentElement].filter(Boolean);
       const button = scopes.flatMap((scope) => [...scope.querySelectorAll('button')]).find((candidate) =>
-        [...candidate.querySelectorAll('i.google-symbols, .google-symbols')]
+        [...candidate.querySelectorAll('i.google-symbols, .google-symbols, mat-icon, i.material-icons')]
           .some((icon) => (icon.textContent || '').trim() === 'more_vert')
+          || candidate.classList.contains('mat-mdc-menu-trigger')
       );
       if (!button) return { ok: false, reason: 'more-vert-not-found' };
       const rect = button.getBoundingClientRect();
@@ -1818,7 +2134,10 @@
         throw bridgeError("MEDIA_FAILED", `Flow Animate action was not found for ${mediaId}.`, true);
       }
       await clickAt(animate.x, animate.y);
-      await new Promise((resolve) => setTimeout(resolve, 900));
+      for (let check = 0; check < 10; check += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        if (await evaluate(boundExpression)) return { ok: true, mediaId };
+      }
       if (!await evaluate(boundExpression)) {
         throw bridgeError("MEDIA_FAILED", `Flow did not bind ${mediaId} as the composer Start Frame.`, true);
       }
@@ -1885,13 +2204,14 @@
       await ensureInputReachable(target);
       if (await evaluate(endBoundExpression)) return { ok: true, mediaId };
       const endSlot = await evaluate(`(() => {
-      const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]');
-      const editorRect = editor?.getBoundingClientRect();
-      const element = [...document.querySelectorAll('[type="button"][aria-haspopup="dialog"]')]
-        .find((candidate) => /^(K\u1EBFt th\xFAc|End)$/i.test((candidate.textContent || '').trim())
-          && (!editorRect || Math.abs(candidate.getBoundingClientRect().top - editorRect.top) < 180));
-      if (!element) return { ok: false, reason: 'end-slot-not-found' };
-      const rect = element.getBoundingClientRect();
+      const swap = [...document.querySelectorAll('button')].find((button) =>
+        [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
+          .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
+      const endRoot = swap?.nextElementSibling;
+      const triggers = Array.from(document.querySelectorAll('.frame-trigger'));
+      const target = endRoot?.querySelector('button') || triggers[1]?.querySelector('button') || endRoot || triggers[1];
+      if (!target) return { ok: false, reason: 'end-slot-not-found' };
+      const rect = target.getBoundingClientRect();
       return rect.width && rect.height
         ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
         : { ok: false, reason: 'end-slot-not-visible' };
@@ -1901,24 +2221,36 @@
       }
       await clickAt(endSlot.x, endSlot.y);
       await new Promise((resolve) => setTimeout(resolve, 450));
-      const dialogOpened = await evaluate(`[...document.querySelectorAll('[role="dialog"]')]
+      const dialogOpened = await evaluate(`[...document.querySelectorAll('[role="dialog"], .cdk-overlay-pane, mat-dialog-container')]
       .some((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0)`);
       if (!dialogOpened) {
         const opened = await evaluate(`(() => {
-        const element = [...document.querySelectorAll('[type="button"][aria-haspopup="dialog"]')]
-          .find((candidate) => /^(K\u1EBFt th\xFAc|End)$/i.test((candidate.textContent || '').trim()));
+        const element = [...document.querySelectorAll('[type="button"][aria-haspopup="dialog"], .frame-trigger, button, div')]
+          .find((candidate) => /^(K\u1EBFt th\xFAc|End)$/i.test((candidate.textContent || '').trim())
+            || candidate.classList.contains('frame-trigger'));
         element?.click();
         return Boolean(element);
       })()`);
         if (!opened) throw bridgeError("UI_NOT_READY", "Flow End Frame dialog trigger disappeared.", true);
-        await new Promise((resolve) => setTimeout(resolve, 450));
+        await new Promise((resolve) => setTimeout(resolve, 600));
       }
       const readDialogMedia = () => evaluate(`((mediaId) => {
-      const dialog = [...document.querySelectorAll('[role="dialog"]')]
+      const dialog = [...document.querySelectorAll('[role="dialog"], .cdk-overlay-pane, mat-dialog-container')]
         .find((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0);
+      
+      // Look up poster token from main page if data-media-id is not inside dialog
+      const mainMedia = [...document.querySelectorAll('img, video, a, [data-media-id]')]
+        .find((el) => [el.getAttribute?.('data-media-id'), el.getAttribute?.('src'), el.currentSrc, el.src]
+          .filter(Boolean).some((v) => String(v).includes(mediaId)));
+      const mainSrc = mainMedia ? (mainMedia.currentSrc || mainMedia.src || '') : '';
+      const token = mainSrc.includes('/asb/') ? mainSrc.split('/asb/')[1]?.slice(0, 20) : '';
+
       const matches = [...(dialog?.querySelectorAll('img, video, [data-media-id]') || [])]
-        .filter((element) => [element.getAttribute?.('data-media-id'), element.getAttribute?.('src'), element.currentSrc, element.src]
-          .filter(Boolean).some((value) => String(value).includes(mediaId)))
+        .filter((element) => {
+          const src = String(element.currentSrc || element.src || element.getAttribute?.('src') || '');
+          const directId = String(element.getAttribute?.('data-media-id') || '');
+          return directId === mediaId || src.includes(mediaId) || (token && src.includes(token));
+        })
         .map((element) => ({ element, rect: element.getBoundingClientRect() }))
         .filter(({ rect }) => rect.width > 0 && rect.height > 0)
         .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
@@ -1939,10 +2271,10 @@
       await clickAt(media.x, media.y);
       await new Promise((resolve) => setTimeout(resolve, 350));
       const readAddButton = () => evaluate(`(() => {
-      const dialog = [...document.querySelectorAll('[role="dialog"]')]
+      const dialog = [...document.querySelectorAll('[role="dialog"], .cdk-overlay-pane, mat-dialog-container')]
         .find((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0);
       const button = [...(dialog?.querySelectorAll('button') || [])]
-        .find((candidate) => /Th\xEAm v\xE0o c\xE2u l\u1EC7nh|Add to prompt/i.test(candidate.innerText || ''));
+        .find((candidate) => /Th\xEAm v\xE0o c\xE2u l\u1EC7nh|Add to prompt|X\xE1c nh\u1EADn|Confirm|Ch\u1ECDn|Select/i.test(candidate.innerText || ''));
       if (!button) return { ok: false, reason: 'add-to-prompt-not-found' };
       if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
         return { ok: false, reason: 'add-to-prompt-disabled' };
@@ -1959,9 +2291,86 @@
         throw bridgeError("UI_NOT_READY", `Flow End Frame picker could not commit (${add.reason ?? "unknown"}).`, true);
       }
       await clickAt(add.x, add.y);
-      await new Promise((resolve) => setTimeout(resolve, 750));
+      for (let check = 0; check < 10; check += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        if (await evaluate(endBoundExpression)) return { ok: true, mediaId };
+      }
       if (!await evaluate(endBoundExpression)) {
         throw bridgeError("MEDIA_FAILED", `Flow did not bind ${mediaId} as the End Frame.`, true);
+      }
+      return { ok: true, mediaId };
+    } finally {
+      if (attached) await chrome.debugger.detach(target).catch(() => void 0);
+    }
+  }
+  async function bindRealtimeVideoInput(tab, mediaId, mode) {
+    if (tab.id === void 0 || !mediaId) {
+      throw bridgeError("INVALID_VALUE", "Extend/Edit Video requires an exact mediaId.", false);
+    }
+    const projectUrl = (tab.url ?? "").replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, "");
+    await ensureDesktopViewport(tab);
+    await chrome.tabs.update(tab.id, { active: true }).catch(() => void 0);
+    const target = { tabId: tab.id };
+    let attached = false;
+    const evaluate = async (expression) => {
+      const response = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
+        expression,
+        returnByValue: true,
+        awaitPromise: true
+      });
+      if (response.exceptionDetails) throw bridgeError("UI_NOT_READY", response.exceptionDetails.text ?? "Flow DOM evaluation failed.", true);
+      return response.result?.value;
+    };
+    const clickAt = async (x, y) => {
+      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+        type: "mousePressed",
+        x,
+        y,
+        button: "left",
+        buttons: 1,
+        clickCount: 1
+      });
+      await new Promise((resolve) => setTimeout(resolve, 70));
+      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+        type: "mouseReleased",
+        x,
+        y,
+        button: "left",
+        buttons: 0,
+        clickCount: 1
+      });
+    };
+    try {
+      await chrome.debugger.attach(target, "1.3");
+      attached = true;
+      await ensureInputReachable(target);
+      const editUrl = `${projectUrl}/edit/${mediaId}`;
+      await chrome.debugger.sendCommand(target, "Page.navigate", { url: editUrl }).catch(() => {
+      });
+      await new Promise((resolve) => setTimeout(resolve, 3e3));
+      const editSetup = await evaluate(`((mode) => {
+      const isExtend = mode === 'Extend Forward';
+      if (isExtend) {
+        const btn = Array.from(document.querySelectorAll('button')).find(b => {
+          const txt = (b.innerText||'').trim();
+          const aria = (b.getAttribute('aria-label')||'').trim();
+          return aria === 'Add clip' || txt === 'add_2' || (b.querySelector('mat-icon, i')?.innerText || '') === 'add_2';
+        });
+        if (btn) {
+          const r = btn.getBoundingClientRect();
+          return { ok: true, x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), mode };
+        }
+      }
+      return { ok: true, mode };
+    })(${JSON.stringify(mode)})`);
+      if (editSetup.ok && editSetup.x !== void 0 && editSetup.y !== void 0) {
+        await clickAt(editSetup.x, editSetup.y);
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
+      const hereUrl = await evaluate("location.href");
+      if (!hereUrl || !hereUrl.includes(`/edit/${mediaId}`)) {
+        throw bridgeError("MEDIA_FAILED", `Flow did not navigate to editor for video ${mediaId} (current: ${hereUrl}).`, true);
       }
       return { ok: true, mediaId };
     } finally {

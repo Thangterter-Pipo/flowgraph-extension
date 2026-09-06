@@ -2,6 +2,43 @@ import type { FilmAsset, FilmAssetType, FilmProject, FilmScene, FilmShot, ShotSt
 
 const now = () => new Date().toISOString();
 
+export function createFilmProject(projectId: string, title: string): FilmProject {
+  const createdAt = now();
+  const sequenceId = `sequence-${projectId}-001`;
+  const sceneId = `scene-${projectId}-001`;
+
+  return {
+    id: projectId,
+    title: title.trim() || 'Untitled Film',
+    status: 'DEVELOPMENT',
+    targetDurationSeconds: 60,
+    aspectRatio: '16:9',
+    frameRate: 24,
+    createdAt,
+    updatedAt: createdAt,
+    assets: [],
+    timeline: [],
+    sequences: [
+      {
+        id: sequenceId,
+        projectId,
+        sequenceNumber: '01',
+        title: 'Sequence 01',
+        scenes: [
+          {
+            id: sceneId,
+            sequenceId,
+            sceneNumber: '01',
+            title: 'Scene 01',
+            description: '',
+            shots: [],
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export function createDemoFilmProject(): FilmProject {
   const projectId = 'film-demo-001';
   const sequenceId = 'seq-001';
