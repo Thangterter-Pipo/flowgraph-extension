@@ -954,13 +954,10 @@ function Studio() {
       return;
     }
 
-    // FG-0904 — if generation nodes already produced a result this session (cache populated),
-    // confirm the rerun because it costs credits.
-    const expensive = nodes.filter((node) => ['t2i', 'i2v', 't2v'].includes(node.data.kind) && (node.data.result?.mediaId || node.data.status === 'success'));
-    if (expensive.length > 0 && !confirmRerun.length) {
-      setConfirmRerun(expensive.map((node) => node.id));
-      return;
-    }
+    // Bố yêu cầu: Nếu node đã có sẵn kết quả trong phiên hoặc trong cache thì
+    // tái sử dụng trực tiếp kết quả đó (cache hit = 0 credits) để chuyển sang node tiếp theo chạy luôn,
+    // không chặn popup cảnh báo làm gián đoạn luồng làm việc.
+    // (Bỏ chặn setConfirmRerun)
 
     const generationNode = nodes.find((node) => ['t2i', 'i2v', 't2v'].includes(node.data.kind));
     if (generationNode && syncControllerRef.current) {
@@ -990,7 +987,24 @@ function Studio() {
     setRunError(undefined);
     setCreditsBefore(connection.credits?.credits);
     setCreditsAfter(connection.credits?.credits);
-    setNodes((current) => current.map((node) => ({ ...node, data: { ...node.data, status: 'queued', result: undefined, errorMessage: undefined, errorCode: undefined, errorRetryable: undefined, diagnosticId: undefined } })));
+    setNodes((current) => current.map((node) => {
+      // Nếu node đã có kết quả thành công và mediaId thì giữ nguyên để downstream tiêu thụ ngay
+      if (node.data.status === 'success' && node.data.result?.mediaId) {
+        return { ...node, data: { ...node.data, status: 'success' } };
+      }
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          status: 'queued',
+          result: undefined,
+          errorMessage: undefined,
+          errorCode: undefined,
+          errorRetryable: undefined,
+          diagnosticId: undefined,
+        },
+      };
+    }));
     timerRef.current = window.setInterval(() => setElapsed((value) => value + 1), 1000);
 
     const specs = nodes.map((node) => {
