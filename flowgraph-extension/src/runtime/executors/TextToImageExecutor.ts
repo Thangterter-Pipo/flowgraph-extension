@@ -61,14 +61,14 @@ export class TextToImageExecutor implements NodeExecutor {
     // Text-to-Image is synchronous in the verified Flow API (image arrives in the
     // same 200 response), so no polling is required for V1. The previewUrl was
     // already resolved by the worker from the response fifeUrl.
-    const previewUrl = ref.previewUrl;
+    const previewUrl = ref.previewUrl || (ref.mediaId ? `https://flow.google.com/asb/${ref.mediaId}` : '');
     const media = mediaRefFromPayload({ ...ref, previewUrl });
     return {
       outputs: { image: media },
       result: {
         type: 'image',
         mediaId: ref.mediaId,
-        previewUrl: previewUrl ?? '',
+        previewUrl,
         mimeType: 'image/jpeg',
       },
     };
