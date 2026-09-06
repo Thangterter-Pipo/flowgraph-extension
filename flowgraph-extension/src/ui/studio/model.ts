@@ -325,10 +325,10 @@ const node = (id: string, kind: string, x: number, y: number, extra?: Partial<Fl
 
 // V1 real pipeline: Prompt → Text-to-Image → Image-to-Video → Download.
 export const initialNodes: FlowNode[] = [
-  node('1', 'prompt', 90, 90),
-  node('2', 't2i', 400, 90),
-  node('3', 'i2v', 710, 90),
-  node('4', 'download', 1020, 90),
+  node('1', 'prompt', 80, 140),
+  node('2', 't2i', 380, 140),
+  node('3', 'i2v', 720, 140),
+  node('4', 'download', 1060, 140),
 ];
 
 export const initialEdges: FlowEdge[] = [
