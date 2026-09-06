@@ -241,15 +241,18 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (videoRef.current) {
+    if (videoRef.current && result?.previewUrl) {
       if (isPlaying) {
         videoRef.current.pause();
         setIsPlaying(false);
       } else {
-        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {
+          // Fallback toggle if browser blocks programmatic video playback
+          setIsPlaying((prev) => !prev);
+        });
       }
     } else {
-      setIsPlaying(!isPlaying);
+      setIsPlaying((prev) => !prev);
     }
   };
 
@@ -276,7 +279,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
   return (
     <div
-      className={`flow-card-stitch ${data.kind} ${data.tone} ${selected ? 'selected' : ''} ${data.status === 'running' ? 'running' : ''} ${data.status === 'failed' ? 'error' : ''}`}
+      className={`flow-card-stitch ${data.kind} ${data.tone} ${selected ? 'selected' : ''} ${data.status === 'running' && !result?.mediaId ? 'running' : ''} ${data.status === 'failed' ? 'error' : ''}`}
     >
       {/* 1. Header */}
       <div className="flow-card-header">
@@ -292,12 +295,16 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
         <div className="card-header-right">
           {isPrompt ? (
             <span className={`prompt-dot ${data.status === 'running' ? 'running' : 'active'}`} />
-          ) : data.status === 'success' || (isDownload && result) ? (
+          ) : data.status === 'success' || (result?.mediaId && data.status !== 'running') || (isDownload && result) ? (
             <span className="badge-stitch completed">
               <CheckCircle2 size={10} /> COMPLETED
             </span>
-          ) : data.status === 'running' ? (
+          ) : data.status === 'running' && !result?.mediaId ? (
             <span className="badge-stitch running">RUNNING</span>
+          ) : data.status === 'running' && result?.mediaId ? (
+            <span className="badge-stitch completed">
+              <CheckCircle2 size={10} /> COMPLETED
+            </span>
           ) : data.status === 'failed' ? (
             <span className="badge-stitch failed">ERROR</span>
           ) : (
@@ -330,10 +337,12 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                     <span className="mock-car-glow" />
                   </div>
                 )}
-                <div className="player-overlay">
-                  <button className="play-button-glass" onClick={togglePlay} title={isPlaying ? 'Tạm dừng' : 'Phát'}>
-                    <Play size={18} fill="white" />
-                  </button>
+                <div className={`player-overlay ${isPlaying ? 'is-playing' : ''}`} onClick={togglePlay}>
+                  {!isPlaying && (
+                    <button className="play-button-glass" onClick={togglePlay} title="Phát video">
+                      <Play size={18} fill="white" />
+                    </button>
+                  )}
                   <div className="player-meta-bottom">
                     <span className="timestamp">{isPlaying ? '0:03 / 0:08' : '0:00 / 0:08'}</span>
                     <span className="expand-icon" onClick={handleOpenClick} title="Toàn màn hình">
