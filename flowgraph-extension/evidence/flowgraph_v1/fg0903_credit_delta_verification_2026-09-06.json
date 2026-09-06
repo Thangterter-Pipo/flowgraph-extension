@@ -1,0 +1,33 @@
+{
+  "milestone": "FG-0903",
+  "name": "Live Credit Delta Verification",
+  "verificationDate": "2026-09-06T07:55:00.000Z",
+  "account": {
+    "email": "nhom8digitalmarketing1@gmail.com",
+    "tier": "PRO",
+    "hasProBadge": true
+  },
+  "project": {
+    "projectId": "a412e256-8534-43c7-bfb9-71f15a2944df",
+    "projectName": "AI Creative Studio for Video, Images & Custom Tools",
+    "url": "https://flow.google.com/project/a412e256-8534-43c7-bfb9-71f15a2944df"
+  },
+  "measurements": {
+    "bridgeCreditsEndpoint": "FLOWGRAPH_CREDITS",
+    "bridgeResult": {
+      "ok": true,
+      "data": {}
+    },
+    "flowUiCreditDisplay": "PRO (Unlimited / Subscription)",
+    "numericCreditAvailable": false,
+    "conclusion": "ACTUAL_CREDIT_DELTA = NOT_MEASURABLE"
+  },
+  "status": "NOT_MEASURABLE",
+  "notes": "Google Flow migrated to flow.google.com Angular UI with PRO plan tier. The backend does not expose a discrete decremental remainingCredits counter for this tier. In accordance with rule 6 (no fake success) and GPT Chief Architect guidance, the credit delta is strictly marked NOT_MEASURABLE without fabricating dummy numbers.",
+  "regression": {
+    "vitest": "189/189 passed (26 test files)",
+    "typescript": "0 errors (tsc -b clean)",
+    "productionBuild": "passed",
+    "pythonCore": "78 passed, 24 skipped"
+  }
+}
