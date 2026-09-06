@@ -10,7 +10,6 @@ import {
   FolderOpen,
   Gauge,
   History,
-  Image,
   LayoutTemplate,
   LogOut,
   Network,
@@ -18,19 +17,17 @@ import {
   RefreshCcw,
   Settings,
   Sparkles,
+  Terminal,
   Unplug,
-  Video,
-  WandSparkles,
   Workflow,
   X,
 } from 'lucide-react';
 import '../theme.css';
 import { RealGoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
-import type { AccountStatus, FlowStatus, CreditsData } from '../../shared/bridge';
+import type { AccountStatus, FlowStatus, CreditsData, RuntimeEvent } from '../../shared/bridge';
 
 type ConnectionStage = 'signed-out' | 'flow-disconnected' | 'connected';
 
-const storageKey = 'flowgraph.ui.connectionStage';
 const adapter = new RealGoogleFlowAdapter();
 
 function MiniGraph() {
@@ -47,17 +44,6 @@ function MiniGraph() {
   );
 }
 
-async function persistStage(stage: ConnectionStage) {
-  localStorage.setItem(storageKey, stage);
-  try {
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      await chrome.storage.local.set({ [storageKey]: stage });
-    }
-  } catch {
-    // UI must remain usable in normal browser preview mode.
-  }
-}
-
 async function openTab(url: string) {
   try {
     if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
@@ -70,7 +56,7 @@ async function openTab(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-function Header({ onReset }: { onReset: () => void }) {
+function Header({ onRefresh }: { onRefresh: () => void }) {
   return (
     <header className="sidepanel-header">
       <div className="fg-brand">
@@ -78,8 +64,8 @@ function Header({ onReset }: { onReset: () => void }) {
         <div className="fg-brand-title">FlowGraph</div>
         <span className="fg-version">v0.1</span>
       </div>
-      <button className="fg-btn fg-btn-ghost fg-icon-btn" title="Reset demo state" onClick={onReset}>
-        <X size={16} />
+      <button className="fg-btn fg-btn-ghost fg-icon-btn" title="Refresh connection" onClick={onRefresh}>
+        <RefreshCcw size={16} />
       </button>
     </header>
   );
@@ -229,25 +215,68 @@ function Connected({
   onOpenStudio: () => void;
   onDisconnect: () => void;
 }) {
-  const [logs, setLogs] = useState<Array<[string, string]>>([]);
+  const [logs, setLogs] = useState<Array<{ id: string; time: string; text: string; level: 'info' | 'success' | 'warn' | 'error' }>>([]);
   const [lastRun, setLastRun] = useState<{ title: string; meta: string; status: string } | null>(null);
 
-  useEffect(() => {
+  const loadLastRun = useCallback(() => {
     try {
-      const historyRaw = localStorage.getItem('flowgraph.runHistory');
+      const historyRaw = localStorage.getItem('flowgraph.runHistory.v1') || localStorage.getItem('flowgraph.runHistory');
       if (historyRaw) {
         const parsed = JSON.parse(historyRaw);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const latest = parsed[0];
+          const isSuccess = latest.status === 'success' || latest.state === 'success';
+          const isCancelled = latest.status === 'cancelled' || latest.state === 'cancelled';
+          const timeStr = latest.finishedAt || latest.startedAt || latest.timestamp;
           setLastRun({
             title: latest.workflowName || latest.projectName || projectName || 'Workflow Run',
-            meta: `${latest.state === 'success' ? 'Completed' : 'Finished'} · ${new Date(latest.timestamp || Date.now()).toLocaleTimeString()}`,
-            status: latest.state === 'success' ? 'Done' : latest.state === 'cancelled' ? 'Canceled' : 'Failed',
+            meta: `${isSuccess ? 'Completed' : 'Finished'} · ${timeStr ? new Date(timeStr).toLocaleTimeString() : 'Recently'}`,
+            status: isSuccess ? 'Done' : isCancelled ? 'Canceled' : 'Failed',
           });
         }
       }
     } catch {}
   }, [projectName]);
+
+  useEffect(() => {
+    loadLastRun();
+  }, [loadLastRun]);
+
+  // Live Runtime Event listener (SP-04 & SP-05): listen to runtime events broadcasted from service worker
+  useEffect(() => {
+    if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) return;
+    const listener = (message: { type?: string; kind?: string; runId?: string; nodeId?: string; status?: string; error?: { message?: string } }) => {
+      if (message?.type !== 'FLOWGRAPH_EVENT') return;
+      const now = new Date().toLocaleTimeString();
+      const eventText = message.kind === 'node:status'
+        ? `Node [${message.nodeId || 'unknown'}]: ${message.status || 'running'}`
+        : message.kind === 'node:result'
+        ? `Node [${message.nodeId || 'unknown'}] completed successfully`
+        : message.kind === 'run:state'
+        ? `Workflow Run [${(message.runId || '').slice(0, 8)}]: ${message.status || 'state changed'}`
+        : message.kind === 'run:error'
+        ? `Workflow Error: ${message.error?.message || 'Execution failed'}`
+        : `Runtime event: ${message.kind || 'unknown'}`;
+
+      const level: 'info' | 'success' | 'warn' | 'error' =
+        message.kind === 'run:error' ? 'error' :
+        message.status === 'success' ? 'success' :
+        message.status === 'failed' ? 'error' : 'info';
+
+      setLogs((prev) => [{
+        id: crypto.randomUUID(),
+        time: now,
+        text: eventText,
+        level,
+      }, ...prev].slice(0, 20));
+
+      if (message.kind === 'run:state' && (message.status === 'success' || message.status === 'failed' || message.status === 'cancelled')) {
+        loadLastRun();
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, [loadLastRun]);
 
   const creditText = credits?.credits !== undefined ? String(credits.credits) : 'Available';
   const accountEmail = account.email || 'Connected';
@@ -292,6 +321,24 @@ function Connected({
         </section>
       )}
 
+      {logs.length > 0 && (
+        <section className="dashboard-section fg-card">
+          <div className="section-head">
+            <h3>Live Execution Log</h3>
+            <Terminal size={14} className="fg-muted" />
+          </div>
+          <div className="log-list" style={{ maxHeight: 160, overflowY: 'auto' }}>
+            {logs.map((log) => (
+              <div key={log.id} className="log-row" style={{ fontSize: 11, padding: '4px 0' }}>
+                <span className={`fg-status-dot ${log.level === 'success' ? 'online' : log.level === 'error' ? 'warn' : ''}`} />
+                <span style={{ color: 'var(--fg-text-muted)', minWidth: 55 }}>{log.time}</span>
+                <span style={{ flex: 1, wordBreak: 'break-word' }}>{log.text}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="dashboard-section fg-card">
         <div className="section-head"><h3>Quick Actions</h3></div>
         <div className="quick-actions">
@@ -314,11 +361,18 @@ function Connected({
 }
 
 function App() {
-  const [stage, setStage] = useState<ConnectionStage>('signed-out');
   const [account, setAccount] = useState<AccountStatus>({ state: 'CHECKING' });
   const [flow, setFlow] = useState<FlowStatus>({ state: 'CHECKING' });
   const [credits, setCredits] = useState<CreditsData | undefined>();
   const [projectName, setProjectName] = useState<string>('Flow project');
+
+  // Derive connection stage strictly from real account + flow status
+  const stage: ConnectionStage =
+    account.state !== 'CONNECTED'
+      ? 'signed-out'
+      : flow.state !== 'READY'
+      ? 'flow-disconnected'
+      : 'connected';
 
   const checkLiveStatus = useCallback(async () => {
     try {
@@ -327,45 +381,19 @@ function App() {
       setFlow(health.flow);
       setCredits(health.credits);
 
-      if (health.flow.state === 'READY' && health.account.state === 'CONNECTED') {
-        setStage('connected');
-        void persistStage('connected');
-      } else if (health.account.state === 'CONNECTED') {
-        setStage('flow-disconnected');
-        void persistStage('flow-disconnected');
-      }
-
       if (health.flow.title) {
         setProjectName(health.flow.title.replace(/^Google Flow\s*[-–]\s*/i, '').trim() || 'Flow project');
       }
     } catch {
-      // Keep fail-closed or preview state
+      // Keep fail-closed state
     }
   }, []);
 
   useEffect(() => {
-    const local = localStorage.getItem(storageKey) as ConnectionStage | null;
-    if (local) setStage(local);
-    try {
-      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-        chrome.storage.local.get(storageKey).then((result) => {
-          const stored = result[storageKey] as ConnectionStage | undefined;
-          if (stored) setStage(stored);
-        });
-      }
-    } catch {
-      // Browser preview mode.
-    }
-
     void checkLiveStatus();
-    const timer = setInterval(() => void checkLiveStatus(), 4000);
+    const timer = setInterval(() => void checkLiveStatus(), 2500);
     return () => clearInterval(timer);
   }, [checkLiveStatus]);
-
-  const changeStage = (next: ConnectionStage) => {
-    setStage(next);
-    void persistStage(next);
-  };
 
   const openStudio = async () => {
     try {
@@ -381,8 +409,10 @@ function App() {
 
   return (
     <div className="fg-shell sidepanel-app">
-      <Header onReset={() => changeStage('signed-out')} />
-      {stage === 'signed-out' && <SignedOut onContinue={() => changeStage('flow-disconnected')} />}
+      <Header onRefresh={checkLiveStatus} />
+      {stage === 'signed-out' && (
+        <SignedOut onContinue={() => openTab('https://flow.google.com')} />
+      )}
       {stage === 'flow-disconnected' && (
         <FlowDisconnected
           account={account}
@@ -398,7 +428,7 @@ function App() {
           credits={credits}
           projectName={projectName}
           onOpenStudio={openStudio}
-          onDisconnect={() => changeStage('flow-disconnected')}
+          onDisconnect={() => openTab('https://flow.google.com')}
         />
       )}
       <footer className="sidepanel-footer"><span>FlowGraph v0.1</span><span>Live Companion · MV3</span></footer>
