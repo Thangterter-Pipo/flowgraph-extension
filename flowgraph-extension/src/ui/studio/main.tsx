@@ -1333,16 +1333,16 @@ function Studio() {
             className="fg-select workspace-select"
             value={workspace}
             onChange={(e) => setWorkspace(e.target.value as Workspace)}
-            title="Chuyển đổi Không gian làm việc (FG-1300)"
+            title="FG-1300 Multi-Workspace Switcher"
           >
-            <option value="flow">FlowGraph Canvas</option>
-            <option value="production">Project Settings</option>
-            <option value="continuity">Continuity</option>
-            <option value="shots">Shots Studio</option>
-            <option value="assets">Assets Library</option>
-            <option value="storyboard">Storyboard</option>
-            <option value="timeline">Timeline Editor</option>
-            <option value="render">Render Production</option>
+            <option value="flow">🎯 FG-1300: FlowGraph Canvas (Full)</option>
+            <option value="production">📁 Workspace 1: Project Settings</option>
+            <option value="continuity">🔗 Workspace 2: Continuity</option>
+            <option value="shots">🎬 Workspace 3: Shots Studio</option>
+            <option value="assets">📦 Workspace 4: Assets Library</option>
+            <option value="storyboard">📋 Workspace 5: Storyboard</option>
+            <option value="timeline">⏱ Workspace 6: Timeline Editor</option>
+            <option value="render">🚀 Workspace 7: Render Production</option>
           </select>
           <ProjectDropdown connection={connection} />
           <ConnectionPill
