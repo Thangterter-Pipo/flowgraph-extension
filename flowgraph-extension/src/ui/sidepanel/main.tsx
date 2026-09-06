@@ -242,11 +242,15 @@ function Connected({
     loadLastRun();
   }, [loadLastRun]);
 
-  // Live Runtime Event listener (SP-04 & SP-05): listen to runtime events broadcasted from service worker
+  // Live Runtime Event listener (SP-04 & SP-05): listen to runtime events broadcasted from service worker or Studio
   useEffect(() => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) return;
-    const listener = (message: { type?: string; kind?: string; runId?: string; nodeId?: string; status?: string; error?: { message?: string } }) => {
+    const listener = (message: { type?: string; kind?: string; runId?: string; nodeId?: string; status?: string; error?: { message?: string }; payload?: { flow?: FlowStatus } }) => {
       if (message?.type !== 'FLOWGRAPH_EVENT') return;
+      // Skip flow tab state change events broadcasted by SW
+      if (message.payload?.flow) return;
+      if (!message.kind) return;
+
       const now = new Date().toLocaleTimeString();
       const eventText = message.kind === 'node:status'
         ? `Node [${message.nodeId || 'unknown'}]: ${message.status || 'running'}`
@@ -256,7 +260,7 @@ function Connected({
         ? `Workflow Run [${(message.runId || '').slice(0, 8)}]: ${message.status || 'state changed'}`
         : message.kind === 'run:error'
         ? `Workflow Error: ${message.error?.message || 'Execution failed'}`
-        : `Runtime event: ${message.kind || 'unknown'}`;
+        : `Runtime event: ${message.kind}`;
 
       const level: 'info' | 'success' | 'warn' | 'error' =
         message.kind === 'run:error' ? 'error' :
