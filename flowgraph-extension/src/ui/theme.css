@@ -214,8 +214,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .react-flow__controls { background:#0d1521 !important; border:1px solid #233148 !important; border-radius:9px !important; overflow:hidden; box-shadow:var(--shadow) !important; }
 .react-flow__controls-button { background:#0d1521 !important; border-color:#1e2a3d !important; fill:#a7b4c8 !important; }
 .react-flow__minimap { background:#0c131e !important; border:1px solid #26344c; border-radius:9px; overflow:hidden; }
+.react-flow__edges {
+  z-index: 10 !important;
+}
 .react-flow__edge-path {
-  stroke-width: 2.2;
+  stroke-width: 2.4;
   transition: stroke 0.3s ease, stroke-width 0.3s ease;
 }
 .react-flow__connection-path { stroke:#a961ff; stroke-width:2.4; }
