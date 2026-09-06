@@ -166,6 +166,14 @@ const aspectLabels: Record<string, string> = {
 
 function aspectCode(label?: string): string | undefined {
   if (!label) return undefined;
+  const match = label.match(/\d+:\d+/)?.[0];
+  if (match) {
+    if (match === '16:9') return 'LANDSCAPE';
+    if (match === '9:16') return 'PORTRAIT';
+    if (match === '1:1') return 'SQUARE';
+    if (match === '3:4') return 'PORTRAIT_3_4';
+    if (match === '4:3') return 'LANDSCAPE_4_3';
+  }
   return Object.entries(aspectLabels).find(([, display]) => display === label)?.[0];
 }
 
@@ -203,7 +211,11 @@ export function deriveRegistryConfig(kind: string, config: Record<string, string
   if (durations.length && !durations.includes(next.duration)) next.duration = durations[0];
 
   const ratios = aspectRatioOptions(kind, next);
-  if (ratios.length && !ratios.includes(next.aspectRatio)) next.aspectRatio = ratios[0];
+  const currentRatioShort = next.aspectRatio?.match(/\d+:\d+/)?.[0] ?? next.aspectRatio;
+  const isMatch = ratios.some((r) => (r.match(/\d+:\d+/)?.[0] ?? r) === currentRatioShort);
+  if (ratios.length && !isMatch) {
+    next.aspectRatio = ratios[0];
+  }
 
   const variant = resolveVariant(kind, next);
   if (variant) {
