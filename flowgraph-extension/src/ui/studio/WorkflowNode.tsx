@@ -211,9 +211,15 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
       {/* 2. Media or Prompt Body */}
       <div className="flow-card-body">
         {isPrompt ? (
-          <div className="prompt-text-box">
-            {data.config.prompt || 'A futuristic sports car driving on a wet neon-lit street at night, cinematic, ultra realistic.'}
-          </div>
+          <textarea
+            className="prompt-textarea nodrag nopan"
+            rows={3}
+            value={data.config.prompt ?? ''}
+            placeholder="Nhập nội dung mô tả prompt tại đây..."
+            onChange={(e) => dispatchUpdate('prompt', e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
+            title="Nhập prompt sáng tạo"
+          />
         ) : (
           <div className="media-preview-container">
             {result?.type === 'video' || isVideoNode || isDownload ? (
@@ -306,7 +312,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
       {/* 4. Settings Popup Modal */}
       {showSettingsModal && (
-        <div ref={popupRef} className="node-settings-popup" onClick={(e) => e.stopPropagation()}>
+        <div ref={popupRef} className="node-settings-popup nodrag nopan" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
           <div className="popup-header">
             <div className="popup-title">
               {isT2I ? (
@@ -442,36 +448,30 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
       {/* 5. Dynamic Typed Ports based on portsForKind() */}
       <div className="dynamic-port-strip">
         {/* Left Inputs */}
-        <div className="port-column inputs">
-          {portsForKind(data.kind).inputs.map((port, idx) => (
-            <div key={port.id} className="port-item-row input" title={`${port.label} (${port.type}${port.required ? ' · bắt buộc' : ''})`}>
-              <Handle
-                type="target"
-                position={Position.Left}
-                id={port.id}
-                className={`stitch-port-handle in ${portTypeClass(port.type)}`}
-                style={{ top: `${35 + idx * 22}px` }}
-              />
-              <span className="port-label-inline in">{port.label}</span>
-            </div>
-          ))}
-        </div>
+        {portsForKind(data.kind).inputs.map((port, idx) => (
+          <Handle
+            key={port.id}
+            type="target"
+            position={Position.Left}
+            id={port.id}
+            className={`stitch-port-handle in ${portTypeClass(port.type)}`}
+            style={{ top: `${42 + idx * 24}px` }}
+            title={`${port.label} (${port.type}${port.required ? ' · bắt buộc' : ''})`}
+          />
+        ))}
 
         {/* Right Outputs */}
-        <div className="port-column outputs">
-          {portsForKind(data.kind).outputs.map((port, idx) => (
-            <div key={port.id} className="port-item-row output" title={`${port.label} (${port.type})`}>
-              <span className="port-label-inline out">{port.label}</span>
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={port.id}
-                className={`stitch-port-handle out ${portTypeClass(port.type)}`}
-                style={{ top: `${35 + idx * 22}px` }}
-              />
-            </div>
-          ))}
-        </div>
+        {portsForKind(data.kind).outputs.map((port, idx) => (
+          <Handle
+            key={port.id}
+            type="source"
+            position={Position.Right}
+            id={port.id}
+            className={`stitch-port-handle out ${portTypeClass(port.type)}`}
+            style={{ top: `${42 + idx * 24}px` }}
+            title={`${port.label} (${port.type})`}
+          />
+        ))}
       </div>
     </div>
   );
