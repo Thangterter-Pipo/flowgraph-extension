@@ -497,11 +497,24 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .config-meta-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 5px;
   font-size: 8.5px;
   color: #8b99ad;
+}
+
+.meta-item.cost-pill {
+  width: 100%;
+  justify-content: center;
+  margin-top: 3px;
+  font-size: 8px;
+  color: #718296;
+}
+.meta-item.cost-pill u {
+  color: #cbd5e1;
+  text-decoration: underline;
+  font-weight: 600;
 }
 .meta-item {
   display: flex;
