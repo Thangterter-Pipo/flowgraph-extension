@@ -565,8 +565,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   padding: 1px 4px;
   font-size: 7.5px;
 }
-.size-segmented-control.ratio-control button.active {
-  background: #0284c7;
+.banana-tag {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fde047;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 600;
+  font-size: 8px;
 }
 
 /* Download Action Footer */

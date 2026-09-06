@@ -218,6 +218,7 @@ function Inspector({ node, edges, updateConfig, close, locked }: { node?: FlowNo
   const registryRatios = registryBacked ? aspectRatioOptions(data.kind, data.config) : [];
 
   const optionMap: Record<string, string[]> = {
+    imageModel: ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'],
     model: modelOptions.length
       ? modelOptions
       : isVideoKind(data.kind)

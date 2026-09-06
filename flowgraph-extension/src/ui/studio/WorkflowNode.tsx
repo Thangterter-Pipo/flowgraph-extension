@@ -64,6 +64,8 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   const isPrompt = data.kind === 'prompt';
   const isT2I = data.kind === 't2i';
   const isI2V = data.kind === 'i2v' || data.kind === 't2v';
+  const isInterpolation = data.kind === 'interpolation';
+  const isVideoNode = isI2V || isInterpolation;
   const isDownload = data.kind === 'download';
   const [selectedSize, setSelectedSize] = useState<'S' | 'M' | 'L'>('M');
 
@@ -129,7 +131,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
           </div>
         ) : (
           <div className="media-preview-container">
-            {result?.type === 'video' || isI2V || isDownload ? (
+            {result?.type === 'video' || isVideoNode || isDownload ? (
               <div className="video-player-preview">
                 {result?.previewUrl ? (
                   <video src={result.previewUrl} muted playsInline preload="metadata" />
@@ -184,6 +186,11 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                 <Box size={11} />
                 <span>{compactModel(data.config.model) || (isT2I ? 'Nano Banana 2' : 'Omni Flash')}</span>
               </div>
+              {isInterpolation && (
+                <div className="meta-item image-model-selector" title="Model tạo ảnh khung hình">
+                  <span className="banana-tag">🍌 {compactModel(data.config.imageModel) || 'Nano Banana 2'}</span>
+                </div>
+              )}
               {isT2I && (
                 <div className="size-segmented-control batch-control" title="Số lượng tạo">
                   {(['1', '2', '3', '4'] as const).map((b) => (
@@ -201,20 +208,20 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                   ))}
                 </div>
               )}
-              {isI2V && (
+              {isVideoNode && (
                 <>
                   <div className="size-segmented-control mode-control" title="Chế độ tạo video">
-                    {(['Thành phần', 'Khung hình'] as const).map((m) => (
+                    {(['Khung hình', 'Thành phần'] as const).map((m) => (
                       <button
                         key={m}
-                        className={(data.config.mode || 'Thành phần') === m ? 'active' : ''}
+                        className={(data.config.mode || (isInterpolation ? 'Khung hình' : 'Thành phần')) === m ? 'active' : ''}
                         title={`Chế độ: ${m}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'mode', value: m } }));
                         }}
                       >
-                        {m === 'Thành phần' ? '🧩 Thành phần' : '🔲 Khung hình'}
+                        {m === 'Khung hình' ? '🔲 Khung hình' : '🧩 Thành phần'}
                       </button>
                     ))}
                   </div>
@@ -285,7 +292,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                   ))}
                 </div>
               )}
-              {isI2V && (
+              {isVideoNode && (
                 <div className="size-segmented-control ratio-control">
                   {(['16:9', '9:16'] as const).map((r) => (
                     <button
