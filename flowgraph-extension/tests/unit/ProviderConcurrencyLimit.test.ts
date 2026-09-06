@@ -10,28 +10,26 @@ import type { NodeSpecForValidation } from '../../src/runtime/GraphValidator';
 
 describe('FG-1001 — Provider-specific Concurrency Limit', () => {
   it('enforces verified Google Flow provider cap correctly via resolveEffectiveConcurrency', () => {
-    // 1. When undefined or null -> default 2
-    expect(resolveEffectiveConcurrency(undefined)).toBe(2);
+    // 1. When undefined or null -> default 1
+    expect(resolveEffectiveConcurrency(undefined)).toBe(1);
     expect(resolveEffectiveConcurrency(undefined)).toBeLessThanOrEqual(VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT);
 
     // 2. When requested 1 -> effective 1
     expect(resolveEffectiveConcurrency(1)).toBe(1);
 
-    // 3. When requested 2 -> effective 2
-    expect(resolveEffectiveConcurrency(2)).toBe(2);
+    // 3. When caller requests 2, 3, 4, 10, or 99 -> hard capped at VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT (1)
+    expect(resolveEffectiveConcurrency(2)).toBe(1);
+    expect(resolveEffectiveConcurrency(3)).toBe(1);
+    expect(resolveEffectiveConcurrency(4)).toBe(1);
+    expect(resolveEffectiveConcurrency(10)).toBe(1);
+    expect(resolveEffectiveConcurrency(99)).toBe(1);
 
-    // 4. When caller requests 3, 4, 10, or 99 -> hard capped at VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT (2)
-    expect(resolveEffectiveConcurrency(3)).toBe(2);
-    expect(resolveEffectiveConcurrency(4)).toBe(2);
-    expect(resolveEffectiveConcurrency(10)).toBe(2);
-    expect(resolveEffectiveConcurrency(99)).toBe(2);
-
-    // 5. Invalid values (0 or negative) -> default 2
-    expect(resolveEffectiveConcurrency(0)).toBe(2);
-    expect(resolveEffectiveConcurrency(-5)).toBe(2);
+    // 4. Invalid values (0 or negative) -> default 1
+    expect(resolveEffectiveConcurrency(0)).toBe(1);
+    expect(resolveEffectiveConcurrency(-5)).toBe(1);
   });
 
-  it('runs 2 independent generation branches concurrently within verified provider limit', async () => {
+  it('runs 2 independent generation branches serially within verified provider limit (cap=1)', async () => {
     let maxConcurrentObserved = 0;
     let currentlyRunning = 0;
 
@@ -113,7 +111,7 @@ describe('FG-1001 — Provider-specific Concurrency Limit', () => {
         activeProject: PROJECT,
         account: ACCOUNT,
         flow: FLOW,
-        concurrency: 50, // Request excessive concurrency; runtime must enforce cap = 2
+        concurrency: 50, // Request excessive concurrency; runtime must enforce cap = 1
       },
       emit,
     );
@@ -122,7 +120,7 @@ describe('FG-1001 — Provider-specific Concurrency Limit', () => {
     const completedNodes = events.filter((e) => e.type === 'node' && e.state === 'success');
     expect(completedNodes.length).toBe(4);
 
-    // Concurrency observed must be at most VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT (2)
+    // Concurrency observed must be at most VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT (1)
     expect(maxConcurrentObserved).toBeLessThanOrEqual(VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT);
   });
 });
