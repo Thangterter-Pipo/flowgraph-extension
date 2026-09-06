@@ -1284,8 +1284,9 @@ function Studio() {
       let className = '';
       let animated = false;
 
-      // Chỉ kích hoạt animation cho dây nối trực tiếp liên quan đến node đang chạy thực tế
-      if (isRunning && (isSourceRunning || isTargetRunning)) {
+      // Chỉ kích hoạt animation cho dây ĐẦU VÀO (incoming wire) đang truyền dữ liệu vào node RUNNING
+      // Tuyệt đối không bật sáng dây đầu ra khi node phía sau chưa hề chạy!
+      if (isRunning && isTargetRunning) {
         className = 'running-active';
         animated = true;
       } else if (isSourceSuccess && !isRunning) {
