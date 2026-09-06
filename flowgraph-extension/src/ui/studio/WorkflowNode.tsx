@@ -171,33 +171,66 @@ function computeEstimatedCredits(kind: string, config: Record<string, string>): 
   return '12';
 }
 
-function SafeImage({ src, alt }: { src: string; alt: string }) {
+function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: string }) {
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let active = true;
-    if (!src) {
+    if (!src && !mediaId) {
       setBlobUrl(null);
       return;
     }
-    if (src.startsWith('blob:') || src.startsWith('data:')) {
+    if (src && (src.startsWith('blob:') || src.startsWith('data:'))) {
       setBlobUrl(src);
       return;
     }
-    fetch(src)
-      .then((res) => res.blob())
-      .then((blob) => {
-        if (active) {
-          setBlobUrl(URL.createObjectURL(blob));
+
+    const resolveFromDom = async () => {
+      try {
+        if (typeof chrome !== 'undefined' && chrome.tabs && mediaId) {
+          const tabs = await chrome.tabs.query({ url: '*://flow.google.com/*' });
+          const flowTab = tabs[0];
+          if (flowTab?.id) {
+            const injected = await chrome.scripting.executeScript({
+              target: { tabId: flowTab.id },
+              func: (id: string) => {
+                const el = document.querySelector(`[data-media-id="${id}"]`);
+                const img = el?.tagName === 'IMG' ? el : el?.querySelector('img');
+                return img?.getAttribute('src') || (img as any)?.currentSrc || (img as any)?.src || null;
+              },
+              args: [mediaId],
+            });
+            const domSrc = injected?.[0]?.result;
+            if (domSrc && active) {
+              const res = await fetch(domSrc);
+              const blob = await res.blob();
+              if (active) setBlobUrl(URL.createObjectURL(blob));
+              return;
+            }
+          }
         }
-      })
-      .catch(() => {
-        if (active) setBlobUrl(src);
-      });
+      } catch {}
+
+      if (src) {
+        fetch(src)
+          .then((res) => res.blob())
+          .then((blob) => {
+            if (active) {
+              setBlobUrl(URL.createObjectURL(blob));
+            }
+          })
+          .catch(() => {
+            if (active) setBlobUrl(src);
+          });
+      }
+    };
+
+    void resolveFromDom();
+
     return () => {
       active = false;
     };
-  }, [src]);
+  }, [src, mediaId]);
 
   return <img src={blobUrl || src} alt={alt} />;
 }
@@ -228,7 +261,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   const availableModels = modelFamilyOptions(data.kind, data.config).length
     ? modelFamilyOptions(data.kind, data.config)
     : isVideoNode
-      ? ['Omni 1.1 Flash', 'Veo 3.1 – Lite', 'Veo 3.1 – Fast', 'Veo 3.1 – Quality']
+      ? ['Omni 1.1 Flash', 'Veo 3.1 - Lite', 'Veo 3.1 - Fast', 'Veo 3.1 - Quality']
       : ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'];
 
   const availableRatios = isVideoNode ? ['16:9', '9:16'] : ['16:9', '4:3', '1:1', '3:4', '9:16'];
@@ -353,8 +386,12 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               </div>
             ) : (
               <div className="image-preview-wrap">
-                {result?.previewUrl ? (
-                  <SafeImage src={result.previewUrl} alt="Generated Preview" />
+                {result?.previewUrl || result?.mediaId ? (
+                  <SafeImage
+                    src={result.previewUrl || (result.mediaId ? `https://flow.google.com/asb/${result.mediaId}` : '')}
+                    mediaId={result.mediaId}
+                    alt="Generated Preview"
+                  />
                 ) : (
                   <div className="placeholder-art car-bg">
                     <span className="mock-car-glow" />
