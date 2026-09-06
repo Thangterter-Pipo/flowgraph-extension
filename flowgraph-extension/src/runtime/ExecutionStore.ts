@@ -26,7 +26,8 @@ export interface WorkflowRunRecord {
   creditDelta: number;
 }
 
-const HISTORY_STORAGE_KEY = 'flowgraph.runHistory';
+const RUN_HISTORY_KEY = 'flowgraph.runHistory.v1';
+const HISTORY_STORAGE_KEY = RUN_HISTORY_KEY;
 
 export class ExecutionStore {
   private readonly projectId: string;
