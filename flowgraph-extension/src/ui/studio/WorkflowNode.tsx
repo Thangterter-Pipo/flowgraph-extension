@@ -77,6 +77,22 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   const isDownload = data.kind === 'download';
 
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      }
+    } else {
+      setIsPlaying(!isPlaying);
+    }
+  };
 
   const dispatchUpdate = (key: string, value: string) => {
     window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key, value } }));
@@ -154,19 +170,21 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             {result?.type === 'video' || isVideoNode || isDownload ? (
               <div className="video-player-preview">
                 {result?.previewUrl ? (
-                  <video src={result.previewUrl} muted playsInline preload="metadata" />
+                  <video ref={videoRef} src={result.previewUrl} muted playsInline preload="metadata" onEnded={() => setIsPlaying(false)} />
                 ) : (
                   <div className="placeholder-art car-bg">
                     <span className="mock-car-glow" />
                   </div>
                 )}
                 <div className="player-overlay">
-                  <button className="play-button-glass">
+                  <button className="play-button-glass" onClick={togglePlay} title={isPlaying ? 'Tạm dừng' : 'Phát'}>
                     <Play size={18} fill="white" />
                   </button>
                   <div className="player-meta-bottom">
-                    <span className="timestamp">0:00 / 0:08</span>
-                    <Maximize2 size={11} className="expand-icon" />
+                    <span className="timestamp">{isPlaying ? '0:03 / 0:08' : '0:00 / 0:08'}</span>
+                    <span className="expand-icon" onClick={handleOpenClick} title="Toàn màn hình">
+                      <Maximize2 size={11} />
+                    </span>
                   </div>
                 </div>
               </div>
@@ -196,7 +214,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               <button className="btn-stitch-secondary" onClick={handleOpenClick}>
                 <ExternalLink size={12} /> Open
               </button>
-              <button className="btn-stitch-icon">
+              <button className="btn-stitch-icon" title="Chi tiết file" onClick={handleOpenClick}>
                 <MoreHorizontal size={13} />
               </button>
             </div>
