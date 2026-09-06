@@ -72,8 +72,16 @@ import {
   type FlowSyncField,
 } from '../../shared/sync/FlowSyncTypes';
 import { getSyncNodeCapability, isSyncGenerationNode, normalizeFlowUiModelLabel, type SyncNodeKind } from '../../shared/sync/SyncCapabilityRegistry';
+import FilmWorkspace from './FilmWorkspace';
+import AssetWorkspace from './AssetWorkspace';
+import StoryboardWorkspace from './StoryboardWorkspace';
+import TimelineWorkspace from './TimelineWorkspace';
+import RenderWorkspace from './RenderWorkspace';
+import ProductionWorkspace from './ProductionWorkspace';
+import ContinuityWorkspace from './ContinuityWorkspace';
+import { useFilmProject } from './useFilmProject';
 
-const nodeTypes = { flowNode: WorkflowNode };
+export type Workspace = 'flow' | 'production' | 'continuity' | 'shots' | 'assets' | 'storyboard' | 'timeline' | 'render';
 
 function isVideoKind(kind: string): boolean {
   return ['t2v', 'i2v', 'extend', 'interpolation', 'reference'].includes(kind);
@@ -451,6 +459,10 @@ function Studio() {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(restoreSavedNodes());
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(restoreSavedEdges());
   const [selectedNodeId, setSelectedNodeId] = useState<string>(initialSelectedNodeId);
+  const [selectedSceneId, setSelectedSceneId] = useState<string>('');
+  const [selectedShotId, setSelectedShotId] = useState<string>('');
+  const [selectedAssetId, setSelectedAssetId] = useState<string>('');
+  const [workspace, setWorkspace] = useState<Workspace>('flow');
   const [search, setSearch] = useState('');
   const [activeWorkflowId, setActiveWorkflowId] = useState('main');
   const [workflowName, setWorkflowName] = useState('FlowGraph V1 Pipeline');
@@ -474,6 +486,22 @@ function Studio() {
     }
   }, []);
   const connection = useStudioConnection();
+  const { project: filmProject, setProject: setFilmProject } = useFilmProject(connection.activeProject);
+
+  const openShotManager = () => {
+    setWorkspace('shots');
+  };
+
+  const openShotManagerById = (shotId: string) => {
+    setSelectedShotId(shotId);
+    setWorkspace('shots');
+  };
+
+  const openFlowForShot = () => {
+    setWorkspace('flow');
+  };
+
+  const nodeTypes = useMemo(() => ({ flowNode: WorkflowNode }), []);
   const { save, exportJson } = useWorkflowPersistence(
     nodes,
     edges,
@@ -1231,6 +1259,65 @@ function Studio() {
     });
   }, [edges, nodes, runStatus]);
 
+  const renderFilmWorkspace = () => {
+    if (!filmProject) {
+      return (
+        <div className="empty-state">
+          <Workflow size={48} />
+          <h2>Project Required</h2>
+          <p>Open or create a Google Flow project to use Film workspaces.</p>
+          <button className="fg-btn fg-btn-primary" onClick={() => setWorkspace('flow')}><Workflow size={14} /> Open FlowGraph</button>
+        </div>
+      );
+    }
+    switch (workspace) {
+      case 'production':
+        return <ProductionWorkspace project={filmProject} setProject={setFilmProject} />;
+      case 'continuity':
+        return <ContinuityWorkspace project={filmProject} setProject={setFilmProject} openShotManager={openShotManagerById} />;
+      case 'shots':
+        return (
+          <FilmWorkspace
+            project={filmProject}
+            setProject={setFilmProject}
+            selectedSceneId={selectedSceneId}
+            setSelectedSceneId={setSelectedSceneId}
+            selectedShotId={selectedShotId}
+            setSelectedShotId={setSelectedShotId}
+            openFlowForShot={openFlowForShot}
+          />
+        );
+      case 'assets':
+        return (
+          <AssetWorkspace
+            project={filmProject}
+            setProject={setFilmProject}
+            selectedAssetId={selectedAssetId}
+            setSelectedAssetId={setSelectedAssetId}
+            selectedShotId={selectedShotId}
+          />
+        );
+      case 'storyboard':
+        return (
+          <StoryboardWorkspace
+            project={filmProject}
+            selectedSceneId={selectedSceneId}
+            setSelectedSceneId={setSelectedSceneId}
+            selectedShotId={selectedShotId}
+            setSelectedShotId={setSelectedShotId}
+            openFlowForShot={openFlowForShot}
+            openShotManager={openShotManager}
+          />
+        );
+      case 'timeline':
+        return <TimelineWorkspace project={filmProject} setProject={setFilmProject} openShotManager={openShotManagerById} />;
+      case 'render':
+        return <RenderWorkspace project={filmProject} />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="fg-shell studio-app">
       <header className="studio-topbar">
@@ -1242,6 +1329,21 @@ function Studio() {
           </div>
         </div>
         <div className="topbar-actions">
+          <select
+            className="fg-select workspace-select"
+            value={workspace}
+            onChange={(e) => setWorkspace(e.target.value as Workspace)}
+            title="Chuyển đổi Không gian làm việc (FG-1300)"
+          >
+            <option value="flow">FlowGraph Canvas</option>
+            <option value="production">Project Settings</option>
+            <option value="continuity">Continuity</option>
+            <option value="shots">Shots Studio</option>
+            <option value="assets">Assets Library</option>
+            <option value="storyboard">Storyboard</option>
+            <option value="timeline">Timeline Editor</option>
+            <option value="render">Render Production</option>
+          </select>
           <ProjectDropdown connection={connection} />
           <ConnectionPill
             state={accountState === 'CONNECTED' ? 'online' : accountState === 'CHECKING' ? 'checking' : accountState === 'SESSION_EXPIRED' ? 'warn' : accountState === 'DISCONNECTED' ? 'offline' : 'error'}
@@ -1261,55 +1363,53 @@ function Studio() {
             title={syncStatus.message}
             icon={<Workflow size={14} />}
           />
-          <button className="fg-btn fg-icon-btn" title="Undo" onClick={() => reactFlow?.fitView()}><Undo2 size={14} /></button>
-          <button className="fg-btn fg-icon-btn" title="Redo" onClick={() => reactFlow?.fitView()}><Redo2 size={14} /></button>
+          {/* Clean Topbar: no fake undo/redo, only real capabilities */}
           <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Save</button>
-          <button className="fg-btn" onClick={() => {
-            navigator.clipboard.writeText(window.location.href);
-            alert('Workflow link copied to clipboard!');
-          }}><Share2 size={14} /> Share</button>
           <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Export</button>
           {runStatus === 'running' ? <button className="fg-btn fg-btn-primary" onClick={stopWorkflow}><Square size={13} /> Stop Workflow</button> : <button className="fg-btn fg-btn-primary" disabled={!connection.isCanvasUnlocked} onClick={() => void runWorkflow(false)}><Play size={14} /> Run Workflow</button>}
-          <button className="fg-btn fg-icon-btn" title="Options" onClick={() => exportCurrent()}><EllipsisVertical size={14} /></button>
         </div>
       </header>
 
       <main className="studio-main">
-        <NodeLibrary search={search} setSearch={setSearch} locked={!connection.isCanvasUnlocked} />
+        {workspace === 'flow' ? (
+          <>
+            <NodeLibrary search={search} setSearch={setSearch} locked={!connection.isCanvasUnlocked} />
 
-        <section className="studio-center">
-          <ProjectGateOverlay connection={connection}>
-            <div className="canvas-wrap" onDrop={onDrop} onDragOver={(event) => { if (connection.isCanvasUnlocked) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }}>
-              <div className="canvas-toolbar">
-                <button className="fg-btn fg-icon-btn" onClick={() => reactFlow?.fitView({ padding: .18, duration: 300 })}><Maximize2 size={13} /></button>
-                <button className="fg-btn" style={{ minHeight: 29, fontSize: 9 }} onClick={resetWorkflow}><RotateCcw size={12} /> Reset</button>
-              </div>
-              <ReactFlow<FlowNode, FlowEdge>
-                nodes={nodes}
-                edges={computedEdges}
-                nodeTypes={nodeTypes}
-                onNodesChange={connection.isCanvasUnlocked ? onNodesChange : undefined}
-                onEdgesChange={connection.isCanvasUnlocked ? onEdgesChange : undefined}
-                onConnect={onConnect}
-                isValidConnection={isValidConnection}
-                onInit={setReactFlow}
-                onNodeClick={(_, node) => { if (connection.isCanvasUnlocked) setSelectedNodeId(node.id); }}
-                onPaneClick={() => setSelectedNodeId('')}
-                fitView
-                fitViewOptions={{ padding: .18 }}
-                minZoom={.35}
-                maxZoom={1.8}
-                deleteKeyCode={connection.isCanvasUnlocked ? ['Backspace', 'Delete'] : []}
-              >
-                <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#28344a" />
-                <Controls position="bottom-left" showInteractive={false} />
-                <MiniMap position="top-right" pannable zoomable nodeColor={(node) => colorForTone((node.data as FlowNode['data']).tone)} maskColor="rgba(5,9,14,.60)" />
-              </ReactFlow>
-            </div>
-          </ProjectGateOverlay>
-        </section>
-
-        {/* Inspector panel removed to maximize infinite canvas workspace as requested */}
+            <section className="studio-center">
+              <ProjectGateOverlay connection={connection}>
+                <div className="canvas-wrap" onDrop={onDrop} onDragOver={(event) => { if (connection.isCanvasUnlocked) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }}>
+                  <div className="canvas-toolbar">
+                    <button className="fg-btn fg-icon-btn" onClick={() => reactFlow?.fitView({ padding: .18, duration: 300 })}><Maximize2 size={13} /></button>
+                    <button className="fg-btn" style={{ minHeight: 29, fontSize: 9 }} onClick={resetWorkflow}><RotateCcw size={12} /> Reset</button>
+                  </div>
+                  <ReactFlow<FlowNode, FlowEdge>
+                    nodes={nodes}
+                    edges={computedEdges}
+                    nodeTypes={nodeTypes}
+                    onNodesChange={connection.isCanvasUnlocked ? onNodesChange : undefined}
+                    onEdgesChange={connection.isCanvasUnlocked ? onEdgesChange : undefined}
+                    onConnect={onConnect}
+                    isValidConnection={isValidConnection}
+                    onInit={setReactFlow}
+                    onNodeClick={(_, node) => { if (connection.isCanvasUnlocked) setSelectedNodeId(node.id); }}
+                    onPaneClick={() => setSelectedNodeId('')}
+                    fitView
+                    fitViewOptions={{ padding: .18 }}
+                    minZoom={.35}
+                    maxZoom={1.8}
+                    deleteKeyCode={connection.isCanvasUnlocked ? ['Backspace', 'Delete'] : []}
+                  >
+                    <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#28344a" />
+                    <Controls position="bottom-left" showInteractive={false} />
+                    <MiniMap position="top-right" pannable zoomable nodeColor={(node) => colorForTone((node.data as FlowNode['data']).tone)} maskColor="rgba(5,9,14,.60)" />
+                  </ReactFlow>
+                </div>
+              </ProjectGateOverlay>
+            </section>
+          </>
+        ) : (
+          <div className="film-workspace-full">{renderFilmWorkspace()}</div>
+        )}
       </main>
 
       {confirmRerun.length > 0 && (
