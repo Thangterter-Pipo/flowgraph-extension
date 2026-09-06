@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Handle, Position, useNodeConnections, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type NodeProps } from '@xyflow/react';
 import {
-  AlertTriangle,
+  Box,
+  CheckCircle2,
+  ChevronDown,
   Clock3,
   Download,
   ExternalLink,
@@ -11,15 +13,13 @@ import {
   MessageSquareText,
   MoreHorizontal,
   Play,
-  RotateCcw,
+  Settings2,
   Sparkles,
-  Workflow,
-  Box,
   Square,
-  CheckCircle2,
+  Workflow,
+  X,
 } from 'lucide-react';
 import type { FlowNode, FlowNodeData, NodeMediaResult } from './model';
-import { portTypeClass, portsForKind, type NodePortDefinition } from './ports';
 
 function NodeIcon({ kind, size = 13 }: { kind: string; size?: number }) {
   if (kind === 'prompt') return <MessageSquareText size={size} />;
@@ -59,6 +59,14 @@ function shortAspect(value?: string) {
   return value.match(/\d+:\d+/)?.[0] ?? value;
 }
 
+const IMAGE_MODELS = ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'];
+const VIDEO_MODELS = ['Omni 1.1 Flash', 'Veo 3.1 – Lite', 'Veo 3.1 – Fast', 'Veo 3.1 – Quality'];
+const ASPECT_RATIOS_IMAGE = ['16:9', '4:3', '1:1', '3:4', '9:16'];
+const ASPECT_RATIOS_VIDEO = ['16:9', '9:16'];
+const DURATIONS = ['4s', '6s', '8s', '10s'];
+const RESOLUTIONS = ['720p', '360p'];
+const BATCH_COUNTS = ['1', '2', '3', '4'];
+
 export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   const result = inferredResult(data);
   const isPrompt = data.kind === 'prompt';
@@ -67,10 +75,11 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   const isInterpolation = data.kind === 'interpolation';
   const isVideoNode = isI2V || isInterpolation;
   const isDownload = data.kind === 'download';
-  const [selectedSize, setSelectedSize] = useState<'S' | 'M' | 'L'>('M');
 
-  const onRetry = (nodeId: string) => {
-    window.dispatchEvent(new CustomEvent('flowgraph:retry-node', { detail: { nodeId } }));
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  const dispatchUpdate = (key: string, value: string) => {
+    window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key, value } }));
   };
 
   const handleDownloadClick = (e: React.MouseEvent) => {
@@ -119,7 +128,18 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
           ) : (
             <span className="badge-stitch ready">READY</span>
           )}
-          {!isPrompt && <button className="kebab-btn"><MoreHorizontal size={13} /></button>}
+          {!isPrompt && !isDownload && (
+            <button
+              className="kebab-btn"
+              title="Cài đặt cấu hình"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSettingsModal(!showSettingsModal);
+              }}
+            >
+              <Settings2 size={12} />
+            </button>
+          )}
         </div>
       </div>
 
@@ -165,7 +185,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
         )}
       </div>
 
-      {/* 3. Footer Toolbar / Actions */}
+      {/* 3. Footer: Sleek and focused - only essential summary tags */}
       {!isPrompt && (
         <div className="flow-card-footer">
           {isDownload ? (
@@ -181,140 +201,189 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               </button>
             </div>
           ) : (
-            <div className="config-meta-toolbar">
-              <div className="meta-item model-selector" title="Model">
+            <div
+              className="config-meta-toolbar-compact"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowSettingsModal(!showSettingsModal);
+              }}
+              title="Click để mở cài đặt tham số"
+            >
+              <div className="meta-pill model" title="Mô hình đang chọn">
                 <Box size={11} />
-                <span>{compactModel(data.config.model) || (isT2I ? 'Nano Banana 2' : 'Omni Flash')}</span>
+                <span>{compactModel(data.config.model) || (isT2I ? 'Nano Banana 2' : 'Omni 1.1 Flash')}</span>
+                <ChevronDown size={10} className="dropdown-caret" />
               </div>
-              {isInterpolation && (
-                <div className="meta-item image-model-selector" title="Model tạo ảnh khung hình">
-                  <span className="banana-tag">🍌 {compactModel(data.config.imageModel) || 'Nano Banana 2'}</span>
-                </div>
-              )}
-              {isT2I && (
-                <div className="size-segmented-control batch-control" title="Số lượng tạo">
-                  {(['1', '2', '3', '4'] as const).map((b) => (
-                    <button
-                      key={b}
-                      className={(data.config.batchCount || '1') === b ? 'active' : ''}
-                      title={`Tạo x${b}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'batchCount', value: b } }));
-                      }}
-                    >
-                      x{b}
-                    </button>
-                  ))}
+              {isVideoNode && (
+                <div className="meta-pill duration" title="Thời lượng">
+                  <Clock3 size={10} />
+                  <span>{data.config.duration?.replace(' seconds', 's') || '8s'}</span>
                 </div>
               )}
               {isVideoNode && (
-                <>
-                  <div className="size-segmented-control mode-control" title="Chế độ tạo video">
-                    {(['Khung hình', 'Thành phần'] as const).map((m) => (
-                      <button
-                        key={m}
-                        className={(data.config.mode || (isInterpolation ? 'Khung hình' : 'Thành phần')) === m ? 'active' : ''}
-                        title={`Chế độ: ${m}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'mode', value: m } }));
-                        }}
-                      >
-                        {m === 'Khung hình' ? '🔲 Khung hình' : '🧩 Thành phần'}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="size-segmented-control duration-control" title="Thời lượng video">
-                    {(['4s', '6s', '8s', '10s'] as const).map((d) => (
-                      <button
-                        key={d}
-                        className={(data.config.duration?.replace(' seconds', 's') || '8s') === d ? 'active' : ''}
-                        title={`Thời lượng: ${d}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'duration', value: d.replace('s', ' seconds') } }));
-                        }}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="size-segmented-control res-control" title="Độ phân giải">
-                    {(['720p', '360p'] as const).map((res) => (
-                      <button
-                        key={res}
-                        className={(data.config.resolution || '720p') === res ? 'active' : ''}
-                        title={`Độ phân giải: ${res}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'resolution', value: res } }));
-                        }}
-                      >
-                        {res}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="size-segmented-control batch-control" title="Số lượng tạo">
-                    {(['1', '2', '3', '4'] as const).map((b) => (
-                      <button
-                        key={b}
-                        className={(data.config.batchCount || '1') === b ? 'active' : ''}
-                        title={`Tạo x${b}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'batchCount', value: b } }));
-                        }}
-                      >
-                        x{b}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="meta-item cost-pill" title="Chi phí tín dụng">
-                    <span>Quá trình tạo sẽ tốn <u>{data.config.costCredits || '12'} tín dụng</u></span>
-                  </div>
-                </>
-              )}
-              {isT2I && (
-                <div className="size-segmented-control ratio-control">
-                  {(['16:9', '4:3', '1:1', '3:4', '9:16'] as const).map((r) => (
-                    <button
-                      key={r}
-                      className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
-                      title={`Tỷ lệ ${r}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'aspectRatio', value: r } }));
-                      }}
-                    >
-                      {r}
-                    </button>
-                  ))}
+                <div className="meta-pill res" title="Độ phân giải">
+                  <span>{data.config.resolution || '720p'}</span>
                 </div>
               )}
-              {isVideoNode && (
-                <div className="size-segmented-control ratio-control">
-                  {(['16:9', '9:16'] as const).map((r) => (
-                    <button
-                      key={r}
-                      className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
-                      title={`Tỷ lệ ${r}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.dispatchEvent(new CustomEvent('flowgraph:update-config', { detail: { nodeId: id, key: 'aspectRatio', value: r } }));
-                      }}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <div className="meta-pill aspect" title="Tỷ lệ khung hình">
+                <Square size={10} />
+                <span>{shortAspect(data.config.aspectRatio) || '16:9'}</span>
+              </div>
+              <div className="meta-pill batch" title="Số lượng tạo">
+                <span>x{data.config.batchCount || '1'}</span>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* 4. Handles (Ports) */}
+      {/* 4. Settings Popup Modal */}
+      {showSettingsModal && (
+        <div className="node-settings-popup" onClick={(e) => e.stopPropagation()}>
+          <div className="popup-header">
+            <div className="popup-tabs">
+              <span className={`popup-tab ${isT2I ? 'active' : ''}`}>
+                <Image size={11} /> Hình ảnh
+              </span>
+              <span className={`popup-tab ${isVideoNode ? 'active' : ''}`}>
+                <Film size={11} /> Video
+              </span>
+            </div>
+            <button className="popup-close-btn" onClick={() => setShowSettingsModal(false)}>
+              <X size={12} />
+            </button>
+          </div>
+
+          <div className="popup-body">
+            {/* Mode selection for Video */}
+            {isVideoNode && (
+              <div className="popup-row">
+                <span className="row-label">Chế độ</span>
+                <div className="popup-segmented">
+                  {(['Khung hình', 'Thành phần'] as const).map((m) => (
+                    <button
+                      key={m}
+                      className={(data.config.mode || (isInterpolation ? 'Khung hình' : 'Thành phần')) === m ? 'active' : ''}
+                      onClick={() => dispatchUpdate('mode', m)}
+                    >
+                      {m === 'Khung hình' ? '🔲 Khung hình' : '🧩 Thành phần'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Model Selector Dropdown */}
+            <div className="popup-row">
+              <span className="row-label">Mô hình AI</span>
+              <select
+                className="popup-select"
+                value={data.config.model || (isT2I ? '🍌 Nano Banana 2' : 'Omni 1.1 Flash')}
+                onChange={(e) => dispatchUpdate('model', e.target.value)}
+              >
+                {(isT2I ? IMAGE_MODELS : VIDEO_MODELS).map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Start/End Image Model for Interpolation */}
+            {isInterpolation && (
+              <div className="popup-row">
+                <span className="row-label">Model khung hình</span>
+                <select
+                  className="popup-select"
+                  value={data.config.imageModel || '🍌 Nano Banana 2'}
+                  onChange={(e) => dispatchUpdate('imageModel', e.target.value)}
+                >
+                  {IMAGE_MODELS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Aspect Ratio */}
+            <div className="popup-row">
+              <span className="row-label">Tỷ lệ khung hình</span>
+              <div className="popup-segmented">
+                {(isT2I ? ASPECT_RATIOS_IMAGE : ASPECT_RATIOS_VIDEO).map((r) => (
+                  <button
+                    key={r}
+                    className={(shortAspect(data.config.aspectRatio) || '16:9') === r ? 'active' : ''}
+                    onClick={() => dispatchUpdate('aspectRatio', r)}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Resolution (for Video) */}
+            {isVideoNode && (
+              <div className="popup-row">
+                <span className="row-label">Độ phân giải</span>
+                <div className="popup-segmented">
+                  {RESOLUTIONS.map((res) => (
+                    <button
+                      key={res}
+                      className={(data.config.resolution || '720p') === res ? 'active' : ''}
+                      onClick={() => dispatchUpdate('resolution', res)}
+                    >
+                      {res}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Duration (for Video) */}
+            {isVideoNode && (
+              <div className="popup-row">
+                <span className="row-label">Thời lượng</span>
+                <div className="popup-segmented">
+                  {DURATIONS.map((d) => (
+                    <button
+                      key={d}
+                      className={(data.config.duration?.replace(' seconds', 's') || '8s') === d ? 'active' : ''}
+                      onClick={() => dispatchUpdate('duration', d.replace('s', ' seconds'))}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Batch Count Multiplier */}
+            <div className="popup-row">
+              <span className="row-label">Số lượng tạo</span>
+              <div className="popup-segmented">
+                {BATCH_COUNTS.map((b) => (
+                  <button
+                    key={b}
+                    className={(data.config.batchCount || '1') === b ? 'active' : ''}
+                    onClick={() => dispatchUpdate('batchCount', b)}
+                  >
+                    x{b}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cost note */}
+            <div className="popup-cost-note">
+              Quá trình tạo sẽ tốn <u>{data.config.costCredits || (isT2I ? '0' : '12')} tín dụng</u>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Handles (Ports) */}
       {!isPrompt && (
         <Handle
           type="target"

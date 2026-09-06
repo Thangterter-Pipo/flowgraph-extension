@@ -1155,7 +1155,8 @@ function Studio() {
       resolution: 'targetResolution',
     };
     const field = configKeyToField[key];
-    const syncTarget = resolveSelectedSyncTarget(selectedNode, nodes, edges);
+    const targetNode = nodes.find((n) => n.id === effectiveId) ?? selectedNode;
+    const syncTarget = resolveSelectedSyncTarget(targetNode, nodes, edges);
     if (!field || !syncTarget) return;
     const syncValue = field === 'durationSeconds' || field === 'seed'
       ? Number.parseInt(value, 10)
