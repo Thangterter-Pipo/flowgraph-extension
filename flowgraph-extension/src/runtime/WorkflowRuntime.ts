@@ -54,13 +54,15 @@ export interface RuntimeEmit {
   (event: RuntimeEvent): void;
 }
 
-const DEFAULT_CONCURRENCY = 2;
+const DEFAULT_CONCURRENCY = 1;
 /**
  * FG-1001 — Verified Google Flow concurrency cap.
- * Google Flow backend limits concurrent generation per session/project.
- * Hard cap at 2 ensures bounded execution regardless of caller options.
+ * Live provider evidence (2026-09-06): Google Flow operates over a single active
+ * browser UI tab and debugger target (`chrome.debugger.attach`). Attempting concurrent
+ * generation causes UI/debugger surface contention (`UI_NOT_READY` on the overlapping
+ * branch). Therefore, the verified effective production limit is strictly 1.
  */
-export const VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT = 2;
+export const VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT = 1;
 
 export function resolveEffectiveConcurrency(requested?: number): number {
   if (requested === undefined || requested === null || requested < 1) {

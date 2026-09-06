@@ -1,0 +1,75 @@
+{
+  "milestone": "FG-1001",
+  "name": "Provider-specific Concurrency Limit Live Boundary Verification",
+  "verificationDate": "2026-09-06T08:53:00.000Z",
+  "project": {
+    "projectId": "a412e256-8534-43c7-bfb9-71f15a2944df",
+    "projectName": "AI Creative Studio for Video, Images & Custom Tools",
+    "url": "https://flow.google.com/project/a412e256-8534-43c7-bfb9-71f15a2944df"
+  },
+  "hypothesis": "Verify whether Google Flow provider allows concurrent execution (concurrency = 2) or suffers from UI/debugger surface contention.",
+  "liveRuns": [
+    {
+      "runNumber": 1,
+      "branchA": {
+        "requestId": "req-live-branch-A",
+        "prompt": "Prompt A: A sleek metallic sphere floating above neon water, cinematic lighting",
+        "start": 1788684718629,
+        "end": 1788684719315,
+        "durationMs": 686,
+        "ok": false,
+        "errorCode": "UI_NOT_READY",
+        "errorMessage": "Flow prompt editor did not commit the value."
+      },
+      "branchB": {
+        "requestId": "req-live-branch-B",
+        "prompt": "Prompt B: An ancient stone dragon statue overgrown with luminescent moss",
+        "start": 1788684718629,
+        "end": 1788684753839,
+        "durationMs": 35210,
+        "ok": true,
+        "mediaId": "2bc8571d-d546-4496-b971-9667ef3e96e0",
+        "type": "IMAGE"
+      },
+      "overlap": true,
+      "outcome": "CONTENTION_OBSERVED: Branch A failed with UI_NOT_READY due to simultaneous debugger/DOM composer access. Branch B succeeded."
+    },
+    {
+      "runNumber": 2,
+      "branchC": {
+        "requestId": "req-live-branch-C",
+        "prompt": "Prompt C: A crystalline pyramid reflecting aurora borealis at twilight",
+        "start": 1788684764069,
+        "end": 1788684764238,
+        "durationMs": 169,
+        "ok": false,
+        "errorCode": "UI_NOT_READY",
+        "errorMessage": "Flow prompt editor did not commit the value."
+      },
+      "branchD": {
+        "requestId": "req-live-branch-D",
+        "prompt": "Prompt D: A robotic hummingbird hovering near a golden cybernetic flower",
+        "start": 1788684764070,
+        "end": 1788684794243,
+        "durationMs": 30173,
+        "ok": true,
+        "mediaId": "8e9e3478-60c7-4dc5-a9cd-bb76d7eb907d",
+        "type": "IMAGE"
+      },
+      "overlap": true,
+      "outcome": "CONTENTION_REPRODUCED: Branch C failed with UI_NOT_READY. Branch D completed with distinct mediaId."
+    }
+  ],
+  "conclusion": {
+    "effectiveLimit": 1,
+    "constant": "VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT = 1",
+    "rationale": "Google Flow operates over a single active browser UI tab and debugger target (chrome.debugger.attach). Concurrent execution causes immediate composer contention. The true verified limit supported by the live provider is 1. Hard cap enforced in WorkflowRuntime.",
+    "status": "RUNTIME_VERIFIED"
+  },
+  "regression": {
+    "vitest": "191/191 passed (27 test files)",
+    "typescript": "0 errors (tsc -b clean)",
+    "productionBuild": "passed",
+    "pythonCore": "78 passed, 24 skipped"
+  }
+}
