@@ -824,6 +824,36 @@
   }
   async function handleAccountStatus() {
     try {
+      const tab = await findFlowTab();
+      if (tab && tab.id !== void 0) {
+        try {
+          const injected = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              const el = document.querySelector('a.gb_C, [aria-label*="@gmail.com"], [aria-label*="T\xE0i kho\u1EA3n Google" i], [aria-label*="Google Account" i]');
+              if (el) {
+                const aria = el.getAttribute("aria-label") || "";
+                const emailMatch = aria.match(/\(([^)]+@[^)]+)\)/i);
+                const nameMatch = aria.match(/Tài khoản Google:\s*([^\n(]+)/i) || aria.match(/Google Account:\s*([^\n(]+)/i);
+                return {
+                  email: emailMatch ? emailMatch[1].trim() : void 0,
+                  name: nameMatch ? nameMatch[1].trim() : void 0
+                };
+              }
+              return null;
+            }
+          });
+          const userFromDom = injected?.[0]?.result;
+          if (userFromDom?.email) {
+            return {
+              state: "CONNECTED",
+              email: userFromDom.email,
+              name: userFromDom.name
+            };
+          }
+        } catch {
+        }
+      }
       const auth = await ensureSession();
       return {
         state: "CONNECTED",
@@ -1796,6 +1826,17 @@
           const payload = request.payload;
           if (!payload?.projectId) throw bridgeError("INVALID_INPUT", "projectId is required", false);
           activeProjectId = payload.projectId;
+          try {
+            const tab = await findFlowTab();
+            const targetUrl = `https://flow.google.com/project/${payload.projectId}`;
+            if (tab && tab.id !== void 0) {
+              await chrome.tabs.update(tab.id, { url: targetUrl });
+            } else {
+              await chrome.tabs.create({ url: targetUrl });
+            }
+          } catch (e) {
+            console.warn("Could not navigate Flow tab to project:", e);
+          }
           return makeResponse(request.requestId, { projectId: payload.projectId, selectedAt: (/* @__PURE__ */ new Date()).toISOString() });
         }
         case "FLOWGRAPH_MEDIA_UPLOAD":
