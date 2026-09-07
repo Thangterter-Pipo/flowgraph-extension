@@ -48,9 +48,8 @@ export class TextToImageExecutor implements NodeExecutor {
         modelKey,
         modelLabel: context.config.model ? normalizeFlowUiModelLabel(String(context.config.model)) : undefined,
         aspectRatio: String(context.config.aspectRatio ?? '16:9 (Landscape)'),
-        targetResolution: context.config.targetResolution !== undefined || context.config.resolution !== undefined
-          ? String(context.config.targetResolution ?? context.config.resolution)
-          : undefined,
+        // T2I không dùng targetResolution (độ phân giải video 360p/720p). Chỉ truyền khi thực sự cần.
+        targetResolution: undefined,
         seed: context.config.seed !== undefined ? Number(context.config.seed) : undefined,
       });
     } catch (error) {

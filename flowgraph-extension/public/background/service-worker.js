@@ -355,9 +355,27 @@
       if (projectId) return 250;
       return 0;
     };
-    return candidates.sort(
+    const chosenTab = candidates.sort(
       (a, b) => score(b) - score(a) || (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)
     )[0] ?? null;
+    if (chosenTab && chosenTab.id !== void 0) {
+      void ensureFlowContentScript(chosenTab.id);
+    }
+    return chosenTab;
+  }
+  async function ensureFlowContentScript(tabId) {
+    try {
+      const ping = await timeoutable(chrome.tabs.sendMessage(tabId, { type: "FLOWGRAPH_PING_FLOW" }), 400);
+      if (ping) return;
+    } catch {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId },
+          files: ["content/flow-content-script.js"]
+        });
+      } catch {
+      }
+    }
   }
   function projectIdFromUrl(url) {
     const match = url.match(/\/project\/([0-9a-f-]{36})/i);
@@ -920,7 +938,7 @@
     if (payload.durationSeconds !== void 0 && Number.isFinite(payload.durationSeconds)) {
       settingWrites.push({ field: "durationSeconds", type: "FLOWGRAPH_SYNC_SET_DURATION", value: payload.durationSeconds, optional: true });
     }
-    if (payload.targetResolution) {
+    if (payload.targetResolution && isVideoKind(payload.kind) && /^\d{3,4}p$/i.test(String(payload.targetResolution))) {
       settingWrites.push({ field: "targetResolution", type: "FLOWGRAPH_SYNC_SET_RESOLUTION", value: payload.targetResolution, optional: true });
     }
     const promptWrite = payload.prompt === void 0 ? void 0 : { field: "prompt", type: "FLOWGRAPH_SYNC_SET_PROMPT", value: payload.prompt };
@@ -1010,6 +1028,7 @@
     const tab = await findFlowTab();
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
     const tabId = tab.id;
+    await ensureFlowContentScript(tabId);
     const expectedProjectId = projectIdFromUrl(tab.url ?? "");
     if (!expectedProjectId || expectedProjectId !== payload.projectId) {
       throw bridgeError(
@@ -1018,8 +1037,8 @@
         false
       );
     }
-    const isUpscaleKind = payload.kind === "upscale" || payload.kind === "imageUpscale" || payload.kind === "videoUpscale";
-    if (isUpscaleKind) {
+    const isDirectApiPath = payload.kind === "upscale" || payload.kind === "imageUpscale" || payload.kind === "videoUpscale";
+    if (isDirectApiPath) {
       return generateApi(payload);
     }
     const prompt = (payload.prompt ?? "").trim();

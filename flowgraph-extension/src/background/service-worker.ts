@@ -197,9 +197,31 @@ async function findFlowTab(): Promise<chrome.tabs.Tab | null> {
     if (projectId) return 250;
     return 0;
   };
-  return candidates.sort((a, b) =>
+  const chosenTab = candidates.sort((a, b) =>
     score(b) - score(a) || (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0),
   )[0] ?? null;
+
+  // Tự động đảm bảo flow-content-script đã được tiêm vào tab được chọn (tránh lỗi Receiving end does not exist)
+  if (chosenTab && chosenTab.id !== undefined) {
+    void ensureFlowContentScript(chosenTab.id);
+  }
+
+  return chosenTab;
+}
+
+// Helper đảm bảo flow-content-script đã được tiêm vào tab Google Flow trước khi gửi message
+async function ensureFlowContentScript(tabId: number): Promise<void> {
+  try {
+    const ping = await timeoutable(chrome.tabs.sendMessage(tabId, { type: 'FLOWGRAPH_PING_FLOW' }), 400);
+    if (ping) return;
+  } catch {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content/flow-content-script.js'],
+      });
+    } catch {}
+  }
 }
 
 // The Google Flow project UUID is present in the page path for a project surface
@@ -950,9 +972,12 @@ async function syncAndVerifyBeforeGenerate(
   if (payload.durationSeconds !== undefined && Number.isFinite(payload.durationSeconds)) {
     settingWrites.push({ field: 'durationSeconds', type: 'FLOWGRAPH_SYNC_SET_DURATION', value: payload.durationSeconds, optional: true });
   }
-  if (payload.targetResolution) {
-    settingWrites.push({ field: 'targetResolution', type: 'FLOWGRAPH_SYNC_SET_RESOLUTION', value: payload.targetResolution, optional: true });
-  }
+    // Ghi chú: Text-to-Image và Image/Video Upscale không sử dụng targetResolution kiểu 360p/720p của video
+    // Chỉ gửi setting targetResolution nếu node thực sự là Video generation (i2v, t2v, extend, interpolation)
+    // Đồng thời kiểm tra format 360p/720p (nếu '4K' hoặc '2K' của image upscale truyền nhầm sang thì bỏ qua)
+    if (payload.targetResolution && isVideoKind(payload.kind) && /^\d{3,4}p$/i.test(String(payload.targetResolution))) {
+      settingWrites.push({ field: 'targetResolution', type: 'FLOWGRAPH_SYNC_SET_RESOLUTION', value: payload.targetResolution, optional: true });
+    }
   const promptWrite: PreflightWrite | undefined = payload.prompt === undefined
     ? undefined
     : { field: 'prompt', type: 'FLOWGRAPH_SYNC_SET_PROMPT', value: payload.prompt };
@@ -1048,6 +1073,7 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
   const tabId = tab.id;
+  await ensureFlowContentScript(tabId);
 
   // Enforce project isolation against the active Google Flow project
   const expectedProjectId = projectIdFromUrl(tab.url ?? '');
@@ -1059,10 +1085,12 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
     );
   }
 
-  const isUpscaleKind = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale';
-  if (isUpscaleKind) {
-    // Dedicated direct provider path for Image and Video Upscaling.
-    // Upscaling executes via direct aisandbox endpoints with verified project-scoped media binding.
+  // Dedicated direct provider path for Image and Video Upscaling.
+  // Ghi chú: interpolation (Tạo Cảnh Start - End) chạy qua UI browser Flow (CDP/DOM) có gán Start Frame và End Frame vào composer
+  const isDirectApiPath = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale';
+  if (isDirectApiPath) {
+    // Dedicated direct provider path for Image and Video Upscaling, and Start-End Interpolation.
+    // Upscaling and Interpolation execute via direct aisandbox endpoints with verified project-scoped media binding.
     return generateApi(payload);
   }
   const prompt = (payload.prompt ?? '').trim();

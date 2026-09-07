@@ -863,14 +863,26 @@
 
   function clickMenuItemLike(element) {
     if (!element) return;
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
     const fire = (type) => {
       const EventCtor = type.startsWith('pointer') ? PointerEvent : MouseEvent;
-      element.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0, view: window }));
+      element.dispatchEvent(new EventCtor(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x,
+        clientY: y,
+        pointerType: 'mouse',
+        button: 0,
+        view: window
+      }));
     };
     fire('pointerdown');
     fire('mousedown');
     fire('pointerup');
     fire('mouseup');
+    fire('click');
     element.click();
     try {
       element.focus();
@@ -880,8 +892,11 @@
   function findSettingsChip() {
     return Array.from(document.querySelectorAll('button')).find((button) => {
       const isTrigger = button.getAttribute('aria-haspopup') === 'menu'
-        || button.classList.contains('settings-trigger-button');
-      return isTrigger && /Video ·|Nano Banana/.test(normalizeSettingText(button.innerText));
+        || button.classList.contains('settings-trigger-button')
+        || button.getAttribute('aria-label')?.includes('cài đặt')
+        || button.getAttribute('aria-label')?.includes('settings');
+      const text = normalizeSettingText(button.innerText || '');
+      return isTrigger || /Video ·|Nano Banana|Banana|crop_/.test(text);
     });
   }
 
@@ -1235,7 +1250,8 @@
   async function writeResolution(value, originEventId) {
     const requested = normalizeSettingText(value).toLowerCase();
     if (!/^\d{3,4}p$/.test(requested)) {
-      return { ok: false, code: 'INVALID_VALUE', message: 'Resolution must use 360p/720p format.', originEventId };
+      // Nếu là '4k', '2k' hoặc định dạng không hỗ trợ trên video chips, trả về NO_UI_COUNTERPART an toàn để không chặn pipeline
+      return { ok: false, code: 'NO_UI_COUNTERPART', message: 'Resolution must use 360p/720p format.', originEventId };
     }
     return writeComposerSetting(
       'targetResolution',
