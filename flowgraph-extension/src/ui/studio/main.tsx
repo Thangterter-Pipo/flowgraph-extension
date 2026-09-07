@@ -20,6 +20,7 @@ import {
   CircleUserRound,
   EllipsisVertical,
   FileDown,
+  LayoutGrid,
   LayoutTemplate,
   Maximize2,
   Play,
@@ -36,6 +37,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
+import { calculateAutoLayout } from './autoLayout';
 import { TemplatesModal } from './TemplatesModal';
 import {
   BUILTIN_TEMPLATES,
@@ -1714,6 +1716,16 @@ function Studio() {
     alert('Đã lưu thành công vào My Library Templates!');
   }, [workflowName, nodes, edges]);
 
+  const handleAutoLayout = useCallback(() => {
+    if (!connection.isCanvasUnlocked || nodes.length === 0) return;
+    pushHistory(nodes, edges);
+    const layoutedNodes = calculateAutoLayout(nodes, edges);
+    setNodes(layoutedNodes);
+    setTimeout(() => {
+      reactFlow?.fitView({ padding: 0.18, duration: 400 });
+    }, 50);
+  }, [connection.isCanvasUnlocked, nodes, edges, pushHistory, setNodes, reactFlow]);
+
   return (
     <div className="fg-shell studio-app">
       <header className="studio-topbar">
@@ -1766,6 +1778,14 @@ function Studio() {
                       title="Làm lại (Ctrl+Y / Ctrl+Shift+Z)"
                     >
                       <Redo2 size={13} />
+                    </button>
+                    <button
+                      className="fg-btn fg-icon-btn"
+                      onClick={handleAutoLayout}
+                      disabled={!connection.isCanvasUnlocked || nodes.length === 0 || runStatus === 'running'}
+                      title="Tự động sắp xếp các Node thẳng hàng (Auto Layout)"
+                    >
+                      <LayoutGrid size={13} />
                     </button>
                     <button className="fg-btn fg-icon-btn" onClick={() => reactFlow?.fitView({ padding: .18, duration: 300 })} title="Căn chỉnh khung nhìn"><Maximize2 size={13} /></button>
                     <button className="fg-btn" style={{ minHeight: 29, fontSize: 9 }} onClick={() => setConfirmResetOpen(true)}><RotateCcw size={12} /> Reset</button>
