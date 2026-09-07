@@ -274,7 +274,7 @@
   var FX_API_BASE = "https://labs.google/fx/api";
   var TOKEN_TTL_MS = 50 * 60 * 1e3;
   var REQUEST_TIMEOUT_MS = 6e4;
-  var SYNC_WRITE_TIMEOUT_MS = 12e3;
+  var SYNC_WRITE_TIMEOUT_MS = 5e3;
   var DOWNLOAD_TIMEOUT_MS = DOWNLOAD_TRANSFER_BUDGET_MS;
   var FLOW_SITEKEY = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV";
   var VIDEO_KINDS = /* @__PURE__ */ new Set([
@@ -2691,6 +2691,7 @@
   async function forwardSyncWrite(request) {
     const tab = await findFlowTab();
     if (!tab?.id) return makeError(request.requestId, "NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    await ensureFlowContentScript(tab.id);
     const payload = request.payload ?? {};
     const requestedProjectId = typeof payload.projectId === "string" ? payload.projectId : void 0;
     const tabProjectId = projectIdFromUrl(tab.url ?? "");
@@ -2751,15 +2752,9 @@
       chrome.tabs.sendMessage(tab.id, forwarded),
       SYNC_WRITE_TIMEOUT_MS
     ).catch((err) => {
-      console.warn("[FlowGraph Bridge] forwardSyncWrite timeout or error:", err?.message);
       return { ok: false, code: "SYNC_TIMEOUT", message: err?.message || "Sync write timed out." };
     });
-    return reply?.ok ? makeResponse(request.requestId, reply) : makeError(
-      request.requestId,
-      reply?.code ?? "UI_NOT_READY",
-      reply?.message ?? "Google Flow did not apply the realtime sync write.",
-      true
-    );
+    return reply?.ok ? makeResponse(request.requestId, reply) : makeResponse(request.requestId, { ok: false, code: reply?.code ?? "UI_NOT_READY", message: reply?.message ?? "Sync write not ready" });
   }
   chrome.runtime.onInstalled.addListener(() => {
     console.info("FlowGraph Extension installed");

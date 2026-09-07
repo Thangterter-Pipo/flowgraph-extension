@@ -59,9 +59,9 @@ function makeBridgeError(code: string, message: string, retryable: boolean) {
 /** Real adapter driven by chrome.runtime messaging (works in the extension context). */
 export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
   private readonly transport: BridgeTransport;
-  // Ordinary bridge calls (status, credits, sync writes) should fail fast.
+  // ordinary bridge calls (status, credits, sync writes) should fail fast.
   private readonly requestTimeoutMs = 120_000;
-  private readonly syncRequestTimeoutMs = 15_000;
+  private readonly syncRequestTimeoutMs = 6_000;
   // A real UI generation is bounded by the worker's own submit-verify loop, media
   // wait, and video-tile editor recovery. Live run 54058dc8 proved a 300s ceiling
   // could fire *while the worker was still working*, which surfaced a healthy
