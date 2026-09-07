@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "live_generation_lifecycle",
+  "recordedDate": "2026-09-04",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "result": "PASS",
+  "runs": [
+    {
+      "kind": "t2v",
+      "runId": "cb4dc2c1-82fe-4794-8c86-bd9e195b6c73",
+      "startedAt": "2026-09-03T19:48:35.684Z",
+      "finishedAt": "2026-09-03T19:49:14.690Z",
+      "resultMediaId": "cebda58e-f8eb-47b9-b6af-d303f35917ae",
+      "resultType": "VIDEO",
+      "generationStatusReverseLatencyMs": 44,
+      "resultReverseLatencyMs": 738,
+      "nodeStatus": "SUCCESS",
+      "downloadResult": "PASS"
+    },
+    {
+      "kind": "i2v",
+      "actionTimestamp": "2026-09-03T20:12:34.424Z",
+      "upstreamImageMediaId": "02f79c21-b669-41a8-81a4-85d3224d722d",
+      "upstreamExactMatch": true,
+      "resultMediaId": "257430d4-26b5-4645-9fd7-d6c6fa015ed5",
+      "resultType": "VIDEO",
+      "generationStatusReverseLatencyMs": 13,
+      "resultReverseLatencyMs": 6,
+      "nodeStatus": "SUCCESS",
+      "download": {
+        "downloadId": 10,
+        "fileName": "flowgraph-i2v-realtime-verified.mp4.mp4",
+        "sizeBytes": 1565300,
+        "result": "PASS"
+      }
+    }
+  ],
+  "checks": {
+    "runningStateObserved": true,
+    "successStateObserved": true,
+    "resultMediaRelayedToStudio": true,
+    "realGoogleFlowMediaVisible": true,
+    "fakeSuccessUsed": false
+  }
+}

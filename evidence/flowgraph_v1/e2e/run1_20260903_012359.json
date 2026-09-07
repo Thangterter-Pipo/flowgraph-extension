@@ -1,0 +1,43 @@
+{
+  "runId": "571e1673-9f39-42aa-88bd-dfbeca4bf506",
+  "runLabel": "Run 1",
+  "status": "success",
+  "startedAt": "2026-09-02T18:21:31.265Z",
+  "finishedAt": "2026-09-02T18:22:56.214Z",
+  "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+  "projectName": "FlowGraph V1 Live 2026-09-02",
+  "account": "<REDACTED_EMAIL>",
+  "nodes": [
+    {
+      "kind": "prompt",
+      "status": "success",
+      "nodeId": "1"
+    },
+    {
+      "mimeType": "image/jpeg",
+      "kind": "t2i",
+      "status": "success",
+      "nodeId": "2",
+      "mediaId": "169262ae-c984-4b38-8cf4-a9c6e386c3ec"
+    },
+    {
+      "mimeType": "video/mp4",
+      "mediaId": "d7037bf3-0bcc-4707-8ffc-7ba4dbfdbecc",
+      "status": "success",
+      "upstreamMediaId": "169262ae-c984-4b38-8cf4-a9c6e386c3ec",
+      "nodeId": "3",
+      "kind": "i2v"
+    },
+    {
+      "downloadId": 2,
+      "mimeType": "video/mp4",
+      "nodeId": "4",
+      "status": "success",
+      "kind": "download",
+      "mediaId": "d7037bf3-0bcc-4707-8ffc-7ba4dbfdbecc",
+      "filename": "flowgraph-output.mp4",
+      "bytes": 2480531
+    }
+  ],
+  "evidenceCapturedAt": "2026-09-03T01:23:59.1868022+07:00"
+}

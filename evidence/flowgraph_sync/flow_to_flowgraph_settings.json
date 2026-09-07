@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "live_realtime_sync",
+  "recordedDate": "2026-09-04",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "direction": "GOOGLE_FLOW_TO_FLOWGRAPH",
+  "result": "PASS",
+  "measurements": [
+    {
+      "field": "mode",
+      "result": "PASS",
+      "latencyMs": 256
+    },
+    {
+      "field": "model",
+      "result": "PASS",
+      "latencyMs": 225
+    },
+    {
+      "field": "aspectRatio",
+      "result": "PASS",
+      "latencyMs": 86
+    },
+    {
+      "field": "duration",
+      "result": "PASS",
+      "latencyMs": 87
+    },
+    {
+      "field": "resolution",
+      "result": "PASS",
+      "latencyMs": 176
+    }
+  ],
+  "checks": {
+    "physicalUserActions": true,
+    "trustedEventGate": true,
+    "activeStudioNodeUpdated": true,
+    "projectScoped": true
+  },
+  "security": {
+    "tokensStored": false,
+    "cookiesStored": false,
+    "captchaBypass": false
+  }
+}

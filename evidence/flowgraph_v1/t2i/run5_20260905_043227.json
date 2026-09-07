@@ -1,0 +1,18 @@
+{
+  "runId": "38e0eda0",
+  "runLabel": "Run 5 (clean full E2E pass 1 of 3)",
+  "status": "success",
+  "startedAt": "2026-09-04T21:30:22.564Z",
+  "finishedAt": "2026-09-04T21:32:27.970Z",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "account": "<REDACTED_EMAIL>",
+  "evidenceCapturedAt": "2026-09-05T04:32:27+07:00",
+  "kind": "t2i",
+  "nodeId": "2",
+  "mediaId": "c8253b91-cadc-4c9b-b604-948a09de42f9",
+  "mimeType": "image/jpeg",
+  "model": "Nano Banana 2",
+  "aspectRatio": "16:9",
+  "previewUrl": "https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=c8253b91-cadc-4c9b-b604-948a09de42f9",
+  "previewRendered": true
+}

@@ -1,0 +1,208 @@
+{
+  "stamp": "2026-09-02T21:36:13.568Z",
+  "steps": [
+    {
+      "step": "baseline-unlocked",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow/project/23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+        "title": "Google Flow - FlowGraph V1 Live 2026-09-02"
+      },
+      "gate": {
+        "ts": 1788384975711,
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "gatePresent": false,
+        "gateText": null,
+        "pills": [
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          },
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          }
+        ],
+        "runDisabled": false,
+        "activeProject": {
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-02T18:32:07.003Z"
+        }
+      }
+    },
+    {
+      "step": "home-1000ms",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow",
+        "title": "Google Flow – Studio sáng tạo AI cho video, hình ảnh và công cụ tuỳ chỉnh"
+      },
+      "gate": {
+        "ts": 1788384977962,
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "gatePresent": true,
+        "gateText": "PROJECT REQUIRED\n\nSelect or create a Google Flow project to unlock the workspace.\n\nFlowGraph V1 Live 2026-09-02\nRefresh ",
+        "pills": [
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          },
+          {
+            "cls": "connection-pill warn",
+            "text": ""
+          }
+        ],
+        "runDisabled": true,
+        "activeProject": {
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-02T18:32:07.003Z"
+        }
+      }
+    },
+    {
+      "step": "home-3000ms",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow",
+        "title": "Google Flow – Studio sáng tạo AI cho video, hình ảnh và công cụ tuỳ chỉnh"
+      },
+      "gate": {
+        "ts": 1788384980504,
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "gatePresent": true,
+        "gateText": "PROJECT REQUIRED\n\nSelect or create a Google Flow project to unlock the workspace.\n\nFlowGraph V1 Live 2026-09-02\nRefresh ",
+        "pills": [
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          },
+          {
+            "cls": "connection-pill warn",
+            "text": ""
+          }
+        ],
+        "runDisabled": true,
+        "activeProject": {
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-02T18:32:07.003Z"
+        }
+      }
+    },
+    {
+      "step": "home-5000ms",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow",
+        "title": "Google Flow – Studio sáng tạo AI cho video, hình ảnh và công cụ tuỳ chỉnh"
+      },
+      "gate": {
+        "ts": 1788384985544,
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "gatePresent": true,
+        "gateText": "PROJECT REQUIRED\n\nSelect or create a Google Flow project to unlock the workspace.\n\nFlowGraph V1 Live 2026-09-02\nRefresh ",
+        "pills": [
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          },
+          {
+            "cls": "connection-pill warn",
+            "text": ""
+          }
+        ],
+        "runDisabled": true,
+        "activeProject": {
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-02T18:32:07.003Z"
+        }
+      }
+    },
+    {
+      "step": "project-1000ms",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow/project/23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+        "title": "Google Flow – Studio sáng tạo AI cho video, hình ảnh và công cụ tuỳ chỉnh"
+      },
+      "gate": {
+        "ts": 1788384988946,
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "gatePresent": false,
+        "gateText": null,
+        "pills": [
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          },
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          }
+        ],
+        "runDisabled": false,
+        "activeProject": {
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-02T18:32:07.003Z"
+        }
+      }
+    },
+    {
+      "step": "project-3000ms",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow/project/23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+        "title": "Google Flow – Studio sáng tạo AI cho video, hình ảnh và công cụ tuỳ chỉnh"
+      },
+      "gate": {
+        "ts": 1788384991036,
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "gatePresent": false,
+        "gateText": null,
+        "pills": [
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          },
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          }
+        ],
+        "runDisabled": false,
+        "activeProject": {
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-02T18:32:07.003Z"
+        }
+      }
+    },
+    {
+      "step": "project-5000ms",
+      "flow": {
+        "url": "https://labs.google/fx/vi/tools/flow/project/23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+        "title": "Google Flow - FlowGraph V1 Live 2026-09-02"
+      },
+      "gate": {
+        "ts": 1788385000569,
+        "url": "chrome-extension://doibgbebcgbecadimjcclbbhpaodijdp/studio.html",
+        "gatePresent": false,
+        "gateText": null,
+        "pills": [
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          },
+          {
+            "cls": "connection-pill online",
+            "text": ""
+          }
+        ],
+        "runDisabled": false,
+        "activeProject": {
+          "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+          "projectName": "FlowGraph V1 Live 2026-09-02",
+          "selectedAt": "2026-09-02T18:32:07.003Z"
+        }
+      }
+    }
+  ]
+}

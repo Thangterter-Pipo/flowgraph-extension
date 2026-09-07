@@ -1,0 +1,15 @@
+{
+  "runId": "e8f005a6-59ba-4afe-b290-8f46c08c7218",
+  "runLabel": "Run 2",
+  "kind": "download",
+  "status": "success",
+  "projectId": "23e7d6d8-d0bc-441b-b720-e63b0ffa9d32",
+  "mediaId": "de94329e-e06e-4eb9-b13a-d31d73ad432a",
+  "downloadId": "3",
+  "filename": "flowgraph-output (1).mp4",
+  "bytes": "2045762",
+  "mimeType": "video/mp4",
+  "state": "complete",
+  "nodeId": "4",
+  "evidenceCapturedAt": "2026-09-03T01:38:03.5318357+07:00"
+}

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "live_realtime_sync",
+  "recordedDate": "2026-09-04",
+  "projectId": "729eaa19-1c85-4cfc-89c3-5f86de2dffc5",
+  "field": "activeNode",
+  "result": "PASS",
+  "checks": [
+    "Selecting a T2I-compatible node selects IMAGE mode in Google Flow.",
+    "Selecting T2V/I2V-compatible nodes selects VIDEO mode in Google Flow.",
+    "A trusted Google Flow mode change updates the compatible active FlowGraph node.",
+    "Node-scoped values are applied only to the mapped active node.",
+    "Mode and source-instance sequencing reset cleanly across node switches."
+  ],
+  "failClosed": true
+}

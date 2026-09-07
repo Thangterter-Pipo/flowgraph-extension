@@ -1,0 +1,2 @@
+file 'E:/Flow_veo/flowgraph-extension/scripts/bridge-test-source.mp4'
+outpoint 2.000
