@@ -1287,6 +1287,16 @@ function Studio() {
   }, [connection.isCanvasUnlocked, isValidConnection, nodes, edges, pushHistory, setEdges]);
 
   useEffect(() => {
+    // Chặn toàn cục để Chrome không bao giờ tự ý mở/điều hướng trang sang tệp ảnh khi kéo thả
+    const preventChromeNavigation = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+    window.addEventListener('dragover', preventChromeNavigation);
+    window.addEventListener('drop', preventChromeNavigation);
+
     const handleNodeDropMedia = (e: Event) => {
       const detail = (e as CustomEvent).detail as { nodeId: string; type: 'image' | 'video'; file: File; blobUrl: string };
       if (!detail?.nodeId) return;
@@ -1368,7 +1378,11 @@ function Studio() {
     };
 
     window.addEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
-    return () => window.removeEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
+    return () => {
+      window.removeEventListener('dragover', preventChromeNavigation);
+      window.removeEventListener('drop', preventChromeNavigation);
+      window.removeEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
+    };
   }, [nodes, edges, connection.activeProject, pushHistory, setNodes]);
 
   const onDrop = useCallback(async (event: React.DragEvent) => {
