@@ -41,7 +41,7 @@ function inferredResult(data: FlowNodeData): NodeMediaResult | undefined {
   if (data.result?.previewUrl) return data.result;
   const previewUrl = data.config.resultUrl ?? data.config.previewUrl ?? data.config.outputUrl;
   const mediaId = data.result?.mediaId ?? data.config.mediaId;
-  const fallbackUrl = mediaId
+  const fallbackUrl = mediaId && !mediaId.startsWith('local-') && !mediaId.startsWith('dropped-')
     ? `https://flow.google.com/asb/${mediaId}`
     : undefined;
   const resolvedPreviewUrl = previewUrl ?? fallbackUrl;
@@ -171,6 +171,8 @@ function computeEstimatedCredits(kind: string, config: Record<string, string>): 
   return '12';
 }
 
+import { getMediaBlob, setMediaBlob } from './mediaStorage';
+
 function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: string }) {
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
 
@@ -180,8 +182,21 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
       setBlobUrl(null);
       return;
     }
+
+    // 1. Nếu là Blob hoặc Data URL cục bộ -> Dùng ngay, không tải mạng
     if (src && (src.startsWith('blob:') || src.startsWith('data:'))) {
       setBlobUrl(src);
+      return;
+    }
+
+    // 2. Nếu là local mediaId (ảnh kéo từ máy vào: 'local-...' hoặc 'dropped-...')
+    // Tuyệt đối không gửi request lên flow.google.com/asb/... (tránh lỗi 400 Bad Request)
+    if (mediaId && (mediaId.startsWith('local-') || mediaId.startsWith('dropped-'))) {
+      void getMediaBlob(mediaId).then((cached) => {
+        if (active && cached) {
+          setBlobUrl(cached);
+        }
+      });
       return;
     }
 
@@ -211,7 +226,7 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
         }
       } catch {}
 
-      if (src) {
+      if (src && !src.includes('/asb/local-') && !src.includes('/asb/dropped-')) {
         fetch(src)
           .then((res) => res.blob())
           .then((blob) => {
@@ -232,7 +247,7 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
     };
   }, [src, mediaId]);
 
-  return <img src={blobUrl || src} alt={alt} />;
+  return <img src={blobUrl || (src && !src.includes('/asb/local-') && !src.includes('/asb/dropped-') ? src : '')} alt={alt} />;
 }
 
 import { parseConfigFromPrompt } from './promptConfigParser';
