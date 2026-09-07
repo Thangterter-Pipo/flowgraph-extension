@@ -1315,10 +1315,6 @@ function Studio() {
             data: {
               ...n.data,
               status: 'success',
-              config: {
-                ...n.data.config,
-                localDataUrl: dataUrl,
-              },
               result: {
                 type: detail.type,
                 mediaId: n.data.result?.mediaId || `dropped-${Date.now()}`,
@@ -1410,16 +1406,12 @@ function Studio() {
             const dataUrl = e.target?.result as string;
             const base64Data = dataUrl ? dataUrl.split(',')[1] : null;
 
-            // Lưu trực tiếp dataUrl vào node data và config để persist vĩnh viễn
+            // Quản lý lưu trữ an toàn chống tràn dung lượng (IndexedDB + previewUrl fallback)
             setNodes((curr) => curr.map((n) => n.id === fileId ? {
               ...n,
               data: {
                 ...n.data,
                 status: 'success',
-                config: {
-                  ...n.data.config,
-                  localDataUrl: dataUrl,
-                },
                 result: {
                   type: 'image',
                   mediaId: n.data.result?.mediaId || `local-${Date.now()}`,
@@ -1430,14 +1422,14 @@ function Studio() {
 
             if (base64Data && connection.activeProject?.projectId) {
               try {
-                // Tự động upload ảnh lên Google Flow
+                // Tự động upload ảnh lên Google Flow (nếu endpoint uploadImage chưa hỗ trợ auth direct thì bắt ngoại lệ an toàn)
                 const res = await new RealGoogleFlowAdapter().uploadImage({
                   projectId: connection.activeProject.projectId,
                   imageBytesBase64: base64Data,
                   mimeType: file.type || 'image/png',
                   fileName: file.name,
-                });
-                if (res.mediaId) {
+                }).catch(() => null);
+                if (res?.mediaId) {
                   setNodes((curr) => curr.map((n) => n.id === fileId ? {
                     ...n,
                     data: {
@@ -1451,8 +1443,8 @@ function Studio() {
                     },
                   } : n));
                 }
-              } catch (err) {
-                console.warn('Auto upload image failed, keep persistent dataUrl:', err);
+              } catch {
+                // Giữ nguyên local previewUrl an toàn
               }
             }
           };

@@ -2112,8 +2112,14 @@ async function handleRequest(request: BridgeRequest): Promise<BridgeResponse<unk
       }
       case 'FLOWGRAPH_MEDIA_UPLOAD':
         return makeResponse(request.requestId, await handleMediaUpload(request.payload as MediaUploadPayload));
-      case 'FLOWGRAPH_GENERATE':
-        return makeResponse(request.requestId, await handleGenerate(request.payload as GeneratePayload));
+      case 'FLOWGRAPH_GENERATE': {
+        const genPayload = request.payload as GeneratePayload;
+        const isDirectApiPath = genPayload.kind === 'upscale' || genPayload.kind === 'imageUpscale' || genPayload.kind === 'videoUpscale';
+        if (isDirectApiPath) {
+          return makeResponse(request.requestId, await generateApi(genPayload));
+        }
+        return makeResponse(request.requestId, await handleGenerate(genPayload));
+      }
       case 'FLOWGRAPH_MEDIA_STATUS':
         return makeResponse(request.requestId, await handleMediaStatus(request.payload as MediaStatusPayload));
       case 'FLOWGRAPH_MEDIA_DOWNLOAD':
@@ -3034,7 +3040,10 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
   const reply = await timeoutable(
     chrome.tabs.sendMessage(tab.id, forwarded),
     SYNC_WRITE_TIMEOUT_MS,
-  ) as { ok?: boolean; code?: string; message?: string } | undefined;
+  ).catch((err) => {
+    console.warn('[FlowGraph Bridge] forwardSyncWrite timeout or error:', err?.message);
+    return { ok: false, code: 'SYNC_TIMEOUT', message: err?.message || 'Sync write timed out.' };
+  }) as { ok?: boolean; code?: string; message?: string } | undefined;
   return reply?.ok
     ? makeResponse(request.requestId, reply)
     : makeError(

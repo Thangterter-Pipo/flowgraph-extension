@@ -42,7 +42,7 @@ function inferredResult(data: FlowNodeData): NodeMediaResult | undefined {
   const previewUrl = data.config.resultUrl ?? data.config.previewUrl ?? data.config.outputUrl;
   const mediaId = data.result?.mediaId ?? data.config.mediaId;
   const fallbackUrl = mediaId
-    ? `https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(mediaId)}`
+    ? `https://flow.google.com/asb/${mediaId}`
     : undefined;
   const resolvedPreviewUrl = previewUrl ?? fallbackUrl;
   if (!resolvedPreviewUrl) return undefined;
