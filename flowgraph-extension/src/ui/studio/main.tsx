@@ -180,8 +180,14 @@ function NodeLibrary({
   locked: boolean;
   onOpenTemplatesModal?: () => void;
 }) {
-  const groups = ['Generative', 'Image', 'Video', 'Character', 'Utility'] as const;
-  const filtered = palette.filter((node) => `${node.title} ${node.subtitle}`.toLowerCase().includes(search.toLowerCase()));
+  const [activeGroup, setActiveGroup] = useState<string>('All');
+  const groups = ['All', 'Generative', 'Image', 'Video', 'Utility'] as const;
+
+  const filtered = palette.filter((node) => {
+    const matchesSearch = `${node.title} ${node.subtitle}`.toLowerCase().includes(search.toLowerCase());
+    const matchesGroup = activeGroup === 'All' || node.group === activeGroup;
+    return matchesSearch && matchesGroup;
+  });
 
   const dragStart = (event: React.DragEvent, spec: PaletteSpec) => {
     event.dataTransfer.effectAllowed = 'move';
@@ -190,7 +196,7 @@ function NodeLibrary({
 
   return (
     <aside className={`node-library ${locked ? 'node-library-locked' : ''}`}>
-      {/* Banner mở Thư Viện Templates hoành tráng */}
+      {/* Banner mở Thư Viện Templates sang trọng */}
       <div className="library-template-banner">
         <button
           className="fg-btn fg-btn-primary open-templates-btn"
@@ -198,28 +204,47 @@ function NodeLibrary({
           disabled={locked}
           title="Mở Thư Viện Mẫu Quy Trình (My Library Templates)"
         >
-          <LayoutTemplate size={14} />
+          <LayoutTemplate size={13} />
           <span>My Library Templates</span>
           <span className="tpl-hot-badge">PRO</span>
         </button>
       </div>
 
-      <div className="library-title">NODE LIBRARY</div>
-      <div className="library-search"><Search size={14} /><input placeholder="Search nodes..." value={search} onChange={(event) => setSearch(event.target.value)} /></div>
-      {groups.map((group) => (
-        <div className="node-group" key={group}>
-          <div className={`node-group-name ${group.toLowerCase()}`}>{group.toUpperCase()}</div>
-          {filtered.filter((node) => node.group === group).map((node) => (
-            <button className="palette-node" draggable={!locked} onDragStart={locked ? undefined : (event) => dragStart(event, node)} key={node.kind}>
-              <span className={`palette-icon ${node.tone}`}><NodeIcon kind={node.kind} size={14} /></span>
-              <span className="palette-copy"><strong>{node.title}</strong><span>{node.subtitle}</span></span>
-              {node.isNew && <span className="new-tag">NEW</span>}
-              {node.experimental && <span className="exp-tag">EXP</span>}
-            </button>
-          ))}
-        </div>
-      ))}
-      <button className="fg-btn" style={{ width: '100%', minHeight: 35, fontSize: 9 }}><Plus size={13} /> Add Custom Node</button>
+      <div className="library-search">
+        <Search size={13} />
+        <input placeholder="Search nodes..." value={search} onChange={(event) => setSearch(event.target.value)} />
+      </div>
+
+      {/* Pill group filter tinh gọn */}
+      <div className="sidebar-group-pills">
+        {groups.map((grp) => (
+          <button
+            key={grp}
+            className={`sidebar-pill-btn ${activeGroup === grp ? 'active' : ''}`}
+            onClick={() => setActiveGroup(grp)}
+          >
+            {grp}
+          </button>
+        ))}
+      </div>
+
+      <div className="sidebar-nodes-list">
+        {filtered.map((node) => (
+          <button
+            className="palette-node compact"
+            draggable={!locked}
+            onDragStart={locked ? undefined : (event) => dragStart(event, node)}
+            key={node.kind}
+            title={`${node.title} — ${node.subtitle}`}
+          >
+            <span className={`palette-icon ${node.tone}`}><NodeIcon kind={node.kind} size={13} /></span>
+            <span className="palette-copy">
+              <strong>{node.title}</strong>
+              <span>{node.subtitle}</span>
+            </span>
+          </button>
+        ))}
+      </div>
     </aside>
   );
 }

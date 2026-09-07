@@ -237,26 +237,134 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .film-workspace-full { grid-column: 1 / -1; height: 100%; overflow: auto; background: #080c13; }
 .workspace-select { background: #0c1421; border: 1px solid #233148; color: #c0cde0; font-size: 10px; font-weight: 600; padding: 4px 8px; border-radius: 8px; cursor: pointer; outline: none; }
 .workspace-select:hover { border-color: #38bdf8; }
-.node-library { border-right:1px solid #1e2a3d; background:#0b111b; padding:12px 10px; overflow-y:auto; }
-.library-title { font-size:10px; font-weight:750; letter-spacing:.07em; color:#aab6c9; margin-bottom:9px; }
-.library-search { position:relative; margin-bottom:13px; }
-.library-search input { width:100%; height:34px; border:1px solid #25324a; border-radius:8px; background:#0e1623; color:#dfe7f7; padding:0 31px 0 31px; font-size:10px; }
-.library-search svg { position:absolute; left:10px; top:9px; color:#6e7d93; }
-.node-group { margin-bottom:15px; }
-.node-group-name { color:#8f56eb; font-size:9px; font-weight:800; letter-spacing:.06em; margin:0 0 6px 2px; }
-.node-group-name.image { color:#27c8a3; }
-.node-group-name.video { color:#32cba1; }
-.node-group-name.utility { color:#e79c33; }
-.palette-node { width:100%; min-height:44px; display:grid; grid-template-columns:27px 1fr auto; align-items:center; gap:8px; padding:6px 7px; margin-bottom:5px; border:1px solid #1f2b3f; border-radius:8px; background:#101826; cursor:grab; text-align:left; }
-.palette-node:hover { background:#152033; border-color:#34465f; }
-.palette-node:active { cursor:grabbing; }
-.palette-icon { width:27px; height:27px; display:grid; place-items:center; border-radius:7px; background:#201432; color:#b36efa; }
-.palette-icon.blue { background:#101f36; color:#5eabff; }
-.palette-icon.green { background:#0e2924; color:#42d5ae; }
-.palette-icon.orange { background:#302114; color:#ffab4f; }
-.palette-copy strong { display:block; font-size:10px; font-weight:680; }
-.palette-copy span { display:block; font-size:8px; color:#6f7d92; margin-top:2px; }
-.exp-tag { font-size:7px; color:#e7aa59; border:1px solid rgba(231,170,89,.3); border-radius:4px; padding:2px 4px; }
+.node-library {
+  border-right: 1px solid #1a2436;
+  background: #090e17;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.library-search {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.library-search input {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #1e2a3c;
+  border-radius: 8px;
+  background: #0d1420;
+  color: #dfe7f7;
+  padding: 0 10px 0 30px;
+  font-size: 10px;
+  outline: none;
+}
+.library-search input:focus {
+  border-color: #7c3aed;
+}
+
+.library-search svg {
+  position: absolute;
+  left: 9px;
+  top: 9.5px;
+  color: #64748b;
+}
+
+.sidebar-group-pills {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 10px;
+  background: #0c121e;
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid #162030;
+}
+
+.sidebar-pill-btn {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: #718299;
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 3px 0;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sidebar-pill-btn:hover {
+  color: #cbd5e1;
+}
+
+.sidebar-pill-btn.active {
+  background: #192438;
+  color: #a78bfa;
+}
+
+.sidebar-nodes-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.palette-node.compact {
+  width: 100%;
+  min-height: 36px;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  margin-bottom: 0;
+  border: 1px solid #162030;
+  border-radius: 7px;
+  background: #0d131f;
+  cursor: grab;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.palette-node.compact:hover {
+  background: #131c2c;
+  border-color: #3b82f6;
+  transform: translateX(2px);
+}
+
+.palette-node.compact:active {
+  cursor: grabbing;
+}
+
+.palette-node.compact .palette-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+}
+
+.palette-node.compact .palette-copy strong {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.palette-node.compact .palette-copy span {
+  font-size: 7.5px;
+  color: #64748b;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
 
 .studio-center { min-width:0; min-height:0; display:grid; grid-template-rows:minmax(0,1fr); height:100%; }
 .canvas-wrap { position:relative; min-height:0; height:100%; overflow:hidden; background:#080d15; }
