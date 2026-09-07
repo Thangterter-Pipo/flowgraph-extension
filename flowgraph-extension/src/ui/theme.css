@@ -338,13 +338,57 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   background: #0d131f;
   cursor: grab;
   text-align: left;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
+  position: relative;
 }
 
-.palette-node.compact:hover {
-  background: #131c2c;
-  border-color: #3b82f6;
-  transform: translateX(2px);
+/* ColorHunt Category Themes for Sidebar Nodes (Rõ nét, hài hòa, đồng bộ với Canvas) */
+.palette-node.compact.tone-purple {
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.18) 0%, rgba(22, 16, 36, 0.85) 100%) !important;
+  border: 1px solid rgba(168, 85, 247, 0.45) !important;
+  box-shadow: 0 0 10px rgba(168, 85, 247, 0.15);
+}
+.palette-node.compact.tone-purple:hover {
+  background: linear-gradient(90deg, rgba(168, 85, 247, 0.30) 0%, rgba(45, 24, 75, 0.95) 100%) !important;
+  border-color: #a855f7 !important;
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.4);
+  transform: translateX(3px);
+}
+
+.palette-node.compact.tone-blue {
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.18) 0%, rgba(9, 26, 40, 0.85) 100%) !important;
+  border: 1px solid rgba(14, 165, 233, 0.45) !important;
+  box-shadow: 0 0 10px rgba(14, 165, 233, 0.15);
+}
+.palette-node.compact.tone-blue:hover {
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.30) 0%, rgba(14, 60, 95, 0.95) 100%) !important;
+  border-color: #0ea5e9 !important;
+  box-shadow: 0 0 14px rgba(14, 165, 233, 0.4);
+  transform: translateX(3px);
+}
+
+.palette-node.compact.tone-green {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.18) 0%, rgba(9, 35, 30, 0.85) 100%) !important;
+  border: 1px solid rgba(16, 185, 129, 0.45) !important;
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+}
+.palette-node.compact.tone-green:hover {
+  background: linear-gradient(90deg, rgba(16, 185, 129, 0.30) 0%, rgba(18, 75, 60, 0.95) 100%) !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 14px rgba(16, 185, 129, 0.4);
+  transform: translateX(3px);
+}
+
+.palette-node.compact.tone-orange {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.18) 0%, rgba(38, 22, 8, 0.85) 100%) !important;
+  border: 1px solid rgba(245, 158, 11, 0.45) !important;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
+}
+.palette-node.compact.tone-orange:hover {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.30) 0%, rgba(80, 45, 16, 0.95) 100%) !important;
+  border-color: #f59e0b !important;
+  box-shadow: 0 0 14px rgba(245, 158, 11, 0.4);
+  transform: translateX(3px);
 }
 
 .palette-node.compact:active {
