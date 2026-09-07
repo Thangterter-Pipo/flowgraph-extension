@@ -36,6 +36,7 @@ import {
   Workflow,
   X,
 } from 'lucide-react';
+import { TemplatesModal } from './TemplatesModal';
 import {
   BUILTIN_TEMPLATES,
   deleteCustomTemplate,
@@ -182,31 +183,15 @@ function NodeLibrary({
   search,
   setSearch,
   locked,
-  onApplyTemplate,
-  onSaveAsTemplate,
+  onOpenTemplatesModal,
 }: {
   search: string;
   setSearch: (value: string) => void;
   locked: boolean;
-  onApplyTemplate?: (template: WorkflowTemplate) => void;
-  onSaveAsTemplate?: () => void;
+  onOpenTemplatesModal?: () => void;
 }) {
-  const [activeTab, setActiveTab] = useState<'nodes' | 'templates'>('nodes');
-  const [templates, setTemplates] = useState<WorkflowTemplate[]>(() => loadAllTemplates());
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
-
-  const reloadTemplates = useCallback(() => {
-    setTemplates(loadAllTemplates());
-  }, []);
-
   const groups = ['Generative', 'Image', 'Video', 'Character', 'Utility'] as const;
   const filtered = palette.filter((node) => `${node.title} ${node.subtitle}`.toLowerCase().includes(search.toLowerCase()));
-
-  const filteredTemplates = templates.filter((tpl) => {
-    const matchesSearch = `${tpl.title} ${tpl.description} ${tpl.tags.join(' ')}`.toLowerCase().includes(search.toLowerCase());
-    const matchesCat = selectedCategory === 'all' || tpl.category === selectedCategory;
-    return matchesSearch && matchesCat;
-  });
 
   const dragStart = (event: React.DragEvent, spec: PaletteSpec) => {
     event.dataTransfer.effectAllowed = 'move';
@@ -215,111 +200,36 @@ function NodeLibrary({
 
   return (
     <aside className={`node-library ${locked ? 'node-library-locked' : ''}`}>
-      {/* Tab Switcher: Node Library vs My Templates */}
-      <div className="library-tabs">
+      {/* Banner mở Thư Viện Templates hoành tráng */}
+      <div className="library-template-banner">
         <button
-          className={`library-tab ${activeTab === 'nodes' ? 'active' : ''}`}
-          onClick={() => setActiveTab('nodes')}
+          className="fg-btn fg-btn-primary open-templates-btn"
+          onClick={onOpenTemplatesModal}
+          disabled={locked}
+          title="Mở Thư Viện Mẫu Quy Trình (My Library Templates)"
         >
-          <Workflow size={12} /> Nodes
-        </button>
-        <button
-          className={`library-tab ${activeTab === 'templates' ? 'active' : ''}`}
-          onClick={() => { setActiveTab('templates'); reloadTemplates(); }}
-        >
-          <LayoutTemplate size={12} /> My Library Templates
+          <LayoutTemplate size={14} />
+          <span>My Library Templates</span>
+          <span className="tpl-hot-badge">PRO</span>
         </button>
       </div>
 
-      <div className="library-search">
-        <Search size={14} />
-        <input
-          placeholder={activeTab === 'nodes' ? 'Search nodes...' : 'Search templates...'}
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-      </div>
-
-      {activeTab === 'nodes' ? (
-        <>
-          {groups.map((group) => (
-            <div className="node-group" key={group}>
-              <div className={`node-group-name ${group.toLowerCase()}`}>{group.toUpperCase()}</div>
-              {filtered.filter((node) => node.group === group).map((node) => (
-                <button className="palette-node" draggable={!locked} onDragStart={locked ? undefined : (event) => dragStart(event, node)} key={node.kind}>
-                  <span className={`palette-icon ${node.tone}`}><NodeIcon kind={node.kind} size={14} /></span>
-                  <span className="palette-copy"><strong>{node.title}</strong><span>{node.subtitle}</span></span>
-                  {node.isNew && <span className="new-tag">NEW</span>}
-                  {node.experimental && <span className="exp-tag">EXP</span>}
-                </button>
-              ))}
-            </div>
-          ))}
-          <button className="fg-btn" style={{ width: '100%', minHeight: 35, fontSize: 9 }}><Plus size={13} /> Add Custom Node</button>
-        </>
-      ) : (
-        <div className="templates-container">
-          {/* Template Actions */}
-          <div className="template-top-actions">
-            <button
-              className="fg-btn fg-btn-primary"
-              style={{ width: '100%', minHeight: 32, fontSize: 9, marginBottom: 8 }}
-              onClick={onSaveAsTemplate}
-              disabled={locked}
-            >
-              <BookmarkCheck size={13} /> Save Current as Template
+      <div className="library-title">NODE LIBRARY</div>
+      <div className="library-search"><Search size={14} /><input placeholder="Search nodes..." value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+      {groups.map((group) => (
+        <div className="node-group" key={group}>
+          <div className={`node-group-name ${group.toLowerCase()}`}>{group.toUpperCase()}</div>
+          {filtered.filter((node) => node.group === group).map((node) => (
+            <button className="palette-node" draggable={!locked} onDragStart={locked ? undefined : (event) => dragStart(event, node)} key={node.kind}>
+              <span className={`palette-icon ${node.tone}`}><NodeIcon kind={node.kind} size={14} /></span>
+              <span className="palette-copy"><strong>{node.title}</strong><span>{node.subtitle}</span></span>
+              {node.isNew && <span className="new-tag">NEW</span>}
+              {node.experimental && <span className="exp-tag">EXP</span>}
             </button>
-            <div className="template-category-filter">
-              <button className={`cat-btn ${selectedCategory === 'all' ? 'active' : ''}`} onClick={() => setSelectedCategory('all')}>All</button>
-              <button className={`cat-btn ${selectedCategory === 'cinematic' ? 'active' : ''}`} onClick={() => setSelectedCategory('cinematic')}>Cinema</button>
-              <button className={`cat-btn ${selectedCategory === 'standard' ? 'active' : ''}`} onClick={() => setSelectedCategory('standard')}>Standard</button>
-              <button className={`cat-btn ${selectedCategory === 'custom' ? 'active' : ''}`} onClick={() => setSelectedCategory('custom')}>Custom</button>
-            </div>
-          </div>
-
-          <div className="template-list">
-            {filteredTemplates.length === 0 ? (
-              <div className="empty-templates">
-                <BookmarkPlus size={24} color="#65778e" />
-                <span>No templates found</span>
-              </div>
-            ) : (
-              filteredTemplates.map((tpl) => (
-                <div className="template-card" key={tpl.id}>
-                  <div className="template-card-head">
-                    <strong>{tpl.title}</strong>
-                    <span className={`tpl-tag ${tpl.category}`}>{tpl.category.toUpperCase()}</span>
-                  </div>
-                  <p className="template-card-desc">{tpl.description}</p>
-                  <div className="template-card-tags">
-                    {tpl.tags.map((tag) => (
-                      <span key={tag} className="tag-pill">#{tag}</span>
-                    ))}
-                  </div>
-                  <div className="template-card-actions">
-                    <button
-                      className="fg-btn fg-btn-primary apply-tpl-btn"
-                      onClick={() => onApplyTemplate?.(tpl)}
-                      disabled={locked}
-                    >
-                      <Sparkles size={11} /> Load Template
-                    </button>
-                    {tpl.category === 'custom' && (
-                      <button
-                        className="fg-btn fg-icon-btn del-tpl-btn"
-                        onClick={() => { deleteCustomTemplate(tpl.id); reloadTemplates(); }}
-                        title="Delete custom template"
-                      >
-                        <Trash2 size={11} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          ))}
         </div>
-      )}
+      ))}
+      <button className="fg-btn" style={{ width: '100%', minHeight: 35, fontSize: 9 }}><Plus size={13} /> Add Custom Node</button>
     </aside>
   );
 }
@@ -624,6 +534,7 @@ function Studio() {
   const [creditsAfter, setCreditsAfter] = useState<number | undefined>();
   const [confirmRerun, setConfirmRerun] = useState<string[]>([]); // node ids with cached results
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ state: 'idle' | 'syncing' | 'synced' | 'desynced'; message?: string }>({ state: 'idle' });
 
   const cancelRef = useRef(false);
@@ -1843,8 +1754,7 @@ function Studio() {
               search={search}
               setSearch={setSearch}
               locked={!connection.isCanvasUnlocked}
-              onApplyTemplate={applyTemplate}
-              onSaveAsTemplate={saveCurrentAsTemplate}
+              onOpenTemplatesModal={() => setTemplatesModalOpen(true)}
             />
 
             <section className="studio-center">
@@ -1965,6 +1875,15 @@ function Studio() {
           </div>
         </div>
       )}
+
+      {/* Pop-up Khung Lớn Toàn Màn Hình: My Library Templates */}
+      <TemplatesModal
+        isOpen={templatesModalOpen}
+        onClose={() => setTemplatesModalOpen(false)}
+        onApplyTemplate={applyTemplate}
+        onSaveAsTemplate={saveCurrentAsTemplate}
+        locked={!connection.isCanvasUnlocked}
+      />
     </div>
   );
 }
