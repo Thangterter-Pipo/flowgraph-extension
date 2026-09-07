@@ -586,11 +586,6 @@
         DOWNLOAD_RESOLVE_BUDGET_MS
       );
     }
-    try {
-      if (tab.windowId !== void 0) await chrome.windows.update(tab.windowId, { focused: true });
-      await chrome.tabs.update(tab.id, { active: true });
-    } catch {
-    }
     const results = await timeoutable(
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
@@ -629,10 +624,6 @@
     const target = { tabId };
     let attachedHere = false;
     let projectUrl = "";
-    try {
-      await chrome.tabs.update(tabId, { active: true });
-    } catch {
-    }
     try {
       await chrome.debugger.attach(target, "1.3");
       attachedHere = true;
@@ -1043,9 +1034,12 @@
     const target = { tabId };
     let attached = false;
     let attachFailure = "";
-    try {
-      await chrome.tabs.update(tabId, { active: true });
-    } catch {
+    const isBackgroundExecution = true;
+    if (!isBackgroundExecution) {
+      try {
+        await chrome.tabs.update(tabId, { active: true });
+      } catch {
+      }
     }
     await syncAndVerifyBeforeGenerate(tab, { ...payload, prompt });
     try {
@@ -1832,7 +1826,7 @@
             if (tab && tab.id !== void 0) {
               await chrome.tabs.update(tab.id, { url: targetUrl });
             } else {
-              await chrome.tabs.create({ url: targetUrl });
+              await chrome.tabs.create({ url: targetUrl, active: false });
             }
           } catch (e) {
             console.warn("Could not navigate Flow tab to project:", e);
@@ -1878,19 +1872,7 @@
     "FLOWGRAPH_SYNC_CANCEL"
   ]);
   var SYNC_RELAY_TYPES = /* @__PURE__ */ new Set(["FLOWGRAPH_SYNC_EVENT", "FLOWGRAPH_SYNC_STATE"]);
-  var SYNC_FOREGROUND_TYPES = /* @__PURE__ */ new Set([
-    "FLOWGRAPH_SYNC_SET_MODE",
-    "FLOWGRAPH_SYNC_SET_MODEL",
-    "FLOWGRAPH_SYNC_SET_ASPECT_RATIO",
-    "FLOWGRAPH_SYNC_SET_BATCH",
-    "FLOWGRAPH_SYNC_SET_BATCH_COUNT",
-    "FLOWGRAPH_SYNC_SET_DURATION",
-    "FLOWGRAPH_SYNC_SET_RESOLUTION",
-    "FLOWGRAPH_SYNC_BIND_MEDIA",
-    "FLOWGRAPH_SYNC_START_FRAME",
-    "FLOWGRAPH_SYNC_END_FRAME",
-    "FLOWGRAPH_SYNC_REFERENCE_MEDIA"
-  ]);
+  var SYNC_FOREGROUND_TYPES = /* @__PURE__ */ new Set([]);
   function isSyncRelayMessage(message) {
     const type = message?.type;
     return typeof type === "string" && (SYNC_WRITE_TYPES.has(type) || SYNC_RELAY_TYPES.has(type));
@@ -1901,7 +1883,6 @@
     if (!expectedProjectId) {
       throw bridgeError("PROJECT_MISMATCH", "Cannot clear frame bindings outside an exact Flow project.", false);
     }
-    await chrome.tabs.update(tab.id, { active: true }).catch(() => void 0);
     const target = { tabId: tab.id };
     let attached = false;
     try {
@@ -2054,26 +2035,13 @@
     }
   }
   async function ensureDesktopViewport(tab) {
-    if (tab.id === void 0 || tab.windowId === void 0) return;
-    try {
-      const win = await chrome.windows.get(tab.windowId);
-      const MIN_DESKTOP_WIDTH = 1280;
-      if ((win.width ?? 0) >= MIN_DESKTOP_WIDTH) return;
-      const targetWidth = Math.max(win.width ?? MIN_DESKTOP_WIDTH, MIN_DESKTOP_WIDTH + 320);
-      await chrome.windows.update(tab.windowId, {
-        width: targetWidth,
-        state: win.state === "minimized" ? "normal" : win.state
-      });
-      await new Promise((resolve) => setTimeout(resolve, 900));
-    } catch {
-    }
+    return;
   }
   async function bindRealtimeStartImage(tab, mediaId) {
     if (tab.id === void 0 || !mediaId) {
       throw bridgeError("INVALID_VALUE", "Start Frame requires an exact mediaId.", false);
     }
     await ensureDesktopViewport(tab);
-    await chrome.tabs.update(tab.id, { active: true }).catch(() => void 0);
     await timeoutable(chrome.tabs.sendMessage(tab.id, {
       type: "FLOWGRAPH_SYNC_SUPPRESS_ECHO",
       field: "startImage",
@@ -2205,7 +2173,7 @@
     if (tab.id === void 0 || !mediaId) {
       throw bridgeError("INVALID_VALUE", "End Frame requires an exact mediaId.", false);
     }
-    await chrome.tabs.update(tab.id, { active: true }).catch(() => void 0);
+    await ensureDesktopViewport(tab);
     await timeoutable(chrome.tabs.sendMessage(tab.id, {
       type: "FLOWGRAPH_SYNC_SUPPRESS_ECHO",
       field: "endImage",
@@ -2364,7 +2332,6 @@
     }
     const projectUrl = (tab.url ?? "").replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, "");
     await ensureDesktopViewport(tab);
-    await chrome.tabs.update(tab.id, { active: true }).catch(() => void 0);
     const target = { tabId: tab.id };
     let attached = false;
     const evaluate = async (expression) => {
@@ -2444,7 +2411,6 @@
     if (mediaIds.length === 0) {
       throw bridgeError("INVALID_VALUE", "Reference Media requires at least one exact mediaId.", false);
     }
-    await chrome.tabs.update(tab.id, { active: true }).catch(() => void 0);
     await timeoutable(chrome.tabs.sendMessage(tab.id, {
       type: "FLOWGRAPH_SYNC_SUPPRESS_ECHO",
       field: "referenceMedia",
@@ -2702,7 +2668,6 @@
       );
     }
     if (SYNC_FOREGROUND_TYPES.has(request.type) && !tab.active) {
-      await chrome.tabs.update(tab.id, { active: true }).catch(() => void 0);
     }
     if (request.type === "FLOWGRAPH_SYNC_START_FRAME") {
       const mediaId = typeof payload.value?.mediaId === "string" ? String(payload.value.mediaId) : "";
