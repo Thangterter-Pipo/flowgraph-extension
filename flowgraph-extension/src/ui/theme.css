@@ -604,17 +604,24 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   margin-left: 2px;
 }
 
+.inline-combobox-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
 /* Custom Combobox Component (HUD Dark Style) */
 .custom-combobox-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 5px;
   background: #080d14;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
-  padding: 0 5px;
-  height: 24px;
+  padding: 0 7px;
+  height: 25px;
   box-sizing: border-box;
   cursor: pointer;
   user-select: none;
@@ -632,11 +639,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .custom-combobox-wrap.model-wrap {
-  flex: 1.4;
+  flex: 1.35;
   min-width: 0;
   background: rgba(14, 165, 233, 0.08);
   border: 1px solid rgba(56, 189, 248, 0.6);
-  box-shadow: 0 0 12px rgba(14, 165, 233, 0.22);
+  box-shadow: 0 0 10px rgba(14, 165, 233, 0.18);
 }
 .custom-combobox-wrap.model-wrap .custom-combobox-label {
   color: #38bdf8;
@@ -647,7 +654,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .custom-combobox-wrap.aspect-wrap {
-  flex: 0.9;
+  flex: 0.95;
   min-width: 0;
 }
 
@@ -662,13 +669,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .custom-combobox-wrap.batch-wrap {
-  flex: 0.75;
+  flex: 0.8;
   min-width: 0;
 }
 
 .custom-combobox-icon {
   display: flex;
   align-items: center;
+  justify-content: center;
   color: #94a3b8;
   flex-shrink: 0;
 }
@@ -677,7 +685,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .custom-combobox-label {
-  font-size: 9.5px;
+  font-size: 10px;
+  line-height: 1;
   color: #f1f5f9;
   font-weight: 500;
   white-space: nowrap;
@@ -686,6 +695,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .custom-combobox-caret {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #64748b;
   flex-shrink: 0;
   margin-left: auto;
