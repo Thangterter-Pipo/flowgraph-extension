@@ -58,6 +58,13 @@ import {
   DOWNLOAD_TRANSFER_BUDGET_MS,
 } from '../shared/timeouts';
 
+// Configure sidePanel to open automatically when clicking the extension icon
+try {
+  if (typeof chrome !== 'undefined' && chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+    void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  }
+} catch {}
+
 const AISANDBOX_BASE = 'https://aisandbox-pa.googleapis.com/v1';
 const FX_API_BASE = 'https://labs.google/fx/api';
 

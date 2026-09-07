@@ -263,6 +263,13 @@
   var DOWNLOAD_BRIDGE_CEILING_MS = DOWNLOAD_RESOLVE_BUDGET_MS + DOWNLOAD_TRANSFER_BUDGET_MS + 6e4;
 
   // src/background/service-worker.ts
+  try {
+    if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+      void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {
+      });
+    }
+  } catch {
+  }
   var AISANDBOX_BASE = "https://aisandbox-pa.googleapis.com/v1";
   var FX_API_BASE = "https://labs.google/fx/api";
   var TOKEN_TTL_MS = 50 * 60 * 1e3;
