@@ -1440,12 +1440,7 @@ function Studio() {
     <div className="fg-shell studio-app">
       <header className="studio-topbar">
         <div className="fg-brand"><div className="fg-logo"><Workflow size={19} /></div><div className="fg-brand-title">FlowGraph <span>Studio</span></div></div>
-        <div className="topbar-center">
-          <div className="workflow-title">
-            <input value={workflowName} onChange={(event) => setWorkflowName(event.target.value)} />
-            <span className="fg-version">v1.3</span>
-          </div>
-        </div>
+        {/* Bố yêu cầu: Xóa bỏ ô tiêu đề 'FlowGraph V1 Pipeline v1.3' để thanh Topbar thoáng đãng tối giản */}
         <div className="topbar-actions">
           <select
             className="fg-select workspace-select"
