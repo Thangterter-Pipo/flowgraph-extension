@@ -1174,26 +1174,39 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
       });
     };
 
-    // The Google Flow prompt composer has a Radix model picker with two modes:
+    // The Google Flow prompt composer has a settings trigger button with two modes:
     // Image ("Nano Banana 2") for Text-to-Image and Video ("Video · …") for
-    // Image-to-Video. The chip does NOT auto-switch based on the selected
-    // upstream media, so we must explicitly choose the right mode per kind.
+    // Image-to-Video / Interpolation. The chip does NOT auto-switch based on
+    // the selected upstream media, so we must explicitly choose the right mode per kind.
     const setComposerMode = async (kind: string): Promise<string> => {
       const wantVideo = isVideoKind(kind);
       const modeResult = await evalOnPage<{ ok?: boolean; reason?: string; text?: string }>(`
         (async () => {
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-          const isChip = (b) => {
-            const t = (b.innerText || '').replace(/\\s+/g, ' ');
-            const isTrigger = b.getAttribute('aria-haspopup') === 'menu'
-              || b.classList.contains('settings-trigger-button');
-            return isTrigger && (t.includes('Video ·') || t.includes('Nano Banana'));
+          const getModelOrSettingsChip = () => {
+            const settingsBtn = document.querySelector('button.settings-trigger-button');
+            if (settingsBtn) return settingsBtn;
+            const candidateButtons = Array.from(document.querySelectorAll('button')).filter((b) => {
+              const text = (b.innerText || '').toLowerCase();
+              const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+              if (b.classList.contains('more-options-button') || aria.includes('khác') || aria.includes('more') || text === 'more_vert') {
+                return false;
+              }
+              return aria.includes('chọn nhóm mô hình') || 
+                     aria.includes('model') || 
+                     text.includes('veo') || 
+                     text.includes('banana') || 
+                     text.includes('omni') ||
+                     text.includes('video ·');
+            });
+            return candidateButtons[0] || null;
           };
+
           const readChip = () => {
-            const chip = Array.from(document.querySelectorAll('button')).find(isChip);
+            const chip = getModelOrSettingsChip();
             if (!chip) return null;
-            const t = (chip.innerText || '').replace(/\\s+/g, ' ').trim();
-            return { isVideo: t.includes('Video ·'), text: t };
+            const t = (chip.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+            return { isVideo: t.includes('video') || t.includes('veo') || t.includes('omni'), text: t };
           };
           const fire = (el) => {
             ['pointerover','pointerenter','pointermove','pointerdown','mousedown','pointerup','mouseup','click'].forEach((type) => {
@@ -1201,7 +1214,7 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
               el.dispatchEvent(new C(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
             });
           };
-          const chip = Array.from(document.querySelectorAll('button')).find(isChip);
+          const chip = getModelOrSettingsChip();
           if (!chip) return { ok: false, reason: 'no-model-chip' };
           const cur = readChip();
           if (cur && cur.isVideo === ${wantVideo}) return { ok: true, text: cur.text };
