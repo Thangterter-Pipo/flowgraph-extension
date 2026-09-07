@@ -941,33 +941,29 @@
   async function openComposerSettings() {
     const chip = findSettingsChip();
     if (!chip) return { ok: false, message: 'Flow settings chip not found.' };
+
     const existingMenu = findOpenMenus()
-      .find((menu) => /Hình ảnh|Video/.test(normalizeSettingText(menu.innerText)));
+      .find((menu) => /Hình ảnh|Video|image|videocam/i.test(normalizeSettingText(menu.innerText)));
     if (existingMenu) {
-      // A stale menu from a previous failed writer can make Radix treat the
-      // next trigger click as "toggle close". Start from a clean state.
-      clickMenuItemLike(chip);
-      await syncSleep(300);
+      return { ok: true, menu: existingMenu };
     }
 
+    // Direct click trigger
     clickMenuItemLike(chip);
-    // The composer settings pane is rendered by Angular CDK and can lag behind
-    // the trigger click, especially right after a generation has the page busy.
-    // Poll for the pane and re-click the trigger a few times before giving up,
-    // instead of relying on a single fixed 500ms wait.
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      for (let waited = 0; waited < 1500; waited += 150) {
+    chip.click();
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      for (let waited = 0; waited < 1200; waited += 100) {
         const menu = findOpenMenus()
-          .find((candidate) => /Hình ảnh|Video/.test(normalizeSettingText(candidate.innerText)));
+          .find((candidate) => /Hình ảnh|Video|image|videocam/i.test(normalizeSettingText(candidate.innerText)));
         if (menu) return { ok: true, menu };
-        await syncSleep(150);
+        await syncSleep(100);
       }
-      // Still closed: the previous click may have toggled it shut or been
-      // swallowed while the page was busy. Re-click the trigger and retry.
       clickMenuItemLike(chip);
+      chip.click();
     }
     const menu = findOpenMenus()
-      .find((candidate) => /Hình ảnh|Video/.test(normalizeSettingText(candidate.innerText)));
+      .find((candidate) => /Hình ảnh|Video|image|videocam/i.test(normalizeSettingText(candidate.innerText)));
     return menu ? { ok: true, menu } : { ok: false, message: 'Flow settings menu did not open.' };
   }
 
