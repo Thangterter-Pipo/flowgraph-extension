@@ -527,14 +527,8 @@ async function resolveMediaUrl(mediaId: string, mediaType?: 'IMAGE' | 'VIDEO'): 
       DOWNLOAD_RESOLVE_BUDGET_MS,
     );
   }
-  // Images: bring the tab forward (best-effort) and read the same-origin /asb/
-  // proxy URL that the [data-media-id] element already exposes.
-  try {
-    if (tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true });
-    await chrome.tabs.update(tab.id, { active: true });
-  } catch {
-    // Best-effort focus; resolution may still succeed.
-  }
+  // Images: read the same-origin /asb/ proxy URL that the [data-media-id] element already exposes.
+  // Không giật active: true để người dùng giữ nguyên màn hình Studio Canvas
   const results = await timeoutable(
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -601,18 +595,8 @@ async function resolveVideoUrlViaDebugger(
 ): Promise<string> {
   const target: chrome.debugger.Debuggee = { tabId };
   let attachedHere = false;
-  // Set once the gallery URL is known; used by the finally block to hand the
-  // tab back to the project gallery after the clip-editor detour.
+  // Resolve video URL: KHÔNG giật active: true sang tab Flow để người dùng giữ nguyên màn hình Studio
   let projectUrl = '';
-  // Google Flow only lays out the editor (and therefore the tile hotbar) while
-  // its tab is the visible one; a backgrounded tab reports a 0x0 viewport and
-  // every coordinate click lands on nothing. Live run 30c818fa burned the whole
-  // bridge budget this way. Make the Flow tab frontmost before attaching.
-  try {
-    await chrome.tabs.update(tabId, { active: true });
-  } catch {
-    // Best-effort: focus emulation below still makes input reachable.
-  }
   try {
     await chrome.debugger.attach(target, '1.3');
     attachedHere = true;
@@ -1099,16 +1083,15 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
   // Populated when the CDP attach fails so the content-script fallback can say so
   // in its error message instead of hiding a silent path change (see Path 2 below).
   let attachFailure = '';
-  // Google Flow only renders its editor (and therefore its real Generate button
-  // and media tiles) while the tab is the active/visible tab. If the tab is
-  // backgrounded its viewport reports 0x0 (the editor sits off-canvas at
-  // y≈-2000), so CDP coordinate clicks and readMediaIds() polling both fail.
-  // Best-effort focus the tab before the debugger path regardless of which
-  // branch later runs.
-  try {
-    await chrome.tabs.update(tabId, { active: true });
-  } catch {
-    // Best-effort; the content-script fallback below may still work.
+  // Google Flow sync background: KHÔNG tự động chuyển active sang tab Flow khi người dùng chỉ đang thao tác trên Studio
+  // (Chỉ dispatch sự kiện ngầm qua content script / debugger background)
+  const isBackgroundExecution = true;
+  if (!isBackgroundExecution) {
+    try {
+      await chrome.tabs.update(tabId, { active: true });
+    } catch {
+      // Best-effort; the content-script fallback below may still work.
+    }
   }
 
   // Fail closed before the real Generate click. The content adapter verifies
@@ -2070,14 +2053,15 @@ async function handleRequest(request: BridgeRequest): Promise<BridgeResponse<unk
         if (!payload?.projectId) throw bridgeError('INVALID_INPUT', 'projectId is required', false);
         activeProjectId = payload.projectId;
 
-        // Tự động điều hướng tab Google Flow thật sang URL của dự án vừa chọn
+        // Tự động điều hướng tab Google Flow thật sang URL của dự án vừa chọn (NGẦM, KHÔNG giật active: true)
         try {
           const tab = await findFlowTab();
           const targetUrl = `https://flow.google.com/project/${payload.projectId}`;
           if (tab && tab.id !== undefined) {
             await chrome.tabs.update(tab.id, { url: targetUrl });
           } else {
-            await chrome.tabs.create({ url: targetUrl });
+            // Không active tab mới tạo
+            await chrome.tabs.create({ url: targetUrl, active: false });
           }
         } catch (e) {
           console.warn('Could not navigate Flow tab to project:', e);
@@ -2130,19 +2114,8 @@ const SYNC_WRITE_TYPES = new Set<string>([
 ]);
 
 const SYNC_RELAY_TYPES = new Set<string>(['FLOWGRAPH_SYNC_EVENT', 'FLOWGRAPH_SYNC_STATE']);
-const SYNC_FOREGROUND_TYPES = new Set<string>([
-  'FLOWGRAPH_SYNC_SET_MODE',
-  'FLOWGRAPH_SYNC_SET_MODEL',
-  'FLOWGRAPH_SYNC_SET_ASPECT_RATIO',
-  'FLOWGRAPH_SYNC_SET_BATCH',
-  'FLOWGRAPH_SYNC_SET_BATCH_COUNT',
-  'FLOWGRAPH_SYNC_SET_DURATION',
-  'FLOWGRAPH_SYNC_SET_RESOLUTION',
-  'FLOWGRAPH_SYNC_BIND_MEDIA',
-  'FLOWGRAPH_SYNC_START_FRAME',
-  'FLOWGRAPH_SYNC_END_FRAME',
-  'FLOWGRAPH_SYNC_REFERENCE_MEDIA',
-]);
+// Background-safe: KHÔNG tự động giật active: true sang tab Flow khi người dùng bấm node trên Studio Canvas
+const SYNC_FOREGROUND_TYPES = new Set<string>([]);
 
 /**
  * Sync writes are request/response operations for the active Flow tab, while
@@ -2164,7 +2137,7 @@ async function clearRealtimeFrameBindings(
   if (!expectedProjectId) {
     throw bridgeError('PROJECT_MISMATCH', 'Cannot clear frame bindings outside an exact Flow project.', false);
   }
-  await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
+  // Giữ nguyên tab hiện tại, không cướp active: true
   const target: chrome.debugger.Debuggee = { tabId: tab.id };
   let attached = false;
   try {
@@ -2330,21 +2303,8 @@ async function clearRealtimeFrameBindings(
 // Widen the Flow window past the desktop breakpoint before any tile interaction
 // so the hotbar renders. This is a real UI precondition, not a bypass.
 async function ensureDesktopViewport(tab: chrome.tabs.Tab): Promise<void> {
-  if (tab.id === undefined || tab.windowId === undefined) return;
-  try {
-    const win = await chrome.windows.get(tab.windowId);
-    const MIN_DESKTOP_WIDTH = 1280;
-    if ((win.width ?? 0) >= MIN_DESKTOP_WIDTH) return;
-    const targetWidth = Math.max(win.width ?? MIN_DESKTOP_WIDTH, MIN_DESKTOP_WIDTH + 320);
-    await chrome.windows.update(tab.windowId, {
-      width: targetWidth,
-      state: win.state === 'minimized' ? 'normal' : win.state,
-    });
-    await new Promise((resolve) => setTimeout(resolve, 900));
-  } catch {
-    // Best-effort: if the window cannot be resized the downstream tile probe
-    // will still surface a clear MEDIA_FAILED reason.
-  }
+  // Không làm thay đổi kích thước hay un-minimize cửa sổ Flow làm ảnh hưởng tới người dùng
+  return;
 }
 
 async function bindRealtimeStartImage(
@@ -2355,7 +2315,7 @@ async function bindRealtimeStartImage(
     throw bridgeError('INVALID_VALUE', 'Start Frame requires an exact mediaId.', false);
   }
   await ensureDesktopViewport(tab);
-  await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
+  // Không giật active: true sang tab Flow
   await timeoutable(chrome.tabs.sendMessage(tab.id, {
     type: 'FLOWGRAPH_SYNC_SUPPRESS_ECHO',
     field: 'startImage',
@@ -2485,7 +2445,8 @@ async function bindRealtimeEndImage(
   if (tab.id === undefined || !mediaId) {
     throw bridgeError('INVALID_VALUE', 'End Frame requires an exact mediaId.', false);
   }
-  await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
+  await ensureDesktopViewport(tab);
+  // Không giật active: true sang tab Flow
   await timeoutable(chrome.tabs.sendMessage(tab.id, {
     type: 'FLOWGRAPH_SYNC_SUPPRESS_ECHO',
     field: 'endImage',
@@ -2646,7 +2607,7 @@ async function bindRealtimeVideoInput(
   }
   const projectUrl = (tab.url ?? '').replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, '');
   await ensureDesktopViewport(tab);
-  await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
+  // Không cướp active: true
   const target: chrome.debugger.Debuggee = { tabId: tab.id };
   let attached = false;
   const evaluate = async <T>(expression: string): Promise<T> => {
@@ -2732,7 +2693,7 @@ async function bindRealtimeReferenceMedia(
   if (mediaIds.length === 0) {
     throw bridgeError('INVALID_VALUE', 'Reference Media requires at least one exact mediaId.', false);
   }
-  await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
+  // Giữ nguyên tab hiện tại, không cướp active: true
   await timeoutable(chrome.tabs.sendMessage(tab.id, {
     type: 'FLOWGRAPH_SYNC_SUPPRESS_ECHO',
     field: 'referenceMedia',
@@ -2976,8 +2937,9 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
       false,
     );
   }
+  // SYNC_FOREGROUND_TYPES đã được làm rỗng, không cướp active: true
   if (SYNC_FOREGROUND_TYPES.has(request.type) && !tab.active) {
-    await chrome.tabs.update(tab.id, { active: true }).catch(() => undefined);
+    // Không cướp active: true
   }
   if (request.type === 'FLOWGRAPH_SYNC_START_FRAME') {
     const mediaId = typeof (payload.value as { mediaId?: unknown } | undefined)?.mediaId === 'string'
