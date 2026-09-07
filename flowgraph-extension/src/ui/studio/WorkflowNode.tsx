@@ -385,7 +385,22 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                 </div>
               </div>
             ) : (
-              <div className="image-preview-wrap">
+              <div
+                className="image-preview-wrap"
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const files = Array.from(e.dataTransfer.files);
+                  const img = files.find((f) => f.type.startsWith('image/'));
+                  if (img) {
+                    const blobUrl = URL.createObjectURL(img);
+                    window.dispatchEvent(new CustomEvent('flowgraph:node-drop-media', {
+                      detail: { nodeId: id, type: 'image', file: img, blobUrl }
+                    }));
+                  }
+                }}
+              >
                 {result?.previewUrl || result?.mediaId ? (
                   <SafeImage
                     src={result.previewUrl || (result.mediaId ? `https://flow.google.com/asb/${result.mediaId}` : '')}
