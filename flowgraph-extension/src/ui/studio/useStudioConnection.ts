@@ -123,8 +123,57 @@ export function useStudioConnection(): StudioConnection {
     setProjectsLoading(true);
     setProjectsError(undefined);
     try {
-      const data = await adapter().listProjects();
-      setProjects(data.projects);
+      // 1. Quét toàn bộ projects đã từng lưu trong localStorage của Studio
+      const knownProjectsMap = new Map<string, ProjectInfo>();
+      
+      // Thêm activeProject hiện tại nếu có
+      const currentActive = loadPersistedProject();
+      if (currentActive?.projectId) {
+        knownProjectsMap.set(currentActive.projectId, {
+          projectId: currentActive.projectId,
+          projectTitle: currentActive.projectName || 'Dự án Hiện tại',
+        });
+      }
+
+      // Quét tất cả các key lưu workflow trong localStorage để tìm các project khác
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i) || '';
+          if (key.startsWith('flowgraph.workflow.v1.') && key.endsWith('.main')) {
+            const parts = key.split('.');
+            const pid = parts[3];
+            if (pid && !knownProjectsMap.has(pid)) {
+              try {
+                const wf = JSON.parse(localStorage.getItem(key) || '{}');
+                const title = wf.projectBinding?.projectName || wf.name || `Project ${pid.slice(0, 8)}`;
+                knownProjectsMap.set(pid, { projectId: pid, projectTitle: title });
+              } catch {}
+            }
+          } else if (key.startsWith('flowgraph.filmProject.v1.')) {
+            const pid = key.replace('flowgraph.filmProject.v1.', '');
+            if (pid && !knownProjectsMap.has(pid)) {
+              try {
+                const fp = JSON.parse(localStorage.getItem(key) || '{}');
+                const title = fp.project?.title || `Film ${pid.slice(0, 8)}`;
+                knownProjectsMap.set(pid, { projectId: pid, projectTitle: title });
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+
+      // 2. Thử gọi adapter để lấy thêm từ Google Flow nếu backend hỗ trợ
+      try {
+        const data = await adapter().listProjects();
+        if (data?.projects?.length) {
+          for (const p of data.projects) {
+            knownProjectsMap.set(p.projectId, p);
+          }
+        }
+      } catch {}
+
+      const list = Array.from(knownProjectsMap.values());
+      setProjects(list);
     } catch (error) {
       setProjectsError(error instanceof Error ? error.message : String(error));
     } finally {
