@@ -1066,8 +1066,9 @@
       .replace(/\s+/g, ' ')
       .trim();
     const matchesRequested = (candidate) => {
-      const text = optionText(candidate);
-      return text === requested || text.endsWith(` ${requested}`);
+      const text = optionText(candidate).replace('–', '-').toLowerCase();
+      const req = requested.replace('–', '-').toLowerCase();
+      return text === req || text.endsWith(` ${req}`) || text.includes(req);
     };
     const item = Array.from(
       submenu?.querySelectorAll('[role="menuitem"],[role="option"],button') ?? [],

@@ -51,8 +51,8 @@ def find_sw():
 
 
 class Session:
-    def __init__(self, target):
-        self.ws = websocket.create_connection(target["webSocketDebuggerUrl"], timeout=30, suppress_origin=True)
+    def __init__(self, target, timeout=600):
+        self.ws = websocket.create_connection(target["webSocketDebuggerUrl"], timeout=timeout, suppress_origin=True)
         self._id = 0
 
     def cmd(self, method, params=None):

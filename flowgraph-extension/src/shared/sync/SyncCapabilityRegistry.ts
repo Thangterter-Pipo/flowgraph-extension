@@ -64,7 +64,7 @@ export const NON_SYNC_NODE_KINDS: readonly string[] = ['prompt', 'download', 'no
 
 /** Convert Studio registry display labels to the exact labels shown by Flow UI. */
 export function normalizeFlowUiModelLabel(value: string): string {
-  const label = value.replace(/^[^A-Za-z0-9]+/u, '').trim();
+  const label = value.replace(/^[^A-Za-z0-9]+/u, '').replace('–', '-').trim();
   return label === 'Omni Flash' ? 'Omni 1.1 Flash' : label;
 }
 

@@ -31,8 +31,9 @@ export class DownloadExecutor implements NodeExecutor {
 
     const fileName = String(context.config.fileName ?? `flowgraph-${media.mediaId.slice(0, 8)}`);
 
-    // Only download if autoDownload is explicitly requested; default is false to avoid unintended browser download popups
-    const autoDownload = context.config.autoDownload === 'true' || context.config.autoDownload === true;
+    // Bố yêu cầu: Không tự động tải xuống file về máy khi hoàn thành video
+    // Chỉ tải khi autoDownload === 'true', tránh làm phiền và spam popup browser download
+    const autoDownload = context.config.autoDownload === 'true';
     let savedFilename = fileName;
 
     if (autoDownload) {

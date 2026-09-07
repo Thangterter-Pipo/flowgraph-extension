@@ -224,8 +224,7 @@ Project (projectId)
 - **Verified Shape:** `videoInput: { "mediaId": "<uuid>" }` (Disproved `.name`). Model keys: `veo_3_1_upsampler_1080p` (0 Credit, 1080p), `veo_3_1_upsampler_4k` (50 Credits, 4K).
 - **Runtime limitation (2026-08-28):** Direct API calls trigger reCAPTCHA Enterprise evaluation failure (`PUBLIC_ERROR_UNUSUAL_ACTIVITY` 403) without a trusted UI gesture, and the current Flow web UI does not expose a dedicated 4K upsample button. Endpoint correctly maintained as `[RUNTIME_PARTIAL]`.
 
-### 8.7 Omni 1.1 Flash Video Generation `[RUNTIME_VERIFIED]`
-<!-- claim_id: omni_1_1_flash_video -->
+### 8.7 Omni 1.1 Flash Video Generation `[RUNTIME_PARTIAL]`
 - **Model Key:** `omni_1_1_flash` / `veo_omni_flash_10s` (Omni 1.1 Flash 10s Fast Video & Native Audio Engine)
 - **Endpoint:** `POST https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoText`
 - **Cost / Billing:** **15 credits** / 10-second clip (rẻ hơn Veo 3.1 20-80 credits).
