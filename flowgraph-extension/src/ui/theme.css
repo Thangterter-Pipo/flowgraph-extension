@@ -432,14 +432,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
    ========================================================================== */
 .flow-card-stitch {
   width: 336px;
-  background: #0b111a;
+  background: #0d1117;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  /* Đa tầng bóng đổ mềm & Hào quang phát sáng ngoại vi (Floating High-Tech Glass) */
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 
-              0 4px 20px -2px rgba(14, 165, 233, 0.18), 
-              0 16px 40px -6px rgba(0, 0, 0, 0.85),
-              0 0 35px -5px rgba(14, 165, 233, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.6), 0 16px 40px -6px rgba(0, 0, 0, 0.85);
   display: flex;
   flex-direction: column;
   position: relative;
@@ -448,50 +444,150 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-family: 'Inter', -apple-system, sans-serif;
   overflow: visible;
 }
+
+/* 1. Nhóm Generative & Prompts (ColorHunt #20132b / #491b6d / #a855f7) */
+.flow-card-stitch.purple,
+.flow-card-stitch.prompt,
+.flow-card-stitch.gemini {
+  background: linear-gradient(180deg, #161024 0%, #0d0a17 100%);
+  border-color: rgba(168, 85, 247, 0.28);
+  box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.12),
+              0 8px 25px -4px rgba(168, 85, 247, 0.22),
+              0 18px 45px -6px rgba(0, 0, 0, 0.88),
+              0 0 35px -5px rgba(168, 85, 247, 0.14);
+}
+.flow-card-stitch.purple .flow-card-header,
+.flow-card-stitch.prompt .flow-card-header,
+.flow-card-stitch.gemini .flow-card-header {
+  background: rgba(43, 20, 71, 0.45);
+  border-bottom: 1px solid rgba(168, 85, 247, 0.18);
+}
+.flow-card-stitch.purple .flow-card-footer,
+.flow-card-stitch.prompt .flow-card-footer,
+.flow-card-stitch.gemini .flow-card-footer {
+  background: rgba(22, 16, 36, 0.65);
+  border-top: 1px solid rgba(168, 85, 247, 0.14);
+}
+
+/* 2. Nhóm Image Generation & Upload (ColorHunt #091a28 / #0e3d59 / #0ea5e9) */
+.flow-card-stitch.blue,
+.flow-card-stitch.t2i,
+.flow-card-stitch.uploadImage,
+.flow-card-stitch.imageTransform,
+.flow-card-stitch.imageUpscale {
+  background: linear-gradient(180deg, #091a28 0%, #06101c 100%);
+  border-color: rgba(14, 165, 233, 0.28);
+  box-shadow: 0 0 0 1px rgba(14, 165, 233, 0.12),
+              0 8px 25px -4px rgba(14, 165, 233, 0.22),
+              0 18px 45px -6px rgba(0, 0, 0, 0.88),
+              0 0 35px -5px rgba(14, 165, 233, 0.14);
+}
+.flow-card-stitch.blue .flow-card-header,
+.flow-card-stitch.t2i .flow-card-header,
+.flow-card-stitch.uploadImage .flow-card-header,
+.flow-card-stitch.imageTransform .flow-card-header,
+.flow-card-stitch.imageUpscale .flow-card-header {
+  background: rgba(14, 61, 89, 0.45);
+  border-bottom: 1px solid rgba(14, 165, 233, 0.18);
+}
+.flow-card-stitch.blue .flow-card-footer,
+.flow-card-stitch.t2i .flow-card-footer,
+.flow-card-stitch.uploadImage .flow-card-footer,
+.flow-card-stitch.imageTransform .flow-card-footer,
+.flow-card-stitch.imageUpscale .flow-card-footer {
+  background: rgba(9, 26, 40, 0.65);
+  border-top: 1px solid rgba(14, 165, 233, 0.14);
+}
+
+/* 3. Nhóm Video & Interpolation (ColorHunt #09231e / #125447 / #10b981) */
+.flow-card-stitch.green,
+.flow-card-stitch.t2v,
+.flow-card-stitch.i2v,
+.flow-card-stitch.interpolation,
+.flow-card-stitch.extend,
+.flow-card-stitch.reference {
+  background: linear-gradient(180deg, #09231e 0%, #061714 100%);
+  border-color: rgba(16, 185, 129, 0.28);
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.12),
+              0 8px 25px -4px rgba(16, 185, 129, 0.22),
+              0 18px 45px -6px rgba(0, 0, 0, 0.88),
+              0 0 35px -5px rgba(16, 185, 129, 0.14);
+}
+.flow-card-stitch.green .flow-card-header,
+.flow-card-stitch.t2v .flow-card-header,
+.flow-card-stitch.i2v .flow-card-header,
+.flow-card-stitch.interpolation .flow-card-header,
+.flow-card-stitch.extend .flow-card-header,
+.flow-card-stitch.reference .flow-card-header {
+  background: rgba(18, 84, 71, 0.45);
+  border-bottom: 1px solid rgba(16, 185, 129, 0.18);
+}
+.flow-card-stitch.green .flow-card-footer,
+.flow-card-stitch.t2v .flow-card-footer,
+.flow-card-stitch.i2v .flow-card-footer,
+.flow-card-stitch.interpolation .flow-card-footer,
+.flow-card-stitch.extend .flow-card-footer,
+.flow-card-stitch.reference .flow-card-footer {
+  background: rgba(9, 35, 30, 0.65);
+  border-top: 1px solid rgba(16, 185, 129, 0.14);
+}
+
+/* 4. Nhóm Utility & Media Output (ColorHunt #281809 / #5a3612 / #f59e0b) */
+.flow-card-stitch.orange,
+.flow-card-stitch.download,
+.flow-card-stitch.videoUpscale,
+.flow-card-stitch.mediaInput,
+.flow-card-stitch.imageInput,
+.flow-card-stitch.videoInput {
+  background: linear-gradient(180deg, #261608 0%, #150d05 100%);
+  border-color: rgba(245, 158, 11, 0.28);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.12),
+              0 8px 25px -4px rgba(245, 158, 11, 0.22),
+              0 18px 45px -6px rgba(0, 0, 0, 0.88),
+              0 0 35px -5px rgba(245, 158, 11, 0.14);
+}
+.flow-card-stitch.orange .flow-card-header,
+.flow-card-stitch.download .flow-card-header,
+.flow-card-stitch.videoUpscale .flow-card-header,
+.flow-card-stitch.mediaInput .flow-card-header,
+.flow-card-stitch.imageInput .flow-card-header,
+.flow-card-stitch.videoInput .flow-card-header {
+  background: rgba(90, 54, 18, 0.45);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.18);
+}
+.flow-card-stitch.orange .flow-card-footer,
+.flow-card-stitch.download .flow-card-footer,
+.flow-card-stitch.videoUpscale .flow-card-footer,
+.flow-card-stitch.mediaInput .flow-card-footer,
+.flow-card-stitch.imageInput .flow-card-footer,
+.flow-card-stitch.videoInput .flow-card-footer {
+  background: rgba(38, 22, 8, 0.65);
+  border-top: 1px solid rgba(245, 158, 11, 0.14);
+}
+
+/* Prompt Card Width Override */
 .flow-card-stitch.prompt {
   width: 240px;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 
-              0 4px 20px -2px rgba(168, 85, 247, 0.22), 
-              0 16px 40px -6px rgba(0, 0, 0, 0.85),
-              0 0 35px -5px rgba(168, 85, 247, 0.15);
 }
-.flow-card-stitch.t2i {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 
-              0 4px 20px -2px rgba(14, 165, 233, 0.22), 
-              0 16px 40px -6px rgba(0, 0, 0, 0.85),
-              0 0 35px -5px rgba(14, 165, 233, 0.15);
-}
-.flow-card-stitch.i2v {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 
-              0 4px 20px -2px rgba(16, 185, 129, 0.22), 
-              0 16px 40px -6px rgba(0, 0, 0, 0.85),
-              0 0 35px -5px rgba(16, 185, 129, 0.15);
-}
-.flow-card-stitch.download {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 
-              0 4px 20px -2px rgba(56, 189, 248, 0.22), 
-              0 16px 40px -6px rgba(0, 0, 0, 0.85),
-              0 0 35px -5px rgba(56, 189, 248, 0.15);
-}
+
 .flow-card-stitch:hover {
   transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.22);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 
-              0 8px 30px rgba(56, 189, 248, 0.32), 
-              0 24px 50px rgba(0, 0, 0, 0.90),
-              0 0 50px rgba(56, 189, 248, 0.25);
+  filter: brightness(1.06);
 }
+
 .flow-card-stitch.selected {
-  border-color: #38bdf8;
-  box-shadow: 0 0 0 1px #38bdf8, 0 8px 28px rgba(56, 189, 248, 0.25);
+  outline: 2px solid #38bdf8;
+  box-shadow: 0 0 0 2px #38bdf8, 0 12px 36px rgba(56, 189, 248, 0.35);
 }
+
 .flow-card-stitch.running {
   border-color: #f59e0b;
-  box-shadow: 0 0 0 1px #f59e0b, 0 0 20px rgba(245, 158, 11, 0.25);
+  box-shadow: 0 0 0 1px #f59e0b, 0 0 24px rgba(245, 158, 11, 0.35);
 }
+
 .flow-card-stitch.error {
   border-color: #ef4444;
-  box-shadow: 0 0 0 1px #ef4444, 0 0 20px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 0 0 1px #ef4444, 0 0 24px rgba(239, 68, 68, 0.35);
 }
 
 /* Card Header — ultra compact to maximize media area */
@@ -501,8 +597,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #0d1522;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .card-header-left {
   display: flex;
