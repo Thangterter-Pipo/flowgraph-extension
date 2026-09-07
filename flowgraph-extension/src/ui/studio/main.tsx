@@ -85,16 +85,6 @@ import {
   type FlowSyncField,
 } from '../../shared/sync/FlowSyncTypes';
 import { getSyncNodeCapability, isSyncGenerationNode, normalizeFlowUiModelLabel, type SyncNodeKind } from '../../shared/sync/SyncCapabilityRegistry';
-import FilmWorkspace from './FilmWorkspace';
-import AssetWorkspace from './AssetWorkspace';
-import StoryboardWorkspace from './StoryboardWorkspace';
-import TimelineWorkspace from './TimelineWorkspace';
-import RenderWorkspace from './RenderWorkspace';
-import ProductionWorkspace from './ProductionWorkspace';
-import ContinuityWorkspace from './ContinuityWorkspace';
-import { useFilmProject } from './useFilmProject';
-
-export type Workspace = 'flow' | 'production' | 'continuity' | 'shots' | 'assets' | 'storyboard' | 'timeline' | 'render';
 
 function isVideoKind(kind: string): boolean {
   return ['t2v', 'i2v', 'extend', 'interpolation', 'reference'].includes(kind);
@@ -517,10 +507,6 @@ function Studio() {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(restoreSavedNodes());
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(restoreSavedEdges());
   const [selectedNodeId, setSelectedNodeId] = useState<string>(initialSelectedNodeId);
-  const [selectedSceneId, setSelectedSceneId] = useState<string>('');
-  const [selectedShotId, setSelectedShotId] = useState<string>('');
-  const [selectedAssetId, setSelectedAssetId] = useState<string>('');
-  const [workspace, setWorkspace] = useState<Workspace>('flow');
   const [search, setSearch] = useState('');
   const [activeWorkflowId, setActiveWorkflowId] = useState('main');
   const [workflowName, setWorkflowName] = useState('FlowGraph V1 Pipeline');
@@ -615,20 +601,6 @@ function Studio() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
-  const { project: filmProject, setProject: setFilmProject } = useFilmProject(connection.activeProject);
-
-  const openShotManager = () => {
-    setWorkspace('shots');
-  };
-
-  const openShotManagerById = (shotId: string) => {
-    setSelectedShotId(shotId);
-    setWorkspace('shots');
-  };
-
-  const openFlowForShot = () => {
-    setWorkspace('flow');
-  };
 
   const nodeTypes = useMemo(() => ({ flowNode: WorkflowNode }), []);
   const { save, exportJson } = useWorkflowPersistence(
@@ -1620,65 +1592,6 @@ function Studio() {
     });
   }, [edges, nodes, runStatus]);
 
-  const renderFilmWorkspace = () => {
-    if (!filmProject) {
-      return (
-        <div className="empty-state">
-          <Workflow size={48} />
-          <h2>Project Required</h2>
-          <p>Open or create a Google Flow project to use Film workspaces.</p>
-          <button className="fg-btn fg-btn-primary" onClick={() => setWorkspace('flow')}><Workflow size={14} /> Open FlowGraph</button>
-        </div>
-      );
-    }
-    switch (workspace) {
-      case 'production':
-        return <ProductionWorkspace project={filmProject} setProject={setFilmProject} />;
-      case 'continuity':
-        return <ContinuityWorkspace project={filmProject} setProject={setFilmProject} openShotManager={openShotManagerById} />;
-      case 'shots':
-        return (
-          <FilmWorkspace
-            project={filmProject}
-            setProject={setFilmProject}
-            selectedSceneId={selectedSceneId}
-            setSelectedSceneId={setSelectedSceneId}
-            selectedShotId={selectedShotId}
-            setSelectedShotId={setSelectedShotId}
-            openFlowForShot={openFlowForShot}
-          />
-        );
-      case 'assets':
-        return (
-          <AssetWorkspace
-            project={filmProject}
-            setProject={setFilmProject}
-            selectedAssetId={selectedAssetId}
-            setSelectedAssetId={setSelectedAssetId}
-            selectedShotId={selectedShotId}
-          />
-        );
-      case 'storyboard':
-        return (
-          <StoryboardWorkspace
-            project={filmProject}
-            selectedSceneId={selectedSceneId}
-            setSelectedSceneId={setSelectedSceneId}
-            selectedShotId={selectedShotId}
-            setSelectedShotId={setSelectedShotId}
-            openFlowForShot={openFlowForShot}
-            openShotManager={openShotManager}
-          />
-        );
-      case 'timeline':
-        return <TimelineWorkspace project={filmProject} setProject={setFilmProject} openShotManager={openShotManagerById} />;
-      case 'render':
-        return <RenderWorkspace project={filmProject} />;
-      default:
-        return null;
-    }
-  };
-
   const applyTemplate = useCallback((template: WorkflowTemplate) => {
     pushHistory(nodes, edges);
     setNodes(template.nodes);
@@ -1708,23 +1621,7 @@ function Studio() {
     <div className="fg-shell studio-app">
       <header className="studio-topbar">
         <div className="fg-brand"><div className="fg-logo"><Workflow size={19} /></div><div className="fg-brand-title">FlowGraph <span>Studio</span></div></div>
-        {/* Bố yêu cầu: Xóa bỏ ô tiêu đề 'FlowGraph V1 Pipeline v1.3' để thanh Topbar thoáng đãng tối giản */}
         <div className="topbar-actions">
-          <select
-            className="fg-select workspace-select"
-            value={workspace}
-            onChange={(e) => setWorkspace(e.target.value as Workspace)}
-            title="FG-1300 Multi-Workspace Switcher"
-          >
-            <option value="flow">🎯 FG-1300: FlowGraph Canvas (Full)</option>
-            <option value="production">📁 Workspace 1: Project Settings</option>
-            <option value="continuity">🔗 Workspace 2: Continuity</option>
-            <option value="shots">🎬 Workspace 3: Shots Studio</option>
-            <option value="assets">📦 Workspace 4: Assets Library</option>
-            <option value="storyboard">📋 Workspace 5: Storyboard</option>
-            <option value="timeline">⏱ Workspace 6: Timeline Editor</option>
-            <option value="render">🚀 Workspace 7: Render Production</option>
-          </select>
           <ProjectDropdown connection={connection} />
           <ConnectionPill
             state={accountState === 'CONNECTED' ? 'online' : accountState === 'CHECKING' ? 'checking' : accountState === 'SESSION_EXPIRED' ? 'warn' : accountState === 'DISCONNECTED' ? 'offline' : 'error'}
@@ -1739,8 +1636,6 @@ function Studio() {
             onRefresh={() => void connection.refreshFlow()}
             icon={<Workflow size={14} />}
           />
-          {/* Bố yêu cầu: Ẩn pill SYNC IDLE / SYNCED để thanh Topbar thoáng đãng, tối giản và sạch sẽ */}
-          {/* Clean Topbar: no fake undo/redo, only real capabilities */}
           <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Save</button>
           <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Export</button>
           {runStatus === 'running' ? <button className="fg-btn fg-btn-primary" onClick={stopWorkflow}><Square size={13} /> Stop Workflow</button> : <button className="fg-btn fg-btn-primary" disabled={!connection.isCanvasUnlocked} onClick={() => void runWorkflow(false)}><Play size={14} /> Run Workflow</button>}
@@ -1748,19 +1643,17 @@ function Studio() {
       </header>
 
       <main className="studio-main">
-        {workspace === 'flow' ? (
-          <>
-            <NodeLibrary
-              search={search}
-              setSearch={setSearch}
-              locked={!connection.isCanvasUnlocked}
-              onOpenTemplatesModal={() => setTemplatesModalOpen(true)}
-            />
+        <NodeLibrary
+          search={search}
+          setSearch={setSearch}
+          locked={!connection.isCanvasUnlocked}
+          onOpenTemplatesModal={() => setTemplatesModalOpen(true)}
+        />
 
-            <section className="studio-center">
-              <ProjectGateOverlay connection={connection}>
-                <div className="canvas-wrap" onDrop={onDrop} onDragOver={(event) => { if (connection.isCanvasUnlocked) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }}>
-                  <div className="canvas-toolbar">
+        <section className="studio-center">
+          <ProjectGateOverlay connection={connection}>
+            <div className="canvas-wrap" onDrop={onDrop} onDragOver={(event) => { if (connection.isCanvasUnlocked) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }}>
+              <div className="canvas-toolbar">
                     <button
                       className="fg-btn fg-icon-btn"
                       onClick={handleUndo}
@@ -1804,10 +1697,6 @@ function Studio() {
                 </div>
               </ProjectGateOverlay>
             </section>
-          </>
-        ) : (
-          <div className="film-workspace-full">{renderFilmWorkspace()}</div>
-        )}
       </main>
 
       {confirmRerun.length > 0 && (
