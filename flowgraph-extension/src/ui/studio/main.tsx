@@ -1628,11 +1628,20 @@ function Studio() {
       for (const edge of targetEdges) {
         const targetNode = nodes.find((n) => n.id === edge.target);
         if (!targetNode) continue;
+        const isImage = targetNode.data.kind === 't2i' || targetNode.data.kind === 'uploadImage';
+        const isVideo = targetNode.data.kind === 'i2v' || targetNode.data.kind === 't2v' || targetNode.data.kind === 'interpolation' || targetNode.data.kind === 'extend';
+
         if (parsed.aspectRatio) updateConfig('aspectRatio', parsed.aspectRatio, targetNode.id);
-        if (parsed.duration) updateConfig('duration', parsed.duration, targetNode.id);
-        if (parsed.resolution) updateConfig('resolution', parsed.resolution, targetNode.id);
+        if (parsed.duration && isVideo) updateConfig('duration', parsed.duration, targetNode.id);
+        // Chỉ cập nhật resolution 720p/1080p cho video, không ép resolution vào T2I làm sai lệch cấu hình
+        if (parsed.resolution && isVideo) updateConfig('resolution', parsed.resolution, targetNode.id);
         if (parsed.batchCount) updateConfig('batchCount', parsed.batchCount, targetNode.id);
-        if (parsed.modelKeyword) updateConfig('model', parsed.modelKeyword, targetNode.id);
+        if (parsed.modelKeyword) {
+          const isBanana = parsed.modelKeyword.includes('Banana');
+          if ((isBanana && isImage) || (!isBanana && isVideo)) {
+            updateConfig('model', parsed.modelKeyword, targetNode.id);
+          }
+        }
       }
     };
 
