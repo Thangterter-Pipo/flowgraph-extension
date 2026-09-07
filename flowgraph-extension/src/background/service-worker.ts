@@ -70,7 +70,7 @@ const FX_API_BASE = 'https://labs.google/fx/api';
 
 const TOKEN_TTL_MS = 50 * 60 * 1000; // refresh below 1h lifespan (verified ~3600s)
 const REQUEST_TIMEOUT_MS = 60_000;
-const SYNC_WRITE_TIMEOUT_MS = 12_000;
+const SYNC_WRITE_TIMEOUT_MS = 5_000;
 // The transfer budget only. The signed-URL resolve loop above has its own
 // bounds, and the adapter's DOWNLOAD_BRIDGE_CEILING_MS sits above both, so the
 // bridge is never the thing that ends a healthy download.
@@ -2970,6 +2970,7 @@ async function bindRealtimeReferenceMedia(
 async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<unknown>> {
   const tab = await findFlowTab();
   if (!tab?.id) return makeError(request.requestId, 'NO_FLOW_TAB', 'No Google Flow tab is open.', false);
+  await ensureFlowContentScript(tab.id);
   const payload = (request.payload ?? {}) as Record<string, unknown>;
   const requestedProjectId = typeof payload.projectId === 'string' ? payload.projectId : undefined;
   const tabProjectId = projectIdFromUrl(tab.url ?? '');
@@ -3041,17 +3042,11 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
     chrome.tabs.sendMessage(tab.id, forwarded),
     SYNC_WRITE_TIMEOUT_MS,
   ).catch((err) => {
-    console.warn('[FlowGraph Bridge] forwardSyncWrite timeout or error:', err?.message);
     return { ok: false, code: 'SYNC_TIMEOUT', message: err?.message || 'Sync write timed out.' };
   }) as { ok?: boolean; code?: string; message?: string } | undefined;
   return reply?.ok
     ? makeResponse(request.requestId, reply)
-    : makeError(
-        request.requestId,
-        reply?.code ?? 'UI_NOT_READY',
-        reply?.message ?? 'Google Flow did not apply the realtime sync write.',
-        true,
-      );
+    : makeResponse(request.requestId, { ok: false, code: reply?.code ?? 'UI_NOT_READY', message: reply?.message ?? 'Sync write not ready' });
 }
 
 // ---------------------------------------------------------------------------

@@ -316,9 +316,10 @@
   function sendSyncNotification(type, payload) {
     try {
       chrome.runtime.sendMessage(
-        { type, requestId: `content:${crypto.randomUUID()}`, payload },
-        () => void chrome.runtime.lastError,
-      );
+        { type, requestId: `content:${crypto.randomUUID()}`, payload }
+      ).catch(() => {
+        // Extension context can be inactive; ignore silently
+      });
     } catch {
       // Extension context can disappear during reload; the next event retries.
     }
