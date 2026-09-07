@@ -496,6 +496,7 @@ function Studio() {
   const [creditsBefore, setCreditsBefore] = useState<number | undefined>();
   const [creditsAfter, setCreditsAfter] = useState<number | undefined>();
   const [confirmRerun, setConfirmRerun] = useState<string[]>([]); // node ids with cached results
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ state: 'idle' | 'syncing' | 'synced' | 'desynced'; message?: string }>({ state: 'idle' });
 
   const cancelRef = useRef(false);
@@ -978,6 +979,8 @@ function Studio() {
   }, []);
 
   const resetWorkflow = useCallback(() => {
+    // Lưu trạng thái hiện tại vào lịch sử Undo để lỡ tay vẫn bấm Ctrl+Z cứu lại được 100%!
+    pushHistory(nodes, edges);
     cancelRef.current = true;
     if (timerRef.current) window.clearInterval(timerRef.current);
     setNodes(cloneInitialNodes());
@@ -987,8 +990,9 @@ function Studio() {
     setValidationIssues([]);
     setRunError(undefined);
     setSelectedNodeId('2');
+    setConfirmResetOpen(false);
     window.setTimeout(() => reactFlow?.fitView({ padding: .18, duration: 350 }), 0);
-  }, [reactFlow, setEdges, setNodes]);
+  }, [nodes, edges, pushHistory, reactFlow, setEdges, setNodes]);
 
   const validate = useCallback(() => {
     const specs = nodes.map((node) => {
@@ -1510,7 +1514,7 @@ function Studio() {
                       <Redo2 size={13} />
                     </button>
                     <button className="fg-btn fg-icon-btn" onClick={() => reactFlow?.fitView({ padding: .18, duration: 300 })} title="Căn chỉnh khung nhìn"><Maximize2 size={13} /></button>
-                    <button className="fg-btn" style={{ minHeight: 29, fontSize: 9 }} onClick={resetWorkflow}><RotateCcw size={12} /> Reset</button>
+                    <button className="fg-btn" style={{ minHeight: 29, fontSize: 9 }} onClick={() => setConfirmResetOpen(true)}><RotateCcw size={12} /> Reset</button>
                   </div>
                   <ReactFlow<FlowNode, FlowEdge>
                     nodes={nodes}
@@ -1584,6 +1588,25 @@ function Studio() {
                 setExperimentalGate({ open: false, failureMode: false });
                 void runWorkflow(failureMode, true);
               }}><Play size={13} /> Run anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmResetOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Xác nhận Reset Canvas">
+          <div className="experimental-modal" style={{ borderColor: 'rgba(239, 68, 68, 0.4)' }}>
+            <div className="experimental-modal-icon" style={{ color: '#ef4444' }}>⚠️</div>
+            <div className="experimental-modal-copy">
+              <span className="capability-badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}>CẢNH BÁO ĐẶC BIỆT</span>
+              <h3>Xác nhận Reset toàn bộ Canvas?</h3>
+              <p>Thao tác này sẽ đưa đồ thị hiện tại về trạng thái khởi đầu. Nếu bấm nhầm, bạn hoàn toàn có thể bấm nút <strong>Hoàn tác (Ctrl+Z)</strong> để cứu lại toàn bộ đồ thị ngay lập tức!</p>
+            </div>
+            <div className="experimental-modal-actions">
+              <button className="fg-btn" onClick={() => setConfirmResetOpen(false)}>Hủy bỏ</button>
+              <button className="fg-btn" style={{ background: '#dc2626', color: '#fff', border: 'none' }} onClick={resetWorkflow}>
+                Đồng ý Reset
+              </button>
             </div>
           </div>
         </div>
