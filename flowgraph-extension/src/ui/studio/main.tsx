@@ -54,6 +54,7 @@ import {
   persistWorkflow,
   restoreWorkflow,
 } from './workflowPersistence';
+import { getMediaBlob, setMediaBlob } from './mediaStorage';
 import {
   cloneInitialNodes,
   hydrateNodeData,
@@ -1303,74 +1304,33 @@ function Studio() {
 
       pushHistory(nodes, edges);
 
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const dataUrl = ev.target?.result as string;
-        const base64Data = dataUrl ? dataUrl.split(',')[1] : null;
-
-        setNodes((current) => current.map((n) => {
-          if (n.id !== detail.nodeId) return n;
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              status: 'success',
-              result: {
-                type: detail.type,
-                mediaId: n.data.result?.mediaId || `dropped-${Date.now()}`,
-                previewUrl: dataUrl,
-              },
-            },
-          };
-        }));
-
-        // Tự động upload lên Google Flow nếu có project
-        if (detail.type === 'image' && base64Data && connection.activeProject?.projectId) {
-          try {
-            const res = await new RealGoogleFlowAdapter().uploadImage({
-              projectId: connection.activeProject.projectId,
-              imageBytesBase64: base64Data,
-              mimeType: detail.file.type || 'image/png',
-              fileName: detail.file.name,
-            });
-            if (res.mediaId) {
-              setNodes((curr) => curr.map((n) => n.id === detail.nodeId ? {
-                ...n,
-                data: {
-                  ...n.data,
-                  result: {
-                    type: 'image',
-                    mediaId: res.mediaId,
-                    previewUrl: dataUrl,
-                  },
-                },
-              } : n));
-            }
-          } catch (err) {
-            console.warn('Background upload of dropped media failed, keep dataUrl:', err);
-          }
-        }
-      };
-
+      const initialMediaId = `dropped-${Date.now()}`;
       if (detail.type === 'image') {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target?.result as string;
+          if (dataUrl) {
+            void setMediaBlob(initialMediaId, dataUrl);
+          }
+        };
         reader.readAsDataURL(detail.file);
-      } else {
-        setNodes((current) => current.map((n) => {
-          if (n.id !== detail.nodeId) return n;
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              status: 'success',
-              result: {
-                type: detail.type,
-                mediaId: `dropped-${Date.now()}`,
-                previewUrl: detail.blobUrl,
-              },
-            },
-          };
-        }));
       }
+
+      setNodes((current) => current.map((n) => {
+        if (n.id !== detail.nodeId) return n;
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            status: 'success',
+            result: {
+              type: detail.type,
+              mediaId: initialMediaId,
+              previewUrl: detail.blobUrl,
+            },
+          },
+        };
+      }));
     };
 
     window.addEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
@@ -1400,85 +1360,48 @@ function Studio() {
         const offsetPosition = { x: position.x + i * 40, y: position.y + i * 40 };
 
         if (file.type.startsWith('image/')) {
-          const initialBlob = URL.createObjectURL(file);
-          const reader = new FileReader();
-          reader.onload = async (e) => {
-            const dataUrl = e.target?.result as string;
-            const base64Data = dataUrl ? dataUrl.split(',')[1] : null;
+            const initialBlob = URL.createObjectURL(file);
+            const initialMediaId = `local-${fileId}`;
 
-            // Quản lý lưu trữ an toàn chống tràn dung lượng (IndexedDB + previewUrl fallback)
-            setNodes((curr) => curr.map((n) => n.id === fileId ? {
-              ...n,
+            // Lưu trực tiếp vào IndexedDB để tái sử dụng
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const dataUrl = e.target?.result as string;
+              if (dataUrl) {
+                void setMediaBlob(initialMediaId, dataUrl);
+              }
+            };
+            reader.readAsDataURL(file);
+
+            const spec = palette.find((p) => p.kind === 'uploadImage') || {
+              kind: 'uploadImage',
+              title: 'Upload Image',
+              subtitle: 'Upload PNG/JPEG to Flow',
+              tone: 'blue' as const,
+              group: 'Image' as const,
+              preview: 'image' as const,
+              config: {},
+            };
+
+            const imgNode: FlowNode = {
+              id: fileId,
+              type: 'flowNode',
+              position: offsetPosition,
               data: {
-                ...n.data,
+                ...hydrateNodeData(spec),
+                title: file.name.length > 20 ? `${file.name.slice(0, 18)}…` : file.name,
+                subtitle: 'Local Image File',
+                tone: 'blue',
+                config: { source: file.name, fileName: file.name },
                 status: 'success',
                 result: {
                   type: 'image',
-                  mediaId: n.data.result?.mediaId || `local-${Date.now()}`,
-                  previewUrl: dataUrl,
+                  mediaId: initialMediaId,
+                  previewUrl: initialBlob,
                 },
               },
-            } : n));
-
-            if (base64Data && connection.activeProject?.projectId) {
-              try {
-                // Tự động upload ảnh lên Google Flow (nếu endpoint uploadImage chưa hỗ trợ auth direct thì bắt ngoại lệ an toàn)
-                const res = await new RealGoogleFlowAdapter().uploadImage({
-                  projectId: connection.activeProject.projectId,
-                  imageBytesBase64: base64Data,
-                  mimeType: file.type || 'image/png',
-                  fileName: file.name,
-                }).catch(() => null);
-                if (res?.mediaId) {
-                  setNodes((curr) => curr.map((n) => n.id === fileId ? {
-                    ...n,
-                    data: {
-                      ...n.data,
-                      status: 'success',
-                      result: {
-                        type: 'image',
-                        mediaId: res.mediaId,
-                        previewUrl: dataUrl,
-                      },
-                    },
-                  } : n));
-                }
-              } catch {
-                // Giữ nguyên local previewUrl an toàn
-              }
-            }
-          };
-          reader.readAsDataURL(file);
-
-          const spec = palette.find((p) => p.kind === 'uploadImage') || {
-            kind: 'uploadImage',
-            title: 'Upload Image',
-            subtitle: 'Upload PNG/JPEG to Flow',
-            tone: 'blue' as const,
-            group: 'Image' as const,
-            preview: 'image' as const,
-            config: {},
-          };
-
-          const imgNode: FlowNode = {
-            id: fileId,
-            type: 'flowNode',
-            position: offsetPosition,
-            data: {
-              ...hydrateNodeData(spec),
-              title: file.name.length > 20 ? `${file.name.slice(0, 18)}…` : file.name,
-              subtitle: 'Local Image File',
-              tone: 'blue',
-              config: { source: file.name, fileName: file.name },
-              status: 'idle',
-              result: {
-                type: 'image',
-                mediaId: `local-${fileId}`,
-                previewUrl: initialBlob,
-              },
-            },
-          };
-          newCreatedNodes.push(imgNode);
+            };
+            newCreatedNodes.push(imgNode);
         } else if (file.type.startsWith('video/')) {
           const videoBlobUrl = URL.createObjectURL(file);
           const spec = palette.find((p) => p.kind === 'download') || {

@@ -180,9 +180,10 @@ export function restoreWorkflow(
         const restored = { ...node, data: { ...node.data } } as FlowNode;
         if (saved.runtimeResults?.[node.id]) {
           const media = saved.runtimeResults[node.id];
+          const isLocalId = media.mediaId.startsWith('local-') || media.mediaId.startsWith('dropped-');
           restored.data.result = {
             type: media.type,
-            previewUrl: node.data.result?.previewUrl || (node.data.config?.localDataUrl ? String(node.data.config.localDataUrl) : (media.type === 'video'
+            previewUrl: node.data.result?.previewUrl || (isLocalId ? '' : (media.type === 'video'
               ? `https://flow-content.google/image/${media.mediaId}`
               : `https://flow.google.com/asb/${media.mediaId}`)),
             mediaId: media.mediaId,
