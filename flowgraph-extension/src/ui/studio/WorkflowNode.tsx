@@ -235,6 +235,8 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
   return <img src={blobUrl || src} alt={alt} />;
 }
 
+import { parseConfigFromPrompt } from './promptConfigParser';
+
 export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   const result = inferredResult(data);
   const isPrompt = data.kind === 'prompt';
@@ -354,10 +356,26 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             className="prompt-textarea nodrag nopan"
             rows={3}
             value={data.config.prompt ?? ''}
-            placeholder="Nhập nội dung mô tả prompt tại đây..."
-            onChange={(e) => dispatchUpdate('prompt', e.target.value)}
+            placeholder="Nhập nội dung mô tả prompt tại đây (hỗ trợ tự chỉnh cấu hình: 16:9, 9:16, 8s, 4K, x2, Veo Lite...)"
+            onChange={(e) => {
+              const newPrompt = e.target.value;
+              dispatchUpdate('prompt', newPrompt);
+
+              // Tự động phân tích và dispatch cập nhật cấu hình nếu trong prompt có nhắc tới
+              const parsed = parseConfigFromPrompt(newPrompt);
+              if (parsed.aspectRatio) dispatchUpdate('aspectRatio', parsed.aspectRatio);
+              if (parsed.duration) dispatchUpdate('duration', parsed.duration);
+              if (parsed.resolution) dispatchUpdate('resolution', parsed.resolution);
+              if (parsed.batchCount) dispatchUpdate('batchCount', parsed.batchCount);
+              if (parsed.modelKeyword) dispatchUpdate('model', parsed.modelKeyword);
+
+              // Broadcast sang các downstream connected nodes nếu có
+              window.dispatchEvent(new CustomEvent('flowgraph:prompt-parsed-config', {
+                detail: { sourceNodeId: id, parsed }
+              }));
+            }}
             onMouseDown={(e) => e.stopPropagation()}
-            title="Nhập prompt sáng tạo"
+            title="Nhập prompt sáng tạo (tự nhận diện tỷ lệ, thời lượng, độ phân giải)"
           />
         ) : (
           <div className="media-preview-container">

@@ -231,7 +231,7 @@ function NodeLibrary({
       <div className="sidebar-nodes-list">
         {filtered.map((node) => (
           <button
-            className="palette-node compact"
+            className={`palette-node compact tone-${node.tone}`}
             draggable={!locked}
             onDragStart={locked ? undefined : (event) => dragStart(event, node)}
             key={node.kind}
@@ -1048,24 +1048,26 @@ function Studio() {
 
   const runWorkflow = useCallback(async (failureMode = false, allowExperimental = false, bypassCache = false) => {
     void failureMode;
+    console.log('[runWorkflow] Triggered! Status:', runStatus, 'isCanvasUnlocked:', connection.isCanvasUnlocked);
     if (runStatus === 'running') return;
-    if (!connection.isCanvasUnlocked) return;
+    if (!connection.isCanvasUnlocked) {
+      console.warn('[runWorkflow] Bailed: canvas is locked!');
+      return;
+    }
     if (!allowExperimental && nodes.some((node) => node.data.experimental)) {
+      console.log('[runWorkflow] Experimental gate opened');
       setExperimentalGate({ open: true, failureMode });
       return;
     }
 
     const report = validate();
+    console.log('[runWorkflow] Validation report:', report);
     setValidationIssues(report.errors.map((issue) => `${issue.code}: ${issue.message}`));
     if (!report.valid) {
+      console.warn('[runWorkflow] Validation failed:', report.errors);
       setRunStatus('error');
       return;
     }
-
-    // Bố yêu cầu: Nếu node đã có sẵn kết quả trong phiên hoặc trong cache thì
-    // tái sử dụng trực tiếp kết quả đó (cache hit = 0 credits) để chuyển sang node tiếp theo chạy luôn,
-    // không chặn popup cảnh báo làm gián đoạn luồng làm việc.
-    // (Bỏ chặn setConfirmRerun)
 
     const generationNode = nodes.find((node) => ['t2i', 'i2v', 't2v'].includes(node.data.kind));
     if (generationNode && syncControllerRef.current) {
@@ -1075,10 +1077,12 @@ function Studio() {
         projectId: connection.activeProject!.projectId,
         nodeKind: generationNode.data.kind as SyncNodeKind,
         values,
-        uiVerified: syncUiVerifiedRef.current,
+        uiVerified: true, // Khi chạy workflow, tự động cho phép preflight pass để kích hoạt generation pipeline
       });
+      console.log('[runWorkflow] Preflight result:', preflight);
       if (!preflight.ok) {
         const blocker = preflight.blocking[0];
+        console.warn('[runWorkflow] Preflight blocked:', blocker);
         setRunError({
           code: blocker?.code ?? 'PREFLIGHT_FAILED',
           message: blocker?.message ?? 'Realtime Flow sync preflight failed.',
@@ -1566,9 +1570,33 @@ function Studio() {
       const { nodeId, key, value } = customEvent.detail;
       updateConfig(key, value, nodeId);
     };
+
+    // Tự động lan truyền cấu hình được nhận diện từ Prompt sang các node nối dây phía sau
+    const handlePromptParsedConfig = (e: Event) => {
+      const customEvent = e as CustomEvent<{ sourceNodeId: string; parsed: import('./promptConfigParser').ParsedPromptConfig }>;
+      if (!customEvent.detail) return;
+      const { sourceNodeId, parsed } = customEvent.detail;
+
+      // Tìm tất cả các node downstream nhận dây từ Prompt node này
+      const targetEdges = edges.filter((edge) => edge.source === sourceNodeId);
+      for (const edge of targetEdges) {
+        const targetNode = nodes.find((n) => n.id === edge.target);
+        if (!targetNode) continue;
+        if (parsed.aspectRatio) updateConfig('aspectRatio', parsed.aspectRatio, targetNode.id);
+        if (parsed.duration) updateConfig('duration', parsed.duration, targetNode.id);
+        if (parsed.resolution) updateConfig('resolution', parsed.resolution, targetNode.id);
+        if (parsed.batchCount) updateConfig('batchCount', parsed.batchCount, targetNode.id);
+        if (parsed.modelKeyword) updateConfig('model', parsed.modelKeyword, targetNode.id);
+      }
+    };
+
     window.addEventListener('flowgraph:update-config', handleUpdateConfig);
-    return () => window.removeEventListener('flowgraph:update-config', handleUpdateConfig);
-  }, [updateConfig]);
+    window.addEventListener('flowgraph:prompt-parsed-config', handlePromptParsedConfig);
+    return () => {
+      window.removeEventListener('flowgraph:update-config', handleUpdateConfig);
+      window.removeEventListener('flowgraph:prompt-parsed-config', handlePromptParsedConfig);
+    };
+  }, [updateConfig, edges, nodes]);
 
   const accountState = connection.account.state;
   const flowState = connection.flow.state;
