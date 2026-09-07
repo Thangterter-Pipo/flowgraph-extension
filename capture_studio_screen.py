@@ -20,8 +20,8 @@ async def capture_studio_screen():
                 if msg.get("id") == msg_id:
                     return msg
 
-        await call("Runtime.evaluate", {"expression": "document.querySelectorAll('.canvas-toolbar button')[0]?.click()"})
-        await asyncio.sleep(0.8)
+        # Không bấm undo nút thừa
+        await asyncio.sleep(0.3)
 
         snap = await call("Page.captureScreenshot", {"format": "png"})
         data = snap.get("result", {}).get("data")
