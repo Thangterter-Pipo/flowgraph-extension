@@ -1180,75 +1180,73 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
     // the selected upstream media, so we must explicitly choose the right mode per kind.
     const setComposerMode = async (kind: string): Promise<string> => {
       const wantVideo = isVideoKind(kind);
-      const modeResult = await evalOnPage<{ ok?: boolean; reason?: string; text?: string }>(`
-        (async () => {
-          const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-          const getModelOrSettingsChip = () => {
-            const settingsBtn = document.querySelector('button.settings-trigger-button');
-            if (settingsBtn) return settingsBtn;
-            const candidateButtons = Array.from(document.querySelectorAll('button')).filter((b) => {
-              const text = (b.innerText || '').toLowerCase();
-              const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-              if (b.classList.contains('more-options-button') || aria.includes('khác') || aria.includes('more') || text === 'more_vert') {
-                return false;
-              }
-              return aria.includes('chọn nhóm mô hình') || 
-                     aria.includes('model') || 
-                     text.includes('veo') || 
-                     text.includes('banana') || 
-                     text.includes('omni') ||
-                     text.includes('video ·');
-            });
-            return candidateButtons[0] || null;
-          };
+      
+      // 1. Kiểm tra trạng thái hiện tại trước
+      const currentStatus = await evalOnPage<{ isVideo: boolean; text: string }>(`(() => {
+        const btn = document.querySelector('button.settings-trigger-button');
+        const text = btn ? (btn.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase() : '';
+        const isVideo = text.includes('video') || text.includes('veo') || text.includes('omni');
+        return { isVideo, text };
+      })()`);
 
-          const readChip = () => {
-            const chip = getModelOrSettingsChip();
-            if (!chip) return null;
-            const t = (chip.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-            return { isVideo: t.includes('video') || t.includes('veo') || t.includes('omni'), text: t };
-          };
-          const fire = (el) => {
-            ['pointerover','pointerenter','pointermove','pointerdown','mousedown','pointerup','mouseup','click'].forEach((type) => {
-              const C = type.startsWith('pointer') ? PointerEvent : MouseEvent;
-              el.dispatchEvent(new C(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
-            });
-          };
-          const chip = getModelOrSettingsChip();
-          if (!chip) return { ok: false, reason: 'no-model-chip' };
-          const cur = readChip();
-          if (cur && cur.isVideo === ${wantVideo}) return { ok: true, text: cur.text };
+      if (currentStatus && currentStatus.isVideo === wantVideo) {
+        return currentStatus.text;
+      }
 
-          fire(chip);
-          await sleep(800);
-          // Legacy Radix [role=tab] plus new Angular Material [role=radio].
-          const tabs = Array.from(document.querySelectorAll('[role="tab"], [role="radio"]'));
-          const tab = tabs.find((t) => {
-            const txt = (t.innerText || '').toLowerCase();
-            return ${wantVideo} ? txt.includes('video') : (txt.includes('hình ảnh') || txt.includes('image'));
-          });
-          if (!tab) {
-            return { ok: false, reason: 'mode-tab-not-found', tabs: tabs.map((t) => (t.innerText || '').trim().slice(0, 40)) };
-          }
-          fire(tab);
-          await sleep(800);
-          const menu = document.querySelector('[role="menu"][data-state="open"], [role="dialog"][data-state="open"]');
-          if (menu) menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
-          await sleep(400);
-          const after = readChip();
-          const ok = !!after && after.isVideo === ${wantVideo};
-          return { ok, text: (after?.text || ''), wantVideo: ${wantVideo} };
-        })()
-      `);
-      if (!modeResult?.ok) {
+      // 2. Click mở popup cài đặt bằng CDP Click tọa độ thực (Angular CDK trigger)
+      const triggerCoords = await evalOnPage<{ ok: boolean; x?: number; y?: number }>(`(() => {
+        const btn = document.querySelector('button.settings-trigger-button');
+        if (!btn) return { ok: false };
+        const rect = btn.getBoundingClientRect();
+        return { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()`);
+
+      if (triggerCoords?.ok && triggerCoords.x !== undefined && triggerCoords.y !== undefined) {
+        await clickAt(triggerCoords.x, triggerCoords.y);
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      // 3. Click chọn tab Hình ảnh / Video bằng CDP tọa độ thực bên trong .cdk-overlay-pane
+      const tabCoords = await evalOnPage<{ ok: boolean; x?: number; y?: number; tabs?: string[] }>(`(() => {
+        const pane = document.querySelector('.cdk-overlay-pane');
+        const buttons = pane ? Array.from(pane.querySelectorAll('button, [role="tab"], [role="radio"], .mat-button-toggle-button')) : [];
+        const wantedTab = buttons.find((b) => {
+          const text = (b.innerText || '').toLowerCase();
+          return ${wantVideo} ? (text.includes('video') || text.includes('videocam')) : (text.includes('hình ảnh') || text.includes('image'));
+        });
+        if (!wantedTab) {
+          return { ok: false, tabs: buttons.map(b => (b.innerText || '').trim().slice(0, 30)) };
+        }
+        const rect = wantedTab.getBoundingClientRect();
+        return { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()`);
+
+      if (tabCoords?.ok && tabCoords.x !== undefined && tabCoords.y !== undefined) {
+        await clickAt(tabCoords.x, tabCoords.y);
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      // 4. Đóng pane bằng Escape
+      await evalOnPage(`(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
+      })()`);
+      await new Promise((r) => setTimeout(r, 200));
+
+      const after = await evalOnPage<{ isVideo: boolean; text: string }>(`(() => {
+        const btn = document.querySelector('button.settings-trigger-button');
+        const text = btn ? (btn.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase() : '';
+        const isVideo = text.includes('video') || text.includes('veo') || text.includes('omni');
+        return { isVideo, text };
+      })()`);
+
+      if (!after || after.isVideo !== wantVideo) {
         throw bridgeError(
           'MEDIA_FAILED',
-          `Could not switch Flow composer to ${wantVideo ? 'Video' : 'Image'} mode (${modeResult?.reason ?? 'unknown'}).`,
+          `Could not switch Flow composer to ${wantVideo ? 'Video' : 'Image'} mode.`,
           true,
         );
       }
-      return modeResult.text ?? '';
+      return after.text;
     };
 
     const readMediaIds = () => evalOnPage<string[]>(`
