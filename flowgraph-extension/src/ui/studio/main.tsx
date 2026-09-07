@@ -1475,12 +1475,7 @@ function Studio() {
             onRefresh={() => void connection.refreshFlow()}
             icon={<Workflow size={14} />}
           />
-          <ConnectionPill
-            state={syncPillState}
-            label={syncPillLabel}
-            title={syncStatus.message}
-            icon={<Workflow size={14} />}
-          />
+          {/* Bố yêu cầu: Ẩn pill SYNC IDLE / SYNCED để thanh Topbar thoáng đãng, tối giản và sạch sẽ */}
           {/* Clean Topbar: no fake undo/redo, only real capabilities */}
           <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Save</button>
           <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Export</button>
