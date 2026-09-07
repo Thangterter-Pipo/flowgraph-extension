@@ -497,6 +497,7 @@ function Studio() {
   const [creditsAfter, setCreditsAfter] = useState<number | undefined>();
   const [confirmRerun, setConfirmRerun] = useState<string[]>([]); // node ids with cached results
   const [syncStatus, setSyncStatus] = useState<{ state: 'idle' | 'syncing' | 'synced' | 'desynced'; message?: string }>({ state: 'idle' });
+
   const cancelRef = useRef(false);
   const timerRef = useRef<number | null>(null);
   const runtimeRef = useRef<WorkflowRuntime | null>(null);
@@ -507,6 +508,74 @@ function Studio() {
     }
   }, []);
   const connection = useStudioConnection();
+
+  // History stack for Undo / Redo
+  const [history, setHistory] = useState<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
+  const [redoStack, setRedoStack] = useState<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
+  const isUndoRedoActionRef = useRef(false);
+
+  const pushHistory = useCallback((prevNodes: FlowNode[], prevEdges: FlowEdge[]) => {
+    if (isUndoRedoActionRef.current) return;
+    setHistory((prev) => {
+      const next = [...prev, { nodes: prevNodes, edges: prevEdges }];
+      return next.length > 30 ? next.slice(next.length - 30) : next;
+    });
+    setRedoStack([]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (!connection.isCanvasUnlocked || runStatus === 'running') return;
+    setHistory((prev) => {
+      if (prev.length === 0) return prev;
+      const last = prev[prev.length - 1];
+      const remaining = prev.slice(0, -1);
+      setRedoStack((r) => [{ nodes, edges }, ...r]);
+      isUndoRedoActionRef.current = true;
+      setNodes(last.nodes);
+      setEdges(last.edges);
+      setTimeout(() => { isUndoRedoActionRef.current = false; }, 50);
+      return remaining;
+    });
+  }, [connection.isCanvasUnlocked, runStatus, nodes, edges, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    if (!connection.isCanvasUnlocked || runStatus === 'running') return;
+    setRedoStack((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev[0];
+      const remaining = prev.slice(1);
+      setHistory((h) => [...h, { nodes, edges }]);
+      isUndoRedoActionRef.current = true;
+      setNodes(next.nodes);
+      setEdges(next.edges);
+      setTimeout(() => { isUndoRedoActionRef.current = false; }, 50);
+      return remaining;
+    });
+  }, [connection.isCanvasUnlocked, runStatus, nodes, edges, setNodes, setEdges]);
+
+  // Global Keyboard Shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+        return;
+      }
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+      if (isCtrlOrCmd && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
   const { project: filmProject, setProject: setFilmProject } = useFilmProject(connection.activeProject);
 
   const openShotManager = () => {
@@ -1167,9 +1236,10 @@ function Studio() {
   const onConnect = useCallback((candidate: Connection) => {
     if (!connection.isCanvasUnlocked) return;
     if (!isValidConnection(candidate)) return;
+    pushHistory(nodes, edges);
     const source = nodes.find((node) => node.id === candidate.source);
     setEdges((current) => addEdge({ ...candidate, type: 'default', style: { stroke: colorForTone(source?.data.tone ?? 'purple') } }, current));
-  }, [connection.isCanvasUnlocked, isValidConnection, nodes, setEdges]);
+  }, [connection.isCanvasUnlocked, isValidConnection, nodes, edges, pushHistory, setEdges]);
 
   const onDrop = useCallback((event: React.DragEvent) => {
     if (!connection.isCanvasUnlocked) return;
@@ -1186,9 +1256,10 @@ function Studio() {
       position,
       data: hydrateNodeData(spec),
     };
+    pushHistory(nodes, edges);
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(id);
-  }, [connection.isCanvasUnlocked, reactFlow, setNodes]);
+  }, [connection.isCanvasUnlocked, reactFlow, nodes, edges, pushHistory, setNodes]);
 
   const updateConfig = (key: string, value: string, targetNodeId?: string) => {
     if (!connection.isCanvasUnlocked) return;
@@ -1422,7 +1493,23 @@ function Studio() {
               <ProjectGateOverlay connection={connection}>
                 <div className="canvas-wrap" onDrop={onDrop} onDragOver={(event) => { if (connection.isCanvasUnlocked) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }}>
                   <div className="canvas-toolbar">
-                    <button className="fg-btn fg-icon-btn" onClick={() => reactFlow?.fitView({ padding: .18, duration: 300 })}><Maximize2 size={13} /></button>
+                    <button
+                      className="fg-btn fg-icon-btn"
+                      onClick={handleUndo}
+                      disabled={history.length === 0 || runStatus === 'running'}
+                      title="Hoàn tác (Ctrl+Z)"
+                    >
+                      <Undo2 size={13} />
+                    </button>
+                    <button
+                      className="fg-btn fg-icon-btn"
+                      onClick={handleRedo}
+                      disabled={redoStack.length === 0 || runStatus === 'running'}
+                      title="Làm lại (Ctrl+Y / Ctrl+Shift+Z)"
+                    >
+                      <Redo2 size={13} />
+                    </button>
+                    <button className="fg-btn fg-icon-btn" onClick={() => reactFlow?.fitView({ padding: .18, duration: 300 })} title="Căn chỉnh khung nhìn"><Maximize2 size={13} /></button>
                     <button className="fg-btn" style={{ minHeight: 29, fontSize: 9 }} onClick={resetWorkflow}><RotateCcw size={12} /> Reset</button>
                   </div>
                   <ReactFlow<FlowNode, FlowEdge>
