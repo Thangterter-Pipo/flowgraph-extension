@@ -42,7 +42,7 @@ function inferredResult(data: FlowNodeData): NodeMediaResult | undefined {
   const previewUrl = data.config.resultUrl ?? data.config.previewUrl ?? data.config.outputUrl;
   const mediaId = data.result?.mediaId ?? data.config.mediaId;
   const fallbackUrl = mediaId && !mediaId.startsWith('local-') && !mediaId.startsWith('dropped-')
-    ? `https://flow.google.com/asb/${mediaId}`
+    ? undefined
     : undefined;
   const resolvedPreviewUrl = previewUrl ?? fallbackUrl;
   if (!resolvedPreviewUrl) return undefined;
@@ -190,7 +190,6 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
     }
 
     // 2. Nếu là local mediaId (ảnh kéo từ máy vào: 'local-...' hoặc 'dropped-...')
-    // Tuyệt đối không gửi request lên flow.google.com/asb/... (tránh lỗi 400 Bad Request)
     if (mediaId && (mediaId.startsWith('local-') || mediaId.startsWith('dropped-'))) {
       void getMediaBlob(mediaId).then((cached) => {
         if (active && cached) {
@@ -200,6 +199,7 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
       return;
     }
 
+    // 3. Nếu có mediaId thật trên Google Flow: Quét DOM của tab Google Flow để lấy link signed token proxy chuẩn xác
     const resolveFromDom = async () => {
       try {
         if (typeof chrome !== 'undefined' && chrome.tabs && mediaId) {
@@ -216,7 +216,8 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
               args: [mediaId],
             });
             const domSrc = injected?.[0]?.result;
-            if (domSrc && active) {
+            // Chỉ fetch nếu domSrc là URL hợp lệ đầy đủ của Google Flow (chứa token /asb/AB-nOU...)
+            if (domSrc && domSrc.includes('/asb/AB-n') && active) {
               const res = await fetch(domSrc);
               const blob = await res.blob();
               if (active) setBlobUrl(URL.createObjectURL(blob));
@@ -226,7 +227,8 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
         }
       } catch {}
 
-      if (src && !src.includes('/asb/local-') && !src.includes('/asb/dropped-')) {
+      // Nếu src là URL hợp lệ không phải dạng /asb/<uuid>
+      if (src && !src.includes('/asb/') && (src.startsWith('http://') || src.startsWith('https://'))) {
         fetch(src)
           .then((res) => res.blob())
           .then((blob) => {
@@ -247,7 +249,7 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
     };
   }, [src, mediaId]);
 
-  return <img src={blobUrl || (src && !src.includes('/asb/local-') && !src.includes('/asb/dropped-') ? src : '')} alt={alt} />;
+  return <img src={blobUrl || (src && !src.includes('/asb/') ? src : '')} alt={alt} />;
 }
 
 import { parseConfigFromPrompt } from './promptConfigParser';
@@ -436,7 +438,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               >
                 {result?.previewUrl || result?.mediaId ? (
                   <SafeImage
-                    src={result.previewUrl || (result.mediaId ? `https://flow.google.com/asb/${result.mediaId}` : '')}
+                    src={result.previewUrl || ''}
                     mediaId={result.mediaId}
                     alt="Generated Preview"
                   />
