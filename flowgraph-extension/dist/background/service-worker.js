@@ -1826,6 +1826,17 @@
           const payload = request.payload;
           if (!payload?.projectId) throw bridgeError("INVALID_INPUT", "projectId is required", false);
           activeProjectId = payload.projectId;
+          try {
+            const tab = await findFlowTab();
+            const targetUrl = `https://flow.google.com/project/${payload.projectId}`;
+            if (tab && tab.id !== void 0) {
+              await chrome.tabs.update(tab.id, { url: targetUrl });
+            } else {
+              await chrome.tabs.create({ url: targetUrl });
+            }
+          } catch (e) {
+            console.warn("Could not navigate Flow tab to project:", e);
+          }
           return makeResponse(request.requestId, { projectId: payload.projectId, selectedAt: (/* @__PURE__ */ new Date()).toISOString() });
         }
         case "FLOWGRAPH_MEDIA_UPLOAD":

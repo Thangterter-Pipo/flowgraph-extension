@@ -2069,6 +2069,20 @@ async function handleRequest(request: BridgeRequest): Promise<BridgeResponse<unk
         const payload = request.payload as { projectId?: string };
         if (!payload?.projectId) throw bridgeError('INVALID_INPUT', 'projectId is required', false);
         activeProjectId = payload.projectId;
+
+        // Tự động điều hướng tab Google Flow thật sang URL của dự án vừa chọn
+        try {
+          const tab = await findFlowTab();
+          const targetUrl = `https://flow.google.com/project/${payload.projectId}`;
+          if (tab && tab.id !== undefined) {
+            await chrome.tabs.update(tab.id, { url: targetUrl });
+          } else {
+            await chrome.tabs.create({ url: targetUrl });
+          }
+        } catch (e) {
+          console.warn('Could not navigate Flow tab to project:', e);
+        }
+
         return makeResponse(request.requestId, { projectId: payload.projectId, selectedAt: new Date().toISOString() });
       }
       case 'FLOWGRAPH_MEDIA_UPLOAD':
