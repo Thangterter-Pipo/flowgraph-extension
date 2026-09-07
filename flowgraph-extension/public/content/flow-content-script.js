@@ -74,7 +74,8 @@
       const chip = findModelChip();
       if (!chip) return null;
       const t = (chip.innerText || '').replace(/\s+/g, ' ').trim();
-      return { isVideo: t.includes('Video ·'), text: t };
+      const isVideo = t.includes('Video') || t.includes('Veo') || t.includes('Omni');
+      return { isVideo, text: t };
     };
     const cur = readChip();
     if (!cur) return { ok: false, reason: 'no-model-chip' };
@@ -540,20 +541,28 @@
   }
 
   function findModelChip() {
-    return Array.from(document.querySelectorAll('button')).find((button) => {
-      const text = (button.innerText || '').replace(/\s+/g, ' ');
-      // Legacy Radix UI used aria-haspopup="menu"; the new Angular Flow UI
-      // (flow.google.com) renders the composer chip as a Material
-      // settings-trigger-button with no aria-haspopup, so accept either.
-      const isTrigger = button.getAttribute('aria-haspopup') === 'menu'
-        || button.classList.contains('settings-trigger-button');
-      return isTrigger && (text.includes('Video ·') || text.includes('Nano Banana'));
+    const settingsBtn = document.querySelector('button.settings-trigger-button');
+    if (settingsBtn) return settingsBtn;
+    const candidateButtons = Array.from(document.querySelectorAll('button')).filter((b) => {
+      const text = (b.innerText || '').toLowerCase();
+      const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+      if (b.classList.contains('more-options-button') || aria.includes('khác') || aria.includes('more') || text === 'more_vert') {
+        return false;
+      }
+      return aria.includes('chọn nhóm mô hình') || 
+             aria.includes('model') || 
+             text.includes('veo') || 
+             text.includes('banana') || 
+             text.includes('omni') ||
+             text.includes('video ·');
     });
+    return candidateButtons[0] || null;
   }
 
   function modeFromChip(chip) {
     if (!chip) return null;
-    return (chip.innerText || '').includes('Video ·') ? 'VIDEO' : 'IMAGE';
+    const text = normalizeSettingText(chip.innerText || '').toLowerCase();
+    return (text.includes('video') || text.includes('veo') || text.includes('omni')) ? 'VIDEO' : 'IMAGE';
   }
 
   function modelFromChip(chip) {
@@ -890,13 +899,19 @@
   }
 
   function findSettingsChip() {
+    const settingsBtn = document.querySelector('button.settings-trigger-button');
+    if (settingsBtn) return settingsBtn;
     return Array.from(document.querySelectorAll('button')).find((button) => {
+      const text = normalizeSettingText(button.innerText || '').toLowerCase();
+      const aria = (button.getAttribute('aria-label') || '').toLowerCase();
+      if (button.classList.contains('more-options-button') || aria.includes('khác') || aria.includes('more') || text === 'more_vert') {
+        return false;
+      }
       const isTrigger = button.getAttribute('aria-haspopup') === 'menu'
         || button.classList.contains('settings-trigger-button')
-        || button.getAttribute('aria-label')?.includes('cài đặt')
-        || button.getAttribute('aria-label')?.includes('settings');
-      const text = normalizeSettingText(button.innerText || '');
-      return isTrigger || /Video ·|Nano Banana|Banana|crop_/.test(text);
+        || aria.includes('cài đặt')
+        || aria.includes('settings');
+      return isTrigger || /video ·|nano banana|banana|crop_/.test(text);
     });
   }
 

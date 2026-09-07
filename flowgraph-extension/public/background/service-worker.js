@@ -1106,17 +1106,30 @@
         const modeResult = await evalOnPage(`
         (async () => {
           const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-          const isChip = (b) => {
-            const t = (b.innerText || '').replace(/\\s+/g, ' ');
-            const isTrigger = b.getAttribute('aria-haspopup') === 'menu'
-              || b.classList.contains('settings-trigger-button');
-            return isTrigger && (t.includes('Video \xB7') || t.includes('Nano Banana'));
+          const getModelOrSettingsChip = () => {
+            const settingsBtn = document.querySelector('button.settings-trigger-button');
+            if (settingsBtn) return settingsBtn;
+            const candidateButtons = Array.from(document.querySelectorAll('button')).filter((b) => {
+              const text = (b.innerText || '').toLowerCase();
+              const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+              if (b.classList.contains('more-options-button') || aria.includes('kh\xE1c') || aria.includes('more') || text === 'more_vert') {
+                return false;
+              }
+              return aria.includes('ch\u1ECDn nh\xF3m m\xF4 h\xECnh') || 
+                     aria.includes('model') || 
+                     text.includes('veo') || 
+                     text.includes('banana') || 
+                     text.includes('omni') ||
+                     text.includes('video \xB7');
+            });
+            return candidateButtons[0] || null;
           };
+
           const readChip = () => {
-            const chip = Array.from(document.querySelectorAll('button')).find(isChip);
+            const chip = getModelOrSettingsChip();
             if (!chip) return null;
-            const t = (chip.innerText || '').replace(/\\s+/g, ' ').trim();
-            return { isVideo: t.includes('Video \xB7'), text: t };
+            const t = (chip.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+            return { isVideo: t.includes('video') || t.includes('veo') || t.includes('omni'), text: t };
           };
           const fire = (el) => {
             ['pointerover','pointerenter','pointermove','pointerdown','mousedown','pointerup','mouseup','click'].forEach((type) => {
@@ -1124,7 +1137,7 @@
               el.dispatchEvent(new C(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
             });
           };
-          const chip = Array.from(document.querySelectorAll('button')).find(isChip);
+          const chip = getModelOrSettingsChip();
           if (!chip) return { ok: false, reason: 'no-model-chip' };
           const cur = readChip();
           if (cur && cur.isVideo === ${wantVideo}) return { ok: true, text: cur.text };
