@@ -6,15 +6,16 @@ import { Check, ChevronDown, FolderKanban, Plus, RefreshCcw, X } from 'lucide-re
 import type { ProjectInfo } from '../../shared/bridge';
 import type { ActiveProjectState, StudioConnection } from './useStudioConnection';
 
-export function ConnectionPill({ state, label, onRefresh, icon, title }: {
+export function ConnectionPill({ state, label, onRefresh, icon, title, className }: {
   state: 'checking' | 'online' | 'warn' | 'offline' | 'error';
   label: string;
   onRefresh?: () => void;
   icon: React.ReactNode;
   title?: string;
+  className?: string;
 }) {
   return (
-    <div className={`connection-pill ${state}`} onClick={onRefresh} title={title ?? (onRefresh ? 'Click to refresh' : undefined)} role={onRefresh ? 'button' : 'status'} tabIndex={onRefresh ? 0 : undefined}>
+    <div className={`connection-pill ${state} ${className ?? ''}`} onClick={onRefresh} title={title ?? (onRefresh ? 'Click to refresh' : undefined)} role={onRefresh ? 'button' : 'status'} tabIndex={onRefresh ? 0 : undefined}>
       <span className={`fg-status-dot ${state}`} />
       {icon}
       <span className="connection-label">{label}</span>

@@ -1463,6 +1463,7 @@ function Studio() {
             label={accountPillLabel(accountState, connection.account.email, connection.credits?.credits)}
             onRefresh={() => void connection.refreshAccount()}
             icon={<CircleUserRound size={14} />}
+            className="account-pill"
           />
           <ConnectionPill
             state={flowState === 'READY' || flowState === 'CONNECTED' ? 'online' : flowState === 'CHECKING' ? 'checking' : flowState === 'PROJECT_REQUIRED' ? 'warn' : flowState === 'ERROR' ? 'error' : 'offline'}
