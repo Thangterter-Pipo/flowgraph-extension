@@ -96,11 +96,42 @@ export function persistWorkflow(
   projectBinding?: { projectId: string; projectName: string },
   storage: WriteStorage = localStorage,
 ) {
-  const payload = buildSavedWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
-  const key = projectBinding?.projectId
-    ? workflowStorageKey(projectBinding.projectId, workflowId)
-    : LEGACY_WORKFLOW_KEY;
-  storage.setItem(key, JSON.stringify(payload));
+  try {
+    const payload = buildSavedWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
+    const key = projectBinding?.projectId
+      ? workflowStorageKey(projectBinding.projectId, workflowId)
+      : LEGACY_WORKFLOW_KEY;
+    storage.setItem(key, JSON.stringify(payload));
+  } catch (error) {
+    // Chống sập do QuotaExceededError khi kéo ảnh dung lượng lớn
+    if (error instanceof Error && (error.name === 'QuotaExceededError' || error.message.includes('quota'))) {
+      console.warn('localStorage QuotaExceededError: stripping large local data URLs and retrying');
+      try {
+        const strippedNodes = nodes.map((n) => {
+          const config = { ...n.data.config };
+          delete config.localDataUrl;
+          const result = n.data.result ? { ...n.data.result, previewUrl: '' } : undefined;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              config,
+              result,
+            },
+          };
+        });
+        const strippedPayload = buildSavedWorkflow(strippedNodes, edges, workflowId, workflowName, projectBinding);
+        const key = projectBinding?.projectId
+          ? workflowStorageKey(projectBinding.projectId, workflowId)
+          : LEGACY_WORKFLOW_KEY;
+        storage.setItem(key, JSON.stringify(strippedPayload));
+      } catch (innerError) {
+        console.error('Failed to persist workflow even after stripping large data URLs:', innerError);
+      }
+    } else {
+      console.error('Failed to persist workflow:', error);
+    }
+  }
 }
 
 export function readSavedWorkflow(
@@ -153,7 +184,7 @@ export function restoreWorkflow(
             type: media.type,
             previewUrl: node.data.result?.previewUrl || (node.data.config?.localDataUrl ? String(node.data.config.localDataUrl) : (media.type === 'video'
               ? `https://flow-content.google/image/${media.mediaId}`
-              : `https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(media.mediaId)}`)),
+              : `https://flow.google.com/asb/${media.mediaId}`)),
             mediaId: media.mediaId,
             mimeType: media.mimeType,
             fileName: media.fileName,
