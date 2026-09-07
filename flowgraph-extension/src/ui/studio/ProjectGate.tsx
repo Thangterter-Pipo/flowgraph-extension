@@ -23,9 +23,12 @@ export function ConnectionPill({ state, label, onRefresh, icon, title }: {
   );
 }
 
-function accountPillLabel(state: string, email?: string): string {
+function accountPillLabel(state: string, email?: string, credits?: number): string {
   if (state === 'CHECKING') return 'Checking Account…';
-  if (state === 'CONNECTED') return email ?? 'Google Account';
+  if (state === 'CONNECTED') {
+    const credText = credits !== undefined ? ` · ⚡ ${credits} cr` : ' · ⚡ PRO (Daily)';
+    return (email ?? 'Google Account') + credText;
+  }
   if (state === 'SESSION_EXPIRED') return 'Session Expired';
   if (state === 'DISCONNECTED') return 'Account Disconnected';
   if (state === 'ERROR') return 'Account Error';

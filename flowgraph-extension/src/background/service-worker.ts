@@ -850,6 +850,37 @@ async function downloadMedia(payload: MediaDownloadPayload): Promise<MediaDownlo
 
 async function handleAccountStatus(): Promise<AccountStatus> {
   try {
+    // 1. Ưu tiên quét trực tiếp tài khoản Google đang đăng nhập trên tab Google Flow thật
+    const tab = await findFlowTab();
+    if (tab && tab.id !== undefined) {
+      try {
+        const injected = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const el = document.querySelector('a.gb_C, [aria-label*=\"@gmail.com\"], [aria-label*=\"Tài khoản Google\" i], [aria-label*=\"Google Account\" i]');
+            if (el) {
+              const aria = el.getAttribute('aria-label') || '';
+              const emailMatch = aria.match(/\(([^)]+@[^)]+)\)/i);
+              const nameMatch = aria.match(/Tài khoản Google:\s*([^\n(]+)/i) || aria.match(/Google Account:\s*([^\n(]+)/i);
+              return {
+                email: emailMatch ? emailMatch[1].trim() : undefined,
+                name: nameMatch ? nameMatch[1].trim() : undefined,
+              };
+            }
+            return null;
+          },
+        });
+        const userFromDom = injected?.[0]?.result;
+        if (userFromDom?.email) {
+          return {
+            state: 'CONNECTED',
+            email: userFromDom.email,
+            name: userFromDom.name,
+          };
+        }
+      } catch {}
+    }
+
     const auth = await ensureSession();
     return {
       state: 'CONNECTED',

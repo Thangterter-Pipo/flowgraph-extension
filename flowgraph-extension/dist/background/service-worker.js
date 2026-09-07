@@ -824,6 +824,36 @@
   }
   async function handleAccountStatus() {
     try {
+      const tab = await findFlowTab();
+      if (tab && tab.id !== void 0) {
+        try {
+          const injected = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              const el = document.querySelector('a.gb_C, [aria-label*="@gmail.com"], [aria-label*="T\xE0i kho\u1EA3n Google" i], [aria-label*="Google Account" i]');
+              if (el) {
+                const aria = el.getAttribute("aria-label") || "";
+                const emailMatch = aria.match(/\(([^)]+@[^)]+)\)/i);
+                const nameMatch = aria.match(/Tài khoản Google:\s*([^\n(]+)/i) || aria.match(/Google Account:\s*([^\n(]+)/i);
+                return {
+                  email: emailMatch ? emailMatch[1].trim() : void 0,
+                  name: nameMatch ? nameMatch[1].trim() : void 0
+                };
+              }
+              return null;
+            }
+          });
+          const userFromDom = injected?.[0]?.result;
+          if (userFromDom?.email) {
+            return {
+              state: "CONNECTED",
+              email: userFromDom.email,
+              name: userFromDom.name
+            };
+          }
+        } catch {
+        }
+      }
       const auth = await ensureSession();
       return {
         state: "CONNECTED",

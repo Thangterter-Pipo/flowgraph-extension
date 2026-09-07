@@ -1465,7 +1465,7 @@ function Studio() {
           <ProjectDropdown connection={connection} />
           <ConnectionPill
             state={accountState === 'CONNECTED' ? 'online' : accountState === 'CHECKING' ? 'checking' : accountState === 'SESSION_EXPIRED' ? 'warn' : accountState === 'DISCONNECTED' ? 'offline' : 'error'}
-            label={accountPillLabel(accountState, connection.account.email)}
+            label={accountPillLabel(accountState, connection.account.email, connection.credits?.credits)}
             onRefresh={() => void connection.refreshAccount()}
             icon={<CircleUserRound size={14} />}
           />
