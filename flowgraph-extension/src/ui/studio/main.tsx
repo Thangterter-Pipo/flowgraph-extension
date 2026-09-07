@@ -1245,14 +1245,219 @@ function Studio() {
     setEdges((current) => addEdge({ ...candidate, type: 'default', style: { stroke: colorForTone(source?.data.tone ?? 'purple') } }, current));
   }, [connection.isCanvasUnlocked, isValidConnection, nodes, edges, pushHistory, setEdges]);
 
-  const onDrop = useCallback((event: React.DragEvent) => {
+  useEffect(() => {
+    const handleNodeDropMedia = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { nodeId: string; type: 'image' | 'video'; file: File; blobUrl: string };
+      if (!detail?.nodeId) return;
+
+      pushHistory(nodes, edges);
+      setNodes((current) => current.map((n) => {
+        if (n.id !== detail.nodeId) return n;
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            status: 'success',
+            result: {
+              type: detail.type,
+              mediaId: `dropped-${Date.now()}`,
+              previewUrl: detail.blobUrl,
+            },
+          },
+        };
+      }));
+
+      // Tự động upload lên Google Flow nếu có project
+      if (detail.type === 'image' && connection.activeProject?.projectId) {
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const base64Data = (ev.target?.result as string)?.split(',')[1];
+          if (base64Data && connection.activeProject?.projectId) {
+            try {
+              const res = await new RealGoogleFlowAdapter().uploadImage({
+                projectId: connection.activeProject.projectId,
+                imageBytesBase64: base64Data,
+                mimeType: detail.file.type || 'image/png',
+                fileName: detail.file.name,
+              });
+              if (res.mediaId) {
+                setNodes((curr) => curr.map((n) => n.id === detail.nodeId ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    result: {
+                      type: 'image',
+                      mediaId: res.mediaId,
+                      previewUrl: detail.blobUrl,
+                    },
+                  },
+                } : n));
+              }
+            } catch (err) {
+              console.warn('Background upload of dropped media failed:', err);
+            }
+          }
+        };
+        reader.readAsDataURL(detail.file);
+      }
+    };
+
+    window.addEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
+    return () => window.removeEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
+  }, [nodes, edges, connection.activeProject, pushHistory, setNodes]);
+
+  const onDrop = useCallback(async (event: React.DragEvent) => {
     if (!connection.isCanvasUnlocked) return;
     event.preventDefault();
     if (!reactFlow) return;
+
+    const position = reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+
+    // 1. Kiểm tra xem người dùng có kéo thả TỆP NGOÀI (Ảnh, Video, Text) vào Canvas không
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length > 0) {
+      pushHistory(nodes, edges);
+      const newCreatedNodes: FlowNode[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileId = `${Date.now()}_${i}`;
+        const offsetPosition = { x: position.x + i * 40, y: position.y + i * 40 };
+
+        if (file.type.startsWith('image/')) {
+          const blobUrl = URL.createObjectURL(file);
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            const base64Data = (e.target?.result as string)?.split(',')[1];
+            if (base64Data && connection.activeProject?.projectId) {
+              try {
+                // Tự động upload ảnh lên Google Flow
+                const res = await new RealGoogleFlowAdapter().uploadImage({
+                  projectId: connection.activeProject.projectId,
+                  imageBytesBase64: base64Data,
+                  mimeType: file.type || 'image/png',
+                  fileName: file.name,
+                });
+                if (res.mediaId) {
+                  setNodes((curr) => curr.map((n) => n.id === fileId ? {
+                    ...n,
+                    data: {
+                      ...n.data,
+                      status: 'success',
+                      result: {
+                        type: 'image',
+                        mediaId: res.mediaId,
+                        previewUrl: blobUrl,
+                      },
+                    },
+                  } : n));
+                }
+              } catch (err) {
+                console.warn('Auto upload image failed, keep local blob preview:', err);
+              }
+            }
+          };
+          reader.readAsDataURL(file);
+
+          const spec = palette.find((p) => p.kind === 'uploadImage') || {
+            kind: 'uploadImage',
+            title: 'Upload Image',
+            subtitle: 'Upload PNG/JPEG to Flow',
+            tone: 'blue' as const,
+            group: 'Image' as const,
+            preview: 'image' as const,
+            config: {},
+          };
+
+          const imgNode: FlowNode = {
+            id: fileId,
+            type: 'flowNode',
+            position: offsetPosition,
+            data: {
+              ...hydrateNodeData(spec),
+              title: file.name.length > 20 ? `${file.name.slice(0, 18)}…` : file.name,
+              subtitle: 'Local Image File',
+              tone: 'blue',
+              config: { source: file.name, fileName: file.name },
+              status: 'idle',
+              result: {
+                type: 'image',
+                mediaId: `local-${fileId}`,
+                previewUrl: blobUrl,
+              },
+            },
+          };
+          newCreatedNodes.push(imgNode);
+        } else if (file.type.startsWith('video/')) {
+          const videoBlobUrl = URL.createObjectURL(file);
+          const spec = palette.find((p) => p.kind === 'download') || {
+            kind: 'download',
+            title: 'Download',
+            subtitle: 'Save MP4 to local',
+            tone: 'green' as const,
+            group: 'Utility' as const,
+            preview: 'video' as const,
+            config: {},
+          };
+
+          const vidNode: FlowNode = {
+            id: fileId,
+            type: 'flowNode',
+            position: offsetPosition,
+            data: {
+              ...hydrateNodeData(spec),
+              title: file.name.length > 20 ? `${file.name.slice(0, 18)}…` : file.name,
+              subtitle: 'Local Video File',
+              tone: 'green',
+              config: { fileName: file.name },
+              status: 'success',
+              result: {
+                type: 'video',
+                mediaId: `local-vid-${fileId}`,
+                previewUrl: videoBlobUrl,
+              },
+            },
+          };
+          newCreatedNodes.push(vidNode);
+        } else if (file.type.includes('text') || file.name.endsWith('.txt')) {
+          const textContent = await file.text();
+          const spec = palette.find((p) => p.kind === 'prompt') || {
+            kind: 'prompt',
+            title: 'Prompt',
+            subtitle: 'Creative Direction',
+            tone: 'purple' as const,
+            group: 'Generative' as const,
+            config: {},
+          };
+
+          const promptNode: FlowNode = {
+            id: fileId,
+            type: 'flowNode',
+            position: offsetPosition,
+            data: {
+              ...hydrateNodeData(spec),
+              title: file.name,
+              subtitle: 'Dropped Text File',
+              tone: 'purple',
+              config: { prompt: textContent },
+              status: 'idle',
+            },
+          };
+          newCreatedNodes.push(promptNode);
+        }
+      }
+
+      if (newCreatedNodes.length > 0) {
+        setNodes((current) => [...current, ...newCreatedNodes]);
+        setSelectedNodeId(newCreatedNodes[0].id);
+        return;
+      }
+    }
+
+    // 2. Kéo thả Node từ Thư viện Node Library bên trái
     const raw = event.dataTransfer.getData('application/flowgraph-node');
     if (!raw) return;
     const spec = JSON.parse(raw) as PaletteSpec;
-    const position = reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
     const id = `${Date.now()}`;
     const newNode: FlowNode = {
       id,
@@ -1263,7 +1468,7 @@ function Studio() {
     pushHistory(nodes, edges);
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(id);
-  }, [connection.isCanvasUnlocked, reactFlow, nodes, edges, pushHistory, setNodes]);
+  }, [connection.isCanvasUnlocked, connection.activeProject, reactFlow, nodes, edges, pushHistory, setNodes]);
 
   const updateConfig = (key: string, value: string, targetNodeId?: string) => {
     if (!connection.isCanvasUnlocked) return;
