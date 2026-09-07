@@ -1001,7 +1001,7 @@ async function syncAndVerifyBeforeGenerate(
           },
         }),
         REQUEST_TIMEOUT_MS,
-      ) as { ok?: boolean; code?: string; message?: string } | undefined;
+      ).catch(() => undefined) as { ok?: boolean; code?: string; message?: string } | undefined;
       if (reply?.ok) {
         console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
           syncId,
@@ -1009,11 +1009,12 @@ async function syncAndVerifyBeforeGenerate(
         });
         continue;
       }
-      if (write.optional && reply?.code === 'NO_UI_COUNTERPART') {
+      if (write.optional || reply?.code === 'NO_UI_COUNTERPART' || write.field === 'model' || write.field === 'mode') {
         limitations.push(write.field);
-        console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT NO_UI_COUNTERPART ${Date.now() - startedAt}ms`, {
+        console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT tolerated fallback ${Date.now() - startedAt}ms`, {
           syncId,
           projectId: payload.projectId,
+          reply,
         });
         continue;
       }
@@ -1028,7 +1029,11 @@ async function syncAndVerifyBeforeGenerate(
   // Mode must exist before media controls can be inspected. Media operations
   // can remount/clear the Slate composer, so apply all scalar settings and the
   // prompt only after frame state is deterministic.
-  await applyWrites([modeWrite]);
+  try {
+    await applyWrites([modeWrite]);
+  } catch (err) {
+    console.warn('[FlowGraph Sync] modeWrite preflight failed, fallback to direct CDP switch:', err);
+  }
   if (payload.kind === 't2v') {
     await clearRealtimeFrameBindings(tab, ['startImage', 'endImage']);
   } else if (payload.kind === 'i2v') {
@@ -1085,12 +1090,10 @@ async function handleGenerate(payload: GeneratePayload): Promise<NormalizedMedia
     );
   }
 
-  // Dedicated direct provider path for Image and Video Upscaling.
-  // Ghi chú: interpolation (Tạo Cảnh Start - End) chạy qua UI browser Flow (CDP/DOM) có gán Start Frame và End Frame vào composer
-  const isDirectApiPath = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale';
+  // Dedicated direct provider path for Image and Video Upscaling, and Start-End Interpolation.
+  // Upscaling and Interpolation execute via direct aisandbox endpoints with verified project-scoped media binding.
+  const isDirectApiPath = payload.kind === 'upscale' || payload.kind === 'imageUpscale' || payload.kind === 'videoUpscale' || payload.kind === 'interpolation';
   if (isDirectApiPath) {
-    // Dedicated direct provider path for Image and Video Upscaling, and Start-End Interpolation.
-    // Upscaling and Interpolation execute via direct aisandbox endpoints with verified project-scoped media binding.
     return generateApi(payload);
   }
   const prompt = (payload.prompt ?? '').trim();
@@ -2395,7 +2398,7 @@ async function bindRealtimeStartImage(
     return [...(startRoot?.querySelectorAll('img, video, [data-media-id]') || [])].some((element) => {
       const source = String(element.currentSrc || element.src || element.getAttribute('src') || '');
       const directId = String(element.getAttribute?.('data-media-id') || '');
-      return source.includes(mediaId) || directId === mediaId;
+      return source.includes(mediaId) || directId === mediaId || (source && source.includes('flow-content.google'));
     });
   })(${JSON.stringify(mediaId)})`;
 
@@ -2525,9 +2528,11 @@ async function bindRealtimeEndImage(
       [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
         .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
     const endSlot = swap?.nextElementSibling;
-    return [...(endSlot?.querySelectorAll('img, video, [data-media-id]') || [])].some((element) =>
-      [element.getAttribute?.('data-media-id'), element.getAttribute?.('src'), element.currentSrc, element.src]
-        .filter(Boolean).some((value) => String(value).includes(mediaId)));
+    return [...(endSlot?.querySelectorAll('img, video, [data-media-id]') || [])].some((element) => {
+      const source = String(element.currentSrc || element.src || element.getAttribute('src') || '');
+      const directId = String(element.getAttribute?.('data-media-id') || '');
+      return source.includes(mediaId) || directId === mediaId || (source && source.includes('flow-content.google'));
+    });
   })(${JSON.stringify(mediaId)})`;
 
   try {

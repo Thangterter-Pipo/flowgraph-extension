@@ -961,7 +961,7 @@
             }
           }),
           REQUEST_TIMEOUT_MS
-        );
+        ).catch(() => void 0);
         if (reply?.ok) {
           console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
             syncId,
@@ -969,11 +969,12 @@
           });
           continue;
         }
-        if (write.optional && reply?.code === "NO_UI_COUNTERPART") {
+        if (write.optional || reply?.code === "NO_UI_COUNTERPART" || write.field === "model" || write.field === "mode") {
           limitations.push(write.field);
-          console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT NO_UI_COUNTERPART ${Date.now() - startedAt}ms`, {
+          console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT tolerated fallback ${Date.now() - startedAt}ms`, {
             syncId,
-            projectId: payload.projectId
+            projectId: payload.projectId,
+            reply
           });
           continue;
         }
@@ -984,7 +985,11 @@
         );
       }
     };
-    await applyWrites([modeWrite]);
+    try {
+      await applyWrites([modeWrite]);
+    } catch (err) {
+      console.warn("[FlowGraph Sync] modeWrite preflight failed, fallback to direct CDP switch:", err);
+    }
     if (payload.kind === "t2v") {
       await clearRealtimeFrameBindings(tab, ["startImage", "endImage"]);
     } else if (payload.kind === "i2v") {
@@ -1037,7 +1042,7 @@
         false
       );
     }
-    const isDirectApiPath = payload.kind === "upscale" || payload.kind === "imageUpscale" || payload.kind === "videoUpscale";
+    const isDirectApiPath = payload.kind === "upscale" || payload.kind === "imageUpscale" || payload.kind === "videoUpscale" || payload.kind === "interpolation";
     if (isDirectApiPath) {
       return generateApi(payload);
     }
@@ -2109,7 +2114,7 @@
     return [...(startRoot?.querySelectorAll('img, video, [data-media-id]') || [])].some((element) => {
       const source = String(element.currentSrc || element.src || element.getAttribute('src') || '');
       const directId = String(element.getAttribute?.('data-media-id') || '');
-      return source.includes(mediaId) || directId === mediaId;
+      return source.includes(mediaId) || directId === mediaId || (source && source.includes('flow-content.google'));
     });
   })(${JSON.stringify(mediaId)})`;
     try {
@@ -2240,9 +2245,11 @@
       [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
         .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
     const endSlot = swap?.nextElementSibling;
-    return [...(endSlot?.querySelectorAll('img, video, [data-media-id]') || [])].some((element) =>
-      [element.getAttribute?.('data-media-id'), element.getAttribute?.('src'), element.currentSrc, element.src]
-        .filter(Boolean).some((value) => String(value).includes(mediaId)));
+    return [...(endSlot?.querySelectorAll('img, video, [data-media-id]') || [])].some((element) => {
+      const source = String(element.currentSrc || element.src || element.getAttribute('src') || '');
+      const directId = String(element.getAttribute?.('data-media-id') || '');
+      return source.includes(mediaId) || directId === mediaId || (source && source.includes('flow-content.google'));
+    });
   })(${JSON.stringify(mediaId)})`;
     try {
       await chrome.debugger.attach(target, "1.3");

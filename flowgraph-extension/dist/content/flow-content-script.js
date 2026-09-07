@@ -86,19 +86,20 @@
     // Legacy Radix used [role=tab]; the new Angular UI exposes the mode
     // options as Material radios ([role=radio]) with text like
     // "image Hình ảnh" / "videocam Video".
-    const tabs = Array.from(opened.menu.querySelectorAll('[role="tab"], [role="radio"]'));
+    const tabs = Array.from(opened.menu.querySelectorAll('button, [role="tab"], [role="radio"], .mat-button-toggle-button'));
     const tab = tabs.find((candidate) => {
       const text = normalizeSettingText(candidate.innerText).toLowerCase();
-      return wantVideo ? text.includes('video') : (text.includes('hình ảnh') || text.includes('image'));
+      return wantVideo ? (text.includes('video') || text.includes('videocam')) : (text.includes('hình ảnh') || text.includes('image'));
     });
     if (!tab) {
       await closeOpenMenus();
       return { ok: false, reason: 'mode-tab-not-found', tabs: tabs.map((t) => (t.innerText || '').trim().slice(0, 40)) };
     }
     clickMenuItemLike(tab);
+    tab.click();
     let after = readChip();
-    for (let attempt = 0; attempt < 20 && after?.isVideo !== wantVideo; attempt += 1) {
-      await syncSleep(50);
+    for (let attempt = 0; attempt < 25 && after?.isVideo !== wantVideo; attempt += 1) {
+      await syncSleep(60);
       after = readChip();
     }
     await closeOpenMenus();
@@ -563,14 +564,32 @@
   function modeFromChip(chip) {
     if (!chip) return null;
     const text = normalizeSettingText(chip.innerText || '').toLowerCase();
-    return (text.includes('video') || text.includes('veo') || text.includes('omni')) ? 'VIDEO' : 'IMAGE';
+    if (text.includes('video') || text.includes('veo') || text.includes('omni')) return 'VIDEO';
+    if (text.includes('banana') || text.includes('image') || text.includes('hình ảnh') || text.includes('gem_pix')) return 'IMAGE';
+    return 'IMAGE';
   }
 
   function modelFromChip(chip) {
+    // 1. Kiểm tra trước nút chọn model độc lập trong Angular Flow UI mới
+    const modelBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+      b.getAttribute('aria-label')?.includes('mô hình')
+      || b.getAttribute('aria-label')?.toLowerCase().includes('model')
+      || (b.innerText && (b.innerText.includes('Veo') || b.innerText.includes('Banana') || b.innerText.includes('Omni')))
+    );
+    if (modelBtn) {
+      let t = (modelBtn.innerText || '')
+        .replace(/arrow_drop_down/gi, '')
+        .replace(/volume_up/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (t) return t;
+    }
+
     if (!chip) return null;
     // The first chip text node contains the mode/model/resolution segment.
     // Descendant icon text must never be treated as model text.
     const rawText = (chip.firstChild?.nodeValue ?? chip.innerText ?? '')
+      .replace(/volume_up/gi, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (!rawText) return null;
@@ -589,11 +608,6 @@
     }
     let text = rawText;
     text = text.replace(/[^A-Za-z0-9 .:+_-]/gu, ' ');
-    // The image-mode chip concatenates the model name with the aspect-ratio
-    // icon token (e.g. "crop_16_9") and the batch-count token (e.g. "x2").
-    // Those are separate settings, not part of the model label, so strip them
-    // before returning. Otherwise the model short-circuit comparison in
-    // writeModel never matches and every sync re-opens the (flaky) menu.
     text = text.replace(/\bcrop_\d+_\d+\b/gi, ' ');
     text = text.replace(/\bcrop_free\b/gi, ' ');
     text = text.replace(/\bx\d+\b/gi, ' ');
@@ -844,8 +858,27 @@
       result = await setComposerMode(value === 'VIDEO' ? 'i2v' : 't2i');
       await syncSleep(200);
       applied = modeFromChip(findModelChip());
+      if (applied === value) break;
     }
-    if (!result?.ok || applied !== value) {
+    if (applied !== value) {
+      // Ép chuyển mode bằng cách click trực tiếp vào nút radio trong DOM
+      const menuRes = await openComposerSettings();
+      if (menuRes.ok && menuRes.menu) {
+        const btns = Array.from(menuRes.menu.querySelectorAll('button, [role="tab"], [role="radio"], .mat-button-toggle-button'));
+        const targetBtn = btns.find((b) => {
+          const t = normalizeSettingText(b.innerText || '').toLowerCase();
+          return value === 'VIDEO' ? (t.includes('video') || t.includes('videocam')) : (t.includes('hình ảnh') || t.includes('image'));
+        });
+        if (targetBtn) {
+          clickMenuItemLike(targetBtn);
+          targetBtn.click();
+          await syncSleep(300);
+          applied = modeFromChip(findModelChip());
+        }
+        await closeOpenMenus();
+      }
+    }
+    if (applied !== value && !result?.ok) {
       return {
         ok: false,
         code: 'UI_NOT_READY',
@@ -1090,6 +1123,7 @@
       .pop();
     const optionText = (candidate) => normalizeSettingText(candidate.innerText)
       .replace(/arrow_drop_down/gi, ' ')
+      .replace(/volume_up/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     const matchesRequested = (candidate) => {

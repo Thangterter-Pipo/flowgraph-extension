@@ -41,15 +41,20 @@ function inferredResult(data: FlowNodeData): NodeMediaResult | undefined {
   if (data.result?.previewUrl) return data.result;
   const previewUrl = data.config.resultUrl ?? data.config.previewUrl ?? data.config.outputUrl;
   const mediaId = data.result?.mediaId ?? data.config.mediaId;
-  const fallbackUrl = mediaId && !mediaId.startsWith('local-') && !mediaId.startsWith('dropped-')
-    ? undefined
-    : undefined;
-  const resolvedPreviewUrl = previewUrl ?? fallbackUrl;
-  if (!resolvedPreviewUrl) return undefined;
   const explicitType = data.config.resultType?.toLowerCase();
+  if (data.result?.mediaId) {
+    return {
+      type: explicitType === 'video' || data.preview === 'video' ? 'video' : 'image',
+      previewUrl: previewUrl || '',
+      mediaId: data.result.mediaId,
+      mimeType: data.result.mimeType,
+      fileName: data.result.fileName,
+    };
+  }
+  if (!previewUrl) return undefined;
   return {
     type: explicitType === 'video' || data.preview === 'video' ? 'video' : 'image',
-    previewUrl: resolvedPreviewUrl,
+    previewUrl,
     mediaId,
     mimeType: data.config.mimeType,
     fileName: data.config.fileName,
@@ -183,8 +188,8 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
       return;
     }
 
-    // 1. Nếu là Blob hoặc Data URL cục bộ -> Dùng ngay, không tải mạng
-    if (src && (src.startsWith('blob:') || src.startsWith('data:'))) {
+    // 1. Nếu là Blob hoặc Data URL cục bộ thật sự (không phải dummy)
+    if (src && (src.startsWith('blob:') || (src.startsWith('data:') && !src.includes('ZHVtbXk=')))) {
       setBlobUrl(src);
       return;
     }
@@ -216,8 +221,10 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
               args: [mediaId],
             });
             const domSrc = injected?.[0]?.result;
-            // Chỉ fetch nếu domSrc là URL hợp lệ đầy đủ của Google Flow (chứa token /asb/AB-nOU...)
-            if (domSrc && domSrc.includes('/asb/AB-n') && active) {
+            // Hỗ trợ cả Google Flow CDN format:
+            // 1) /asb/AB-n...
+            // 2) flow-content.google/image/...
+            if (domSrc && (domSrc.includes('/asb/AB-n') || domSrc.includes('flow-content.google')) && active) {
               const res = await fetch(domSrc);
               const blob = await res.blob();
               if (active) setBlobUrl(URL.createObjectURL(blob));
