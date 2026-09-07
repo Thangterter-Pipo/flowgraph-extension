@@ -1290,54 +1290,78 @@ function Studio() {
       if (!detail?.nodeId) return;
 
       pushHistory(nodes, edges);
-      setNodes((current) => current.map((n) => {
-        if (n.id !== detail.nodeId) return n;
-        return {
-          ...n,
-          data: {
-            ...n.data,
-            status: 'success',
-            result: {
-              type: detail.type,
-              mediaId: `dropped-${Date.now()}`,
-              previewUrl: detail.blobUrl,
-            },
-          },
-        };
-      }));
 
-      // Tự động upload lên Google Flow nếu có project
-      if (detail.type === 'image' && connection.activeProject?.projectId) {
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          const base64Data = (ev.target?.result as string)?.split(',')[1];
-          if (base64Data && connection.activeProject?.projectId) {
-            try {
-              const res = await new RealGoogleFlowAdapter().uploadImage({
-                projectId: connection.activeProject.projectId,
-                imageBytesBase64: base64Data,
-                mimeType: detail.file.type || 'image/png',
-                fileName: detail.file.name,
-              });
-              if (res.mediaId) {
-                setNodes((curr) => curr.map((n) => n.id === detail.nodeId ? {
-                  ...n,
-                  data: {
-                    ...n.data,
-                    result: {
-                      type: 'image',
-                      mediaId: res.mediaId,
-                      previewUrl: detail.blobUrl,
-                    },
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataUrl = ev.target?.result as string;
+        const base64Data = dataUrl ? dataUrl.split(',')[1] : null;
+
+        setNodes((current) => current.map((n) => {
+          if (n.id !== detail.nodeId) return n;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              status: 'success',
+              config: {
+                ...n.data.config,
+                localDataUrl: dataUrl,
+              },
+              result: {
+                type: detail.type,
+                mediaId: n.data.result?.mediaId || `dropped-${Date.now()}`,
+                previewUrl: dataUrl,
+              },
+            },
+          };
+        }));
+
+        // Tự động upload lên Google Flow nếu có project
+        if (detail.type === 'image' && base64Data && connection.activeProject?.projectId) {
+          try {
+            const res = await new RealGoogleFlowAdapter().uploadImage({
+              projectId: connection.activeProject.projectId,
+              imageBytesBase64: base64Data,
+              mimeType: detail.file.type || 'image/png',
+              fileName: detail.file.name,
+            });
+            if (res.mediaId) {
+              setNodes((curr) => curr.map((n) => n.id === detail.nodeId ? {
+                ...n,
+                data: {
+                  ...n.data,
+                  result: {
+                    type: 'image',
+                    mediaId: res.mediaId,
+                    previewUrl: dataUrl,
                   },
-                } : n));
-              }
-            } catch (err) {
-              console.warn('Background upload of dropped media failed:', err);
+                },
+              } : n));
             }
+          } catch (err) {
+            console.warn('Background upload of dropped media failed, keep dataUrl:', err);
           }
-        };
+        }
+      };
+
+      if (detail.type === 'image') {
         reader.readAsDataURL(detail.file);
+      } else {
+        setNodes((current) => current.map((n) => {
+          if (n.id !== detail.nodeId) return n;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              status: 'success',
+              result: {
+                type: detail.type,
+                mediaId: `dropped-${Date.now()}`,
+                previewUrl: detail.blobUrl,
+              },
+            },
+          };
+        }));
       }
     };
 
@@ -1364,10 +1388,30 @@ function Studio() {
         const offsetPosition = { x: position.x + i * 40, y: position.y + i * 40 };
 
         if (file.type.startsWith('image/')) {
-          const blobUrl = URL.createObjectURL(file);
+          const initialBlob = URL.createObjectURL(file);
           const reader = new FileReader();
           reader.onload = async (e) => {
-            const base64Data = (e.target?.result as string)?.split(',')[1];
+            const dataUrl = e.target?.result as string;
+            const base64Data = dataUrl ? dataUrl.split(',')[1] : null;
+
+            // Lưu trực tiếp dataUrl vào node data và config để persist vĩnh viễn
+            setNodes((curr) => curr.map((n) => n.id === fileId ? {
+              ...n,
+              data: {
+                ...n.data,
+                status: 'success',
+                config: {
+                  ...n.data.config,
+                  localDataUrl: dataUrl,
+                },
+                result: {
+                  type: 'image',
+                  mediaId: n.data.result?.mediaId || `local-${Date.now()}`,
+                  previewUrl: dataUrl,
+                },
+              },
+            } : n));
+
             if (base64Data && connection.activeProject?.projectId) {
               try {
                 // Tự động upload ảnh lên Google Flow
@@ -1386,13 +1430,13 @@ function Studio() {
                       result: {
                         type: 'image',
                         mediaId: res.mediaId,
-                        previewUrl: blobUrl,
+                        previewUrl: dataUrl,
                       },
                     },
                   } : n));
                 }
               } catch (err) {
-                console.warn('Auto upload image failed, keep local blob preview:', err);
+                console.warn('Auto upload image failed, keep persistent dataUrl:', err);
               }
             }
           };
@@ -1422,7 +1466,7 @@ function Studio() {
               result: {
                 type: 'image',
                 mediaId: `local-${fileId}`,
-                previewUrl: blobUrl,
+                previewUrl: initialBlob,
               },
             },
           };

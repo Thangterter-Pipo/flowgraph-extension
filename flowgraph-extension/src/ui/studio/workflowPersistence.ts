@@ -30,10 +30,18 @@ export function workflowStorageKey(projectId: string, workflowId: string) {
 
 function nodesForPersistence(nodes: FlowNode[]): FlowNode[] {
   return nodes.map((node) => {
-    // Strip transient preview URL from result (it gets rehydrated from mediaId on restore)
-    const result = node.data.result ? { ...node.data.result, previewUrl: '' } : undefined;
+    // Nếu là ảnh/video kéo từ ngoài vào (có dataUrl hoặc previewUrl dạng blob: hay data:),
+    // hoặc có mediaId, thì bảo tồn previewUrl nếu là data: URL để khi reload không bao giờ mất ảnh!
+    let previewUrl = '';
+    if (node.data.result?.previewUrl?.startsWith('data:')) {
+      previewUrl = node.data.result.previewUrl;
+    } else if (node.data.config?.localDataUrl?.startsWith('data:')) {
+      previewUrl = node.data.config.localDataUrl;
+    }
 
-    // Strip any signed URLs or transient data from config
+    const result = node.data.result ? { ...node.data.result, previewUrl } : undefined;
+
+    // Strip signed URLs or transient URLs
     const config = { ...node.data.config };
     delete config.signedPreviewUrl;
     delete config.transientUrl;
@@ -143,12 +151,20 @@ export function restoreWorkflow(
           const media = saved.runtimeResults[node.id];
           restored.data.result = {
             type: media.type,
-            previewUrl: media.type === 'video'
+            previewUrl: node.data.result?.previewUrl || (node.data.config?.localDataUrl ? String(node.data.config.localDataUrl) : (media.type === 'video'
               ? `https://flow-content.google/image/${media.mediaId}`
-              : `https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(media.mediaId)}`,
+              : `https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name=${encodeURIComponent(media.mediaId)}`)),
             mediaId: media.mediaId,
             mimeType: media.mimeType,
             fileName: media.fileName,
+          };
+          restored.data.status = 'success';
+        } else if (node.data.config?.localDataUrl) {
+          // Khôi phục ảnh kéo thả từ ngoài vào bằng Base64 Data URL bền vững
+          restored.data.result = {
+            type: 'image',
+            previewUrl: String(node.data.config.localDataUrl),
+            mediaId: node.data.result?.mediaId || `local-${node.id}`,
           };
           restored.data.status = 'success';
         } else if (node.data.result?.mediaId) {
