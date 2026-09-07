@@ -162,7 +162,53 @@ export function useStudioConnection(): StudioConnection {
         }
       } catch {}
 
-      // 2. Thử gọi adapter để lấy thêm từ Google Flow nếu backend hỗ trợ
+      // 2. Thử gọi adapter hoặc quét trực tiếp tab Google Flow để lấy toàn bộ các dự án thật
+      try {
+        if (typeof chrome !== 'undefined' && chrome.tabs) {
+          const tabs = await chrome.tabs.query({ url: '*://flow.google.com/*' });
+          const flowTab = tabs[0];
+          if (flowTab?.id) {
+            const injected = await chrome.scripting.executeScript({
+              target: { tabId: flowTab.id },
+              func: () => {
+                const list: Array<{ id: string; title: string }> = [];
+                const regex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+                const elements = Array.from(document.querySelectorAll('a, button, div, span'));
+                const projectNodes = elements.filter((el) => {
+                  const t = (el.textContent || '').trim();
+                  return (t.includes('Tháng') || t.includes('FlowGraph') || t.includes('thg') || t.includes('Dự án') || t.includes('Project')) && !t.includes('addDự án mới');
+                });
+                for (const el of projectNodes) {
+                  let p: Element | null = el;
+                  for (let step = 0; step < 8 && p; step++) {
+                    const m = (p.outerHTML || '').match(regex);
+                    if (m && m[0]) {
+                      let rawTitle = (el.textContent || '').split('\n')[0].trim();
+                      rawTitle = rawTitle.replace(/editdelete/gi, '').replace(/\b(edit|delete|add)\b/gi, '').trim();
+                      if (rawTitle && rawTitle !== 'Dự án mới' && !list.some((item) => item.id === m[0])) {
+                        list.push({ id: m[0], title: rawTitle });
+                      }
+                      break;
+                    }
+                    p = p.parentElement;
+                  }
+                }
+                return list;
+              },
+            });
+            const scraped = injected?.[0]?.result;
+            if (Array.isArray(scraped)) {
+              for (const s of scraped) {
+                if (s.id && !knownProjectsMap.has(s.id)) {
+                  knownProjectsMap.set(s.id, { projectId: s.id, projectTitle: s.title });
+                }
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // 3. Thử gọi adapter để lấy thêm từ Google Flow nếu backend hỗ trợ
       try {
         const data = await adapter().listProjects();
         if (data?.projects?.length) {
