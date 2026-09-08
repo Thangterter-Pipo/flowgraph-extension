@@ -431,7 +431,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .react-flow__controls-button { background:#0d1521 !important; border-color:#1e2a3d !important; fill:#a7b4c8 !important; }
 .react-flow__minimap { background:#0c131e !important; border:1px solid #26344c; border-radius:9px; overflow:hidden; }
 .react-flow__edges {
-  z-index: 10 !important;
+  z-index: 0 !important;
+}
+.react-flow__nodes {
+  z-index: 1 !important;
 }
 .react-flow__edge-path {
   stroke-width: 2.4;
@@ -811,8 +814,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   flex-direction: column;
   justify-content: space-between;
   padding: 6px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.25);
   transition: background 0.2s ease;
+  z-index: 5;
+  pointer-events: auto;
 }
 .player-overlay.is-playing {
   background: transparent;
