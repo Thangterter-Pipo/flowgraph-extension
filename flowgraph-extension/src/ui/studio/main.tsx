@@ -183,11 +183,13 @@ function NodeLibrary({
   setSearch,
   locked,
   onOpenTemplatesModal,
+  onAddNode,
 }: {
   search: string;
   setSearch: (value: string) => void;
   locked: boolean;
   onOpenTemplatesModal?: () => void;
+  onAddNode?: (spec: PaletteSpec) => void;
 }) {
   const [activeGroup, setActiveGroup] = useState<string>('All');
   const groups = ['All', 'Generative', 'Image', 'Video', 'Utility'] as const;
@@ -201,6 +203,7 @@ function NodeLibrary({
   const dragStart = (event: React.DragEvent, spec: PaletteSpec) => {
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('application/flowgraph-node', JSON.stringify(spec));
+    event.dataTransfer.setData('text/plain', JSON.stringify(spec));
   };
 
   return (
@@ -239,19 +242,26 @@ function NodeLibrary({
 
       <div className="sidebar-nodes-list">
         {filtered.map((node) => (
-          <button
+          <div
             className={`palette-node compact tone-${node.tone}`}
             draggable={!locked}
-            onDragStart={locked ? undefined : (event) => dragStart(event, node)}
+            onDragStart={locked ? undefined : (event) => {
+              dragStart(event, node);
+            }}
+            onDoubleClick={locked ? undefined : () => {
+              if (onAddNode) onAddNode(node);
+            }}
             key={node.kind}
-            title={`${node.title} — ${node.subtitle}`}
+            title={`${node.title} — ${node.subtitle} (Kéo vào Canvas hoặc Click đúp để thêm)`}
+            role="button"
+            tabIndex={0}
           >
             <span className={`palette-icon ${node.tone}`}><NodeIcon kind={node.kind} size={13} /></span>
             <span className="palette-copy">
               <strong>{node.title}</strong>
               <span>{node.subtitle}</span>
             </span>
-          </button>
+          </div>
         ))}
       </div>
     </aside>
@@ -1298,11 +1308,14 @@ function Studio() {
   }, [connection.isCanvasUnlocked, isValidConnection, nodes, edges, pushHistory, setEdges]);
 
   useEffect(() => {
-    // Chặn toàn cục để Chrome không bao giờ tự ý mở/điều hướng trang sang tệp ảnh khi kéo thả
+    // Chặn toàn cục ngoài canvas để Chrome không mở file điều hướng trang
     const preventChromeNavigation = (e: DragEvent) => {
-      e.preventDefault();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'copy';
+      const target = e.target as HTMLElement;
+      if (!target?.closest('.canvas-wrap') && !target?.closest('.react-flow')) {
+        e.preventDefault();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = 'none';
+        }
       }
     };
     window.addEventListener('dragover', preventChromeNavigation);
@@ -1344,16 +1357,65 @@ function Studio() {
     };
 
     window.addEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
+
+    // Hỗ trợ thêm nhanh Node bằng CLICK chuột từ Sidebar
+    const handleAddNodeClick = (e: Event) => {
+      const customEvent = e as CustomEvent<PaletteSpec>;
+      const spec = customEvent.detail;
+      if (!spec) return;
+
+      pushHistory(nodes, edges);
+      const id = `${Date.now()}`;
+      
+      // Tính toán tọa độ xuất hiện ở giữa màn hình Canvas hoặc lệch nhẹ
+      let spawnPos = { x: 300 + Math.random() * 80, y: 200 + Math.random() * 80 };
+      if (reactFlow) {
+        try {
+          const centerPos = reactFlow.screenToFlowPosition({
+            x: window.innerWidth / 2,
+            y: window.innerHeight / 2,
+          });
+          spawnPos = { x: centerPos.x - 100 + Math.random() * 60, y: centerPos.y - 60 + Math.random() * 60 };
+        } catch {}
+      }
+
+      const newNode: FlowNode = {
+        id,
+        type: 'flowNode',
+        position: spawnPos,
+        data: {
+          ...hydrateNodeData(spec),
+          title: spec.title,
+          subtitle: spec.subtitle,
+          tone: spec.tone,
+          status: 'idle',
+        },
+      };
+
+      setNodes((current) => [...current, newNode]);
+      setSelectedNodeId(id);
+    };
+
+    window.addEventListener('flowgraph:add-node-click', handleAddNodeClick);
+
     return () => {
       window.removeEventListener('dragover', preventChromeNavigation);
       window.removeEventListener('drop', preventChromeNavigation);
       window.removeEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
+      window.removeEventListener('flowgraph:add-node-click', handleAddNodeClick);
     };
   }, [nodes, edges, connection.activeProject, pushHistory, setNodes]);
 
-  const onDrop = useCallback(async (event: React.DragEvent) => {
-    if (!connection.isCanvasUnlocked) return;
+  const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const onDrop = useCallback(async (event: React.DragEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('[onDrop] Triggered! isCanvasUnlocked:', connection.isCanvasUnlocked, 'reactFlow exists:', !!reactFlow);
+    if (!connection.isCanvasUnlocked) return;
     if (!reactFlow) return;
 
     const position = reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
@@ -1479,9 +1541,16 @@ function Studio() {
     }
 
     // 2. Kéo thả Node từ Thư viện Node Library bên trái
-    const raw = event.dataTransfer.getData('application/flowgraph-node');
+    const raw = event.dataTransfer.getData('application/flowgraph-node') || event.dataTransfer.getData('text/plain');
+    console.log('[onDrop] raw dataTransfer:', raw);
     if (!raw) return;
-    const spec = JSON.parse(raw) as PaletteSpec;
+    let spec: PaletteSpec;
+    try {
+      spec = JSON.parse(raw) as PaletteSpec;
+    } catch (err) {
+      console.error('[onDrop] JSON parse error:', err);
+      return;
+    }
     const id = `${Date.now()}`;
     const newNode: FlowNode = {
       id,
@@ -1492,6 +1561,7 @@ function Studio() {
     pushHistory(nodes, edges);
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(id);
+    console.log('[onDrop] Node successfully added to state:', id, newNode);
   }, [connection.isCanvasUnlocked, connection.activeProject, reactFlow, nodes, edges, pushHistory, setNodes]);
 
   const updateConfig = (key: string, value: string, targetNodeId?: string) => {
@@ -1708,11 +1778,39 @@ function Studio() {
           setSearch={setSearch}
           locked={!connection.isCanvasUnlocked}
           onOpenTemplatesModal={() => setTemplatesModalOpen(true)}
+          onAddNode={(spec) => {
+            pushHistory(nodes, edges);
+            const id = `${Date.now()}`;
+            let spawnPos = { x: 300 + Math.random() * 80, y: 200 + Math.random() * 80 };
+            if (reactFlow) {
+              try {
+                const centerPos = reactFlow.screenToFlowPosition({
+                  x: window.innerWidth / 2,
+                  y: window.innerHeight / 2,
+                });
+                spawnPos = { x: centerPos.x - 100 + Math.random() * 60, y: centerPos.y - 60 + Math.random() * 60 };
+              } catch {}
+            }
+            const newNode: FlowNode = {
+              id,
+              type: 'flowNode',
+              position: spawnPos,
+              data: {
+                ...hydrateNodeData(spec),
+                title: spec.title,
+                subtitle: spec.subtitle,
+                tone: spec.tone,
+                status: 'idle',
+              },
+            };
+            setNodes((current) => [...current, newNode]);
+            setSelectedNodeId(id);
+          }}
         />
 
         <section className="studio-center">
           <ProjectGateOverlay connection={connection}>
-            <div className="canvas-wrap" onDrop={onDrop} onDragOver={(event) => { if (connection.isCanvasUnlocked) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }}>
+            <div className="canvas-wrap" onDrop={onDrop} onDragOver={onDragOver}>
               <div className="canvas-toolbar">
                     <button
                       className="fg-btn fg-icon-btn"
@@ -1746,6 +1844,8 @@ function Studio() {
                     edges={computedEdges}
                     nodeTypes={nodeTypes}
                     edgeTypes={edgeTypes}
+                    onDrop={onDrop}
+                    onDragOver={onDragOver}
                     onNodesChange={connection.isCanvasUnlocked ? onNodesChange : undefined}
                     onEdgesChange={connection.isCanvasUnlocked ? onEdgesChange : undefined}
                     onConnect={onConnect}
