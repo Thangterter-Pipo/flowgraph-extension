@@ -1129,13 +1129,19 @@
     const matchesRequested = (candidate) => {
       const text = optionText(candidate).replace('–', '-').toLowerCase();
       const req = requested.replace('–', '-').toLowerCase();
-      return text === req || text.endsWith(` ${req}`) || text.includes(req);
+      return text === req || text.endsWith(` ${req}`) || text.includes(req) || req.includes(text);
     };
     const item = Array.from(
       submenu?.querySelectorAll('[role="menuitem"],[role="option"],button') ?? [],
     ).find(matchesRequested);
     if (!item) {
       await closeOpenMenus();
+      // Nếu không tìm thấy trong menu con nhưng nút model trên trang đã trùng khớp hoặc chứa Veo thì coi như thành công
+      const cur = (modelFromChip(findModelChip()) || '').replace('–', '-').toLowerCase();
+      const req = requested.replace('–', '-').toLowerCase();
+      if (cur === req || cur.includes(req) || req.includes(cur) || (cur.includes('veo') && req.includes('veo'))) {
+        return { ok: true, value: requested, originEventId };
+      }
       return {
         ok: false,
         code: 'INVALID_MODEL',

@@ -1859,7 +1859,7 @@
           return makeResponse(request.requestId, await handleMediaUpload(request.payload));
         case "FLOWGRAPH_GENERATE": {
           const genPayload = request.payload;
-          const isDirectApiPath = genPayload.kind === "upscale" || genPayload.kind === "imageUpscale" || genPayload.kind === "videoUpscale";
+          const isDirectApiPath = genPayload.kind === "t2i" || genPayload.kind === "upscale" || genPayload.kind === "imageUpscale" || genPayload.kind === "videoUpscale" || genPayload.kind === "interpolation";
           if (isDirectApiPath) {
             return makeResponse(request.requestId, await generateApi(genPayload));
           }

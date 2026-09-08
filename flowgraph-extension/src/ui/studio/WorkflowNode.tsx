@@ -148,6 +148,12 @@ function compactModel(value?: string) {
     .replace(' (NARWHAL)', '')
     .replace(' (Landscape)', '')
     .replace(' (Portrait)', '')
+    .replace('Veo 3.1 - Lite', 'Veo Lite')
+    .replace('Veo 3.1 – Lite', 'Veo Lite')
+    .replace('Veo 3.1 - Fast', 'Veo Fast')
+    .replace('Veo 3.1 – Fast', 'Veo Fast')
+    .replace('Veo 3.1 - Quality', 'Veo Quality')
+    .replace('Veo 3.1 – Quality', 'Veo Quality')
     .replace('Veo 3.1 - ', 'Veo ')
     .replace('Veo 3.1 – ', 'Veo ')
     .replace('Omni 1.1 Flash', 'Omni')
@@ -180,25 +186,30 @@ import { getMediaBlob, setMediaBlob } from './mediaStorage';
 
 function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: string }) {
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
     let active = true;
+    setIsLoading(true);
     if (!src && !mediaId) {
       setBlobUrl(null);
+      setIsLoading(false);
       return;
     }
 
     // 1. Nếu là Blob hoặc Data URL cục bộ thật sự (không phải dummy)
     if (src && (src.startsWith('blob:') || (src.startsWith('data:') && !src.includes('ZHVtbXk=')))) {
       setBlobUrl(src);
+      setIsLoading(false);
       return;
     }
 
     // 2. Nếu là local mediaId (ảnh kéo từ máy vào: 'local-...' hoặc 'dropped-...')
     if (mediaId && (mediaId.startsWith('local-') || mediaId.startsWith('dropped-'))) {
       void getMediaBlob(mediaId).then((cached) => {
-        if (active && cached) {
-          setBlobUrl(cached);
+        if (active) {
+          if (cached) setBlobUrl(cached);
+          setIsLoading(false);
         }
       });
       return;
@@ -214,8 +225,9 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
             const injected = await chrome.scripting.executeScript({
               target: { tabId: flowTab.id },
               func: (id: string) => {
-                const el = document.querySelector(`[data-media-id="${id}"]`);
-                const img = el?.tagName === 'IMG' ? el : el?.querySelector('img');
+                const img = document.querySelector(`img[src*="${id}"]`)
+                  || document.querySelector(`[data-media-id="${id}"] img`)
+                  || document.querySelector(`[data-media-id="${id}"]`);
                 return img?.getAttribute('src') || (img as any)?.currentSrc || (img as any)?.src || null;
               },
               args: [mediaId],
@@ -227,7 +239,10 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
             if (domSrc && (domSrc.includes('/asb/AB-n') || domSrc.includes('flow-content.google')) && active) {
               const res = await fetch(domSrc);
               const blob = await res.blob();
-              if (active) setBlobUrl(URL.createObjectURL(blob));
+              if (active) {
+                setBlobUrl(URL.createObjectURL(blob));
+                setIsLoading(false);
+              }
               return;
             }
           }
@@ -241,11 +256,17 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
           .then((blob) => {
             if (active) {
               setBlobUrl(URL.createObjectURL(blob));
+              setIsLoading(false);
             }
           })
           .catch(() => {
-            if (active) setBlobUrl(src);
+            if (active) {
+              setBlobUrl(src);
+              setIsLoading(false);
+            }
           });
+      } else if (active) {
+        setIsLoading(false);
       }
     };
 
@@ -256,7 +277,24 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
     };
   }, [src, mediaId]);
 
-  return <img src={blobUrl || (src && !src.includes('/asb/') ? src : '')} alt={alt} />;
+  if (!blobUrl && !src) {
+    return (
+      <div className="placeholder-art car-bg">
+        <span className="mock-car-glow" />
+      </div>
+    );
+  }
+
+  const finalSrc = blobUrl || (src && !src.includes('/asb/') && !src.includes('ZHVtbXk=') ? src : '');
+  if (!finalSrc) {
+    return (
+      <div className="placeholder-art car-bg">
+        <span className="mock-car-glow" />
+      </div>
+    );
+  }
+
+  return <img src={finalSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
 }
 
 import { parseConfigFromPrompt } from './promptConfigParser';
