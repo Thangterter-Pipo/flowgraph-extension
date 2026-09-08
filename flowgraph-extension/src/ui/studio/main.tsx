@@ -1308,9 +1308,20 @@ function Studio() {
   }, [connection.isCanvasUnlocked, isValidConnection, nodes, edges, pushHistory, setEdges]);
 
   useEffect(() => {
-    // Chặn toàn cục ngoài canvas để Chrome không mở file điều hướng trang
+    // Chặn toàn cục ngoài canvas để Chrome không mở file điều hướng trang.
+    // NGOẠI LỆ: kéo thẻ node từ palette (application/flowgraph-node) -> KHÔNG được
+    // set dropEffect='none', vì những cú dragover đầu tiên khi chuột còn ở trên
+    // palette sẽ bị chặn và Chromium khóa luôn thao tác 'none' cho cả cú kéo.
+    let paletteDragActive = false;
+    const markPaletteDragStart = (e: DragEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest?.('.palette-node')) paletteDragActive = true;
+    };
+    const markPaletteDragEnd = () => { paletteDragActive = false; };
     const preventChromeNavigation = (e: DragEvent) => {
       const target = e.target as HTMLElement;
+      const hasPalettePayload = e.dataTransfer?.types?.includes('application/flowgraph-node') ?? false;
+      if (paletteDragActive || hasPalettePayload) return; // palette drag: React Flow tự xử lý
       if (!target?.closest('.canvas-wrap') && !target?.closest('.react-flow')) {
         e.preventDefault();
         if (e.dataTransfer) {
@@ -1318,6 +1329,8 @@ function Studio() {
         }
       }
     };
+    window.addEventListener('dragstart', markPaletteDragStart, true);
+    window.addEventListener('dragend', markPaletteDragEnd, true);
     window.addEventListener('dragover', preventChromeNavigation);
     window.addEventListener('drop', preventChromeNavigation);
 
@@ -1414,7 +1427,6 @@ function Studio() {
   const onDrop = useCallback(async (event: React.DragEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    console.log('[onDrop] Triggered! isCanvasUnlocked:', connection.isCanvasUnlocked, 'reactFlow exists:', !!reactFlow);
     if (!connection.isCanvasUnlocked) return;
     if (!reactFlow) return;
 
@@ -1542,13 +1554,11 @@ function Studio() {
 
     // 2. Kéo thả Node từ Thư viện Node Library bên trái
     const raw = event.dataTransfer.getData('application/flowgraph-node') || event.dataTransfer.getData('text/plain');
-    console.log('[onDrop] raw dataTransfer:', raw);
     if (!raw) return;
     let spec: PaletteSpec;
     try {
       spec = JSON.parse(raw) as PaletteSpec;
-    } catch (err) {
-      console.error('[onDrop] JSON parse error:', err);
+    } catch {
       return;
     }
     const id = `${Date.now()}`;
@@ -1561,7 +1571,6 @@ function Studio() {
     pushHistory(nodes, edges);
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(id);
-    console.log('[onDrop] Node successfully added to state:', id, newNode);
   }, [connection.isCanvasUnlocked, connection.activeProject, reactFlow, nodes, edges, pushHistory, setNodes]);
 
   const updateConfig = (key: string, value: string, targetNodeId?: string) => {

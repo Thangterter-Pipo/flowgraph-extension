@@ -553,11 +553,14 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                 className="image-preview-wrap"
                 onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
                 onDrop={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
+                  // Chỉ chặn sự kiện khi thả đúng FILE ẢNH vào preview.
+                  // Nếu kéo node từ palette (không có file) thì để bubble lên Canvas
+                  // để onDrop của React Flow tạo node mới tại vị trí thả.
                   const files = Array.from(e.dataTransfer.files);
                   const img = files.find((f) => f.type.startsWith('image/'));
                   if (img) {
+                    e.preventDefault();
+                    e.stopPropagation();
                     const blobUrl = URL.createObjectURL(img);
                     window.dispatchEvent(new CustomEvent('flowgraph:node-drop-media', {
                       detail: { nodeId: id, type: 'image', file: img, blobUrl }
