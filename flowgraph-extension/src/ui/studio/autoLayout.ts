@@ -76,10 +76,8 @@ export function calculateAutoLayout(nodes: FlowNode[], edges: FlowEdge[]): FlowN
   }
 
   // 4. Sắp xếp vị trí tọa độ (X, Y)
-  // Chiều rộng card node hiện tại là 336px, khoảng cách ngang là 140px => bước nhảy X = 476px
   const HORIZONTAL_GAP = 480;
-  // Chiều cao card trung bình ~220px, khoảng cách dọc là 80px => bước nhảy Y = 300px
-  const VERTICAL_GAP = 300;
+  const VERTICAL_GAP = 320;
   const START_X = 80;
   const START_Y = 80;
 
@@ -92,8 +90,9 @@ export function calculateAutoLayout(nodes: FlowNode[], edges: FlowEdge[]): FlowN
     group.sort((a, b) => (a.position.y || 0) - (b.position.y || 0));
 
     // Căn giữa theo chiều dọc nếu số lượng node ở các cột khác nhau
-    const totalHeight = (group.length - 1) * VERTICAL_GAP;
-    const startYForCol = START_Y;
+    const maxGroupLen = Math.max(...Object.values(rankGroups).map((g) => g.length));
+    const offsetCount = (maxGroupLen - group.length) / 2;
+    const startYForCol = START_Y + offsetCount * VERTICAL_GAP;
 
     group.forEach((node, idx) => {
       const newX = START_X + r * HORIZONTAL_GAP;
