@@ -38,6 +38,12 @@ import {
   X,
 } from 'lucide-react';
 import { calculateAutoLayout } from './autoLayout';
+import { AvoidObstacleEdge } from './AvoidObstacleEdge';
+
+const edgeTypes = {
+  default: AvoidObstacleEdge,
+  avoid: AvoidObstacleEdge,
+};
 import { TemplatesModal } from './TemplatesModal';
 import {
   BUILTIN_TEMPLATES,
@@ -761,6 +767,10 @@ function Studio() {
           } },
           toStudio: { write: (event) => {
             if (!event.field) return;
+            // BỎ QUA tự động ghi đè resultMedia từ Flow reverse sync khi workflow đang chạy có quy trình riêng
+            if (event.field === 'resultMedia' || event.field === 'generationStatus') {
+              return;
+            }
             setNodes((current) => {
               const promptEdge = event.field === 'prompt'
                 ? edgesRef.current.find((edge) => edge.target === event.nodeId && edge.targetHandle === 'prompt')
@@ -1616,7 +1626,10 @@ function Studio() {
       if (isRunning && isTargetRunning) {
         className = 'running-active';
         animated = true;
-      } else if (isSourceSuccess && !isRunning) {
+      } else if (isSourceSuccess && isTargetRunning) {
+        className = 'running-active';
+        animated = true;
+      } else if (isSourceSuccess && !isRunning && targetNode?.data.status === 'success') {
         className = 'running-success';
       }
 
@@ -1732,6 +1745,7 @@ function Studio() {
                     nodes={nodes}
                     edges={computedEdges}
                     nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
                     onNodesChange={connection.isCanvasUnlocked ? onNodesChange : undefined}
                     onEdgesChange={connection.isCanvasUnlocked ? onEdgesChange : undefined}
                     onConnect={onConnect}
