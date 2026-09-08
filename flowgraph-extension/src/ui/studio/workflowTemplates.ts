@@ -84,7 +84,7 @@ export const BUILTIN_TEMPLATES: WorkflowTemplate[] = [
       {
         id: '5',
         type: 'flowNode',
-        position: { x: 50, y: 285 },
+        position: { x: 810, y: 50 },
         data: {
           kind: 'prompt',
           title: 'Mô Tả Cảnh (Scene Prompt)',
@@ -97,7 +97,7 @@ export const BUILTIN_TEMPLATES: WorkflowTemplate[] = [
       {
         id: '6',
         type: 'flowNode',
-        position: { x: 810, y: 240 },
+        position: { x: 810, y: 300 },
         data: {
           kind: 'interpolation',
           title: 'Tạo Cảnh (Start - End Frame)',
