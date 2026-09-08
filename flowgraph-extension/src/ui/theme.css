@@ -950,8 +950,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 
 .custom-combobox-wrap.model-wrap {
-  flex: 1.35;
-  min-width: 0;
+  flex: 1.55;
+  min-width: 68px;
   background: rgba(14, 165, 233, 0.08);
   border: 1px solid rgba(56, 189, 248, 0.6);
   box-shadow: 0 0 10px rgba(14, 165, 233, 0.18);
@@ -966,22 +966,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .custom-combobox-wrap.aspect-wrap {
   flex: 0.95;
-  min-width: 0;
+  min-width: 48px;
+  padding: 0 4px;
 }
 
 .custom-combobox-wrap.duration-wrap {
-  flex: 0.85;
-  min-width: 0;
+  flex: 0.75;
+  min-width: 38px;
+  padding: 0 4px;
 }
 
 .custom-combobox-wrap.res-wrap {
   flex: 0.85;
-  min-width: 0;
+  min-width: 44px;
+  padding: 0 4px;
 }
 
 .custom-combobox-wrap.batch-wrap {
-  flex: 0.8;
-  min-width: 0;
+  flex: 0.65;
+  min-width: 32px;
+  padding: 0 4px;
 }
 
 .custom-combobox-icon {
@@ -1197,14 +1201,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.04em;
-  padding: 1px 5px;
+  padding: 1px 4px;
   border-radius: 3px;
-  background: rgba(10, 15, 26, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(10, 15, 26, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   color: #94a3b8;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  z-index: 10;
 }
 .port-badge-tag.in {
   margin-left: 9px;
