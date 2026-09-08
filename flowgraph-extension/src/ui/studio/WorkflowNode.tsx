@@ -184,6 +184,83 @@ function computeEstimatedCredits(kind: string, config: Record<string, string>): 
 
 import { getMediaBlob, setMediaBlob } from './mediaStorage';
 
+function SafeVideoPlayer({
+  src,
+  posterUrl,
+  mediaId,
+  isPlaying,
+  onEnded,
+  videoRef,
+}: {
+  src: string;
+  posterUrl?: string;
+  mediaId?: string;
+  isPlaying: boolean;
+  onEnded: () => void;
+  videoRef: React.RefObject<HTMLVideoElement>;
+}) {
+  const [blobPoster, setBlobPoster] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let active = true;
+    const targetUrl = posterUrl || (src.includes('/asb/') ? src : null);
+    if (!targetUrl) return;
+
+    if (targetUrl.startsWith('blob:') || targetUrl.startsWith('data:')) {
+      setBlobPoster(targetUrl);
+      return;
+    }
+
+    fetch(targetUrl)
+      .then((res) => res.blob())
+      .then((blob) => {
+        if (active) setBlobPoster(URL.createObjectURL(blob));
+      })
+      .catch(() => {
+        if (active) setBlobPoster(targetUrl);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [posterUrl, src]);
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      {blobPoster && !isPlaying && (
+        <img
+          src={blobPoster}
+          alt="Video Thumbnail"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            zIndex: 0,
+          }}
+        />
+      )}
+      <video
+        ref={videoRef}
+        src={src}
+        controls={isPlaying}
+        muted
+        playsInline
+        preload="metadata"
+        onEnded={onEnded}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          position: 'relative',
+          zIndex: isPlaying ? 2 : 0,
+        }}
+      />
+    </div>
+  );
+}
+
 function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: string }) {
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -444,7 +521,14 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
             {result?.type === 'video' || isVideoNode || isDownload ? (
               <div className="video-player-preview">
                 {result?.previewUrl ? (
-                  <video ref={videoRef} src={result.previewUrl} muted playsInline preload="metadata" onEnded={() => setIsPlaying(false)} />
+                  <SafeVideoPlayer
+                    src={result.previewUrl}
+                    posterUrl={data.config?.thumbnailUrl || data.config?.posterUrl}
+                    mediaId={result.mediaId}
+                    isPlaying={isPlaying}
+                    onEnded={() => setIsPlaying(false)}
+                    videoRef={videoRef}
+                  />
                 ) : (
                   <div className="placeholder-art car-bg">
                     <span className="mock-car-glow" />
