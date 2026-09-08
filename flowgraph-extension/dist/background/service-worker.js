@@ -1042,7 +1042,7 @@
         false
       );
     }
-    const isDirectApiPath = payload.kind === "upscale" || payload.kind === "imageUpscale" || payload.kind === "videoUpscale" || payload.kind === "interpolation";
+    const isDirectApiPath = payload.kind === "upscale" || payload.kind === "imageUpscale" || payload.kind === "videoUpscale" || payload.kind === "interpolation" || payload.kind === "t2i";
     if (isDirectApiPath) {
       return generateApi(payload);
     }

@@ -337,9 +337,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   border-radius: 7px;
   background: #0d131f;
   cursor: grab;
+  user-select: none;
+  -webkit-user-drag: element;
   text-align: left;
   transition: all 0.18s ease;
   position: relative;
+}
+.palette-node.compact:active {
+  cursor: grabbing;
 }
 
 /* ColorHunt Category Themes for Sidebar Nodes (Rõ nét, hài hòa, đồng bộ với Canvas) */
