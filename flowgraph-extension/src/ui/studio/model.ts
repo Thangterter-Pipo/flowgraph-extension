@@ -1,5 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
-import { capabilityFor, type CapabilityMaturity } from './capabilities';
+import { capabilityFor, runtimeCapabilityMatrix, type CapabilityMaturity } from './capabilities';
 import { deriveRegistryConfig } from './flowModelRegistry';
 
 export type NodeStatus = 'idle' | 'queued' | 'running' | 'success' | 'failed' | 'skipped';
@@ -14,6 +14,7 @@ export interface NodeMediaResult {
   workflowId?: string;
   mimeType?: string;
   fileName?: string;
+  projectId?: string;
 }
 
 export interface FlowNodeData extends Record<string, unknown> {
@@ -50,10 +51,11 @@ export interface PaletteSpec {
   preview?: 'image' | 'video';
   experimental?: boolean;
   isNew?: boolean;
+  paletteDisabled?: boolean;
   config: Record<string, string>;
 }
 
-export const palette: PaletteSpec[] = [
+const allPaletteSpecs: PaletteSpec[] = [
   {
     kind: 'prompt',
     title: 'Prompt',
@@ -149,7 +151,6 @@ export const palette: PaletteSpec[] = [
       aspectRatio: '16:9',
       resolution: '720p',
       batchCount: '1',
-      costCredits: '12',
       promptSource: 'Input',
       startImage: 'Input MediaRef',
     },
@@ -173,13 +174,11 @@ export const palette: PaletteSpec[] = [
     config: {
       model: 'Omni 1.1 Flash',
       mode: 'Khung hình',
-      imageModel: '🍌 Nano Banana 2',
       serviceTier: 'SERVICE_TIER_INTERMEDIATE',
       duration: '8 seconds',
       aspectRatio: '16:9',
       resolution: '720p',
       batchCount: '1',
-      costCredits: '12',
       startImage: 'Input A',
       endImage: 'Input B',
     },
@@ -191,7 +190,7 @@ export const palette: PaletteSpec[] = [
     tone: 'green',
     group: 'Video',
     preview: 'video',
-    config: { model: 'Omni Flash', serviceTier: 'SERVICE_TIER_INTERMEDIATE', duration: '8 seconds', aspectRatio: '16:9 (Landscape)', usageType: 'ASSET', references: '1+ Image MediaRefs' },
+    config: { model: 'Omni 1.1 Flash', serviceTier: 'SERVICE_TIER_INTERMEDIATE', duration: '8 seconds', aspectRatio: '16:9 (Landscape)', usageType: 'ASSET', references: '1+ Image MediaRefs' },
   },
   {
     kind: 'videoUpscale',
@@ -202,6 +201,15 @@ export const palette: PaletteSpec[] = [
     preview: 'video',
     experimental: true,
     config: { targetResolution: '1080p', model: 'Veo 3.1 - Upsampler 1080P', serviceTier: 'SERVICE_TIER_INTERMEDIATE', duration: '60 seconds', aspectRatio: '16:9 (Landscape)', estimatedCredits: '0 credits', videoSource: 'Input MediaRef' },
+  },
+  {
+    kind: 'videoConcat',
+    title: 'Stitch / Timeline',
+    subtitle: 'Ghép nhiều clip thành 1 video',
+    tone: 'green',
+    group: 'Video',
+    preview: 'video',
+    config: { transition: 'crossfade', transitionDuration: '0.5s', fps: '30' },
   },
   {
     kind: 'cancelGeneration',
@@ -275,23 +283,25 @@ export const palette: PaletteSpec[] = [
   {
     kind: 'imageInput',
     title: 'Image Input',
-    subtitle: 'Inject existing project image',
+    subtitle: 'Local PNG/JPEG or Flow image',
     tone: 'blue',
     group: 'Utility',
+    preview: 'image',
     config: { mediaId: '', mediaType: 'IMAGE', projectId: '' },
   },
   {
     kind: 'videoInput',
     title: 'Video Input',
-    subtitle: 'Inject existing project video',
+    subtitle: 'Existing Flow video',
     tone: 'blue',
     group: 'Utility',
+    preview: 'video',
     config: { mediaId: '', mediaType: 'VIDEO', projectId: '' },
   },
   {
     kind: 'preview',
-    title: 'Preview',
-    subtitle: 'Inspect media & pass-through',
+    title: 'Output Preview',
+    subtitle: 'Run Target',
     tone: 'blue',
     group: 'Utility',
     config: {},
@@ -303,7 +313,7 @@ export const palette: PaletteSpec[] = [
     tone: 'orange',
     group: 'Utility',
     experimental: true,
-    config: { expression: 'status == success' },
+    config: { conditionExpression: 'status == success' },
   },
   {
     kind: 'delay',
@@ -311,7 +321,7 @@ export const palette: PaletteSpec[] = [
     subtitle: 'Wait before continuing',
     tone: 'orange',
     group: 'Utility',
-    config: { duration: '5 seconds' },
+    config: { delaySeconds: '5' },
   },
   {
     kind: 'note',
@@ -323,15 +333,27 @@ export const palette: PaletteSpec[] = [
   },
 ];
 
+const runnableKinds = new Set(
+  runtimeCapabilityMatrix.filter((row) => row.executor).map((row) => row.kind),
+);
+
+const HIDDEN_NEW_WORKFLOW_KINDS = new Set(['uploadImage', 'mediaInput']);
+
+export const palette: PaletteSpec[] = allPaletteSpecs.filter((spec) => {
+  if (HIDDEN_NEW_WORKFLOW_KINDS.has(spec.kind)) return false;
+  if (spec.paletteDisabled) return true;
+  return runnableKinds.has(spec.kind);
+});
+
 export function hydrateNodeData(spec: PaletteSpec, extra?: Partial<FlowNodeData>): FlowNodeData {
   const capability = capabilityFor(spec.kind);
+  const config = deriveRegistryConfig(spec.kind, { ...spec.config, ...(extra?.config ?? {}) });
   return {
     title: spec.title,
     kind: spec.kind,
     subtitle: spec.subtitle,
     tone: spec.tone,
     status: 'idle',
-    config: deriveRegistryConfig(spec.kind, { ...spec.config }),
     preview: spec.preview,
     experimental: spec.experimental ?? capability.experimental,
     maturity: capability.maturity,
@@ -340,11 +362,18 @@ export function hydrateNodeData(spec: PaletteSpec, extra?: Partial<FlowNodeData>
     evidence: capability.evidence,
     isNew: spec.isNew,
     ...extra,
+    // Template/user overrides are merged with defaults and normalized through the
+    // provider registry instead of replacing the canonical config wholesale.
+    config,
   };
 }
 
-const node = (id: string, kind: string, x: number, y: number, extra?: Partial<FlowNodeData>): FlowNode => {
-  const spec = palette.find((item) => item.kind === kind)!;
+export function paletteSpecForKind(kind: string): PaletteSpec | undefined {
+  return allPaletteSpecs.find((item) => item.kind === kind);
+}
+
+export const node = (id: string, kind: string, x: number, y: number, extra?: Partial<FlowNodeData>): FlowNode => {
+  const spec = paletteSpecForKind(kind)!;
   return {
     id,
     type: 'flowNode',
@@ -375,7 +404,6 @@ export const initialNodes: FlowNode[] = [
       aspectRatio: '16:9',
       resolution: '720p',
       batchCount: '1',
-      costCredits: '12',
       promptSource: 'Input',
       startImage: 'Input MediaRef',
     },
@@ -399,4 +427,19 @@ export function cloneInitialNodes(): FlowNode[] {
     data: { ...item.data, config: { ...item.data.config } },
     position: { ...item.position },
   }));
+}
+
+// React Flow giữ con trỏ nội bộ tới node/edge object. Nạp lại MẢNG/ĐỐI TƯỢNG
+// dùng chung (module constant) khi undo/redo/apply template làm internal store
+// resolve nhầm node cũ -> dây biến mất khỏi DOM dù state đúng. Luôn clone.
+export function cloneFlowNodes(nodes: FlowNode[]): FlowNode[] {
+  return nodes.map((item) => ({
+    ...item,
+    data: { ...item.data, config: { ...item.data.config }, result: item.data.result ? { ...item.data.result } : undefined },
+    position: { ...item.position },
+  }));
+}
+
+export function cloneFlowEdges(edges: FlowEdge[]): FlowEdge[] {
+  return edges.map((edge) => ({ ...edge, style: edge.style ? { ...edge.style } : edge.style }));
 }

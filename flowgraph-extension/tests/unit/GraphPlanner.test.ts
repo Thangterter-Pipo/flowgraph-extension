@@ -30,18 +30,61 @@ describe('GraphPlanner', () => {
     expect(plan.order.length).toBeLessThan(nodes.slice(0, 2).length);
   });
 
-  it('keeps independent branches in a valid order', () => {
-    const branchNodes = [...nodes, { id: 'x', kind: 'prompt' }, { id: 'y', kind: 't2i' }];
+  it('keeps independent branches when there is no download/preview sink', () => {
+    const branchNodes = [
+      { id: 'a', kind: 'prompt' },
+      { id: 'b', kind: 't2i' },
+      { id: 'x', kind: 'prompt' },
+      { id: 'y', kind: 't2i' },
+    ];
     const edges = [
       { id: 'e1', source: 'a', target: 'b' },
-      { id: 'e2', source: 'b', target: 'c' },
       { id: 'e3', source: 'x', target: 'y' },
     ];
     const plan = planGraph(branchNodes, edges);
     expect(plan.cycles).toEqual([]);
+    expect(plan.disconnected).toEqual([]);
     expect(plan.order.length).toBe(branchNodes.length);
     expect(plan.order.indexOf('b')).toBeGreaterThan(plan.order.indexOf('a'));
     expect(plan.order.indexOf('y')).toBeGreaterThan(plan.order.indexOf('x'));
+  });
+
+  it('drops stray generation from the execution order when a download sink exists', () => {
+    const graph = [
+      { id: 'a', kind: 'prompt' },
+      { id: 'b', kind: 't2i' },
+      { id: 'd', kind: 'download' },
+      { id: 'x', kind: 'prompt' },
+      { id: 'y', kind: 't2v' },
+    ];
+    const edges = [
+      { id: 'e1', source: 'a', target: 'b' },
+      { id: 'e2', source: 'b', target: 'd' },
+      { id: 'e3', source: 'x', target: 'y' },
+    ];
+    const plan = planGraph(graph, edges);
+    expect(plan.cycles).toEqual([]);
+    expect(plan.order).toEqual(['a', 'b', 'd']);
+    expect(plan.disconnected.sort()).toEqual(['x', 'y']);
+  });
+
+  it('drops stray generation when a preview sink exists', () => {
+    const graph = [
+      { id: 'a', kind: 'prompt' },
+      { id: 'b', kind: 't2i' },
+      { id: 'p', kind: 'preview' },
+      { id: 'x', kind: 'prompt' },
+      { id: 'y', kind: 't2v' },
+    ];
+    const edges = [
+      { id: 'e1', source: 'a', target: 'b' },
+      { id: 'e2', source: 'b', target: 'p' },
+      { id: 'e3', source: 'x', target: 'y' },
+    ];
+    const plan = planGraph(graph, edges);
+    expect(plan.cycles).toEqual([]);
+    expect(plan.order).toEqual(['a', 'b', 'p']);
+    expect(plan.disconnected.sort()).toEqual(['x', 'y']);
   });
 
   it('readyNodes returns only nodes whose sources completed', () => {

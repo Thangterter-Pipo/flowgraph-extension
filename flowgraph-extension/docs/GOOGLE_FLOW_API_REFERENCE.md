@@ -158,6 +158,7 @@ Project (projectId)
 
 ### 6.2 Video Upload `[BUNDLE_VERIFIED]`
 - **Protocol:** Resumable Upload / Pre-signed URL protocol via `videoGenerationVideoInputs`.
+- **Runtime status (2026-09-11):** No captured request/response fixture, no HTTP 200, no provider `mediaId` extraction, no resumable session URL or required headers. In `docs/03-endpoints-aisandbox.md`, `videoGenerationVideoInputs` is the **generation input slot** for existing Flow videos (extend / edit / upsample) — not a local-file upload transport. Studio Video upload stays fail-closed until a `RUNTIME_VERIFIED` capture exists.
 
 ---
 

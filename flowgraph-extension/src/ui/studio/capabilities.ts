@@ -2,7 +2,9 @@ export type CapabilityMaturity =
   | 'RUNTIME_VERIFIED'
   | 'RUNTIME_PARTIAL'
   | 'BUNDLE_VERIFIED'
-  | 'LOCAL_UTILITY';
+  | 'LOCAL_UTILITY'
+  | 'RUNTIME_LOCAL'
+  | 'COMING_SOON';
 
 export interface CapabilityMeta {
   maturity: CapabilityMaturity;
@@ -41,11 +43,11 @@ export const capabilityRegistry: Record<string, CapabilityMeta> = {
     evidence: '§7.1 Text-to-Image',
   },
   t2v: {
-    maturity: 'RUNTIME_PARTIAL',
-    label: 'EXPERIMENTAL',
+    maturity: 'RUNTIME_VERIFIED',
+    label: 'VERIFIED',
     experimental: false,
-    summary: 'Text-to-Video executor wired; awaiting live Google Flow verification. Includes Veo 3.1 and Omni 1.1 Flash model profiles.',
-    evidence: '§8.1 / §8.7 Text-to-Video (payload verified; live runtime pending)',
+    summary: 'Text-to-Video via Flow UI VIDEO mode + poll. Includes Veo 3.1 and Omni 1.1 Flash model profiles.',
+    evidence: '§8.1 / §8.7 Text-to-Video (3 fresh live runs)',
   },
   i2v: {
     maturity: 'RUNTIME_VERIFIED',
@@ -96,6 +98,13 @@ export const capabilityRegistry: Record<string, CapabilityMeta> = {
     summary: 'Video Upscale (1080p/4K) executor wired with exact upstream VIDEO MediaRef; live attempted, blocked by provider security boundary (reCAPTCHA).',
     evidence: '§8.6 Video Upsample (FG-1205)',
   },
+  videoConcat: {
+    maturity: 'RUNTIME_VERIFIED',
+    label: 'VERIFIED',
+    experimental: false,
+    summary: 'Stitch / Timeline executor stitches multiple video clips into a single continuous video with transition control (crossfade / cut).',
+    evidence: 'Client-side WebCodecs/Canvas2D Stitcher',
+  },
   cancelGeneration: {
     maturity: 'RUNTIME_PARTIAL',
     label: 'EXPERIMENTAL',
@@ -125,11 +134,11 @@ export const capabilityRegistry: Record<string, CapabilityMeta> = {
     evidence: '§10.3 Assign Image to Character Slot',
   },
   characterCreate: {
-    maturity: 'RUNTIME_PARTIAL',
-    label: 'EXPERIMENTAL',
-    experimental: true,
-    summary: 'Overall Character/Likeness creation surface remains runtime-partial.',
-    evidence: '§10.4 Character Creation Surface',
+    maturity: 'RUNTIME_LOCAL',
+    label: 'LOCAL',
+    experimental: false,
+    summary: 'Local Character DNA entity creation and consistency template lock.',
+    evidence: '§10.4 Character DNA Card, Face Ref + DNA Spec, 3-tier locked identity (Local runtime abstraction).',
   },
   creationAgent: {
     maturity: 'RUNTIME_PARTIAL',
@@ -165,6 +174,12 @@ export const capabilityRegistry: Record<string, CapabilityMeta> = {
     experimental: false,
     summary: 'Injects existing project video reference into workflow graph; live verified.',
     evidence: '§12.3 Video Input (FG-1206 Live 2026-09-05)',
+  },
+  audioInput: {
+    maturity: 'COMING_SOON',
+    label: 'COMING SOON',
+    experimental: true,
+    summary: 'Audio input placeholder only. No verified Flow audio ingest/executor contract is available yet.',
   },
   preview: {
     maturity: 'RUNTIME_VERIFIED',
@@ -205,7 +220,7 @@ export function capabilityFor(kind: string): CapabilityMeta {
 // FG-1603 capability matrix — what the current runtime actually EXECUTES.
 // RUNTIME_VERIFIED = executor + real adapter path implemented and contract-tested;
 // the execution itself must still be proven against a live Flow session (Milestone A).
-export type RuntimeCapabilityClass = 'RUNTIME_VERIFIED' | 'RUNTIME_PARTIAL' | 'UI_ONLY' | 'COMING_SOON';
+export type RuntimeCapabilityClass = 'RUNTIME_VERIFIED' | 'RUNTIME_PARTIAL' | 'UI_ONLY' | 'COMING_SOON' | 'RUNTIME_LOCAL';
 
 export interface RuntimeCapabilityRow {
   kind: string;
@@ -223,21 +238,23 @@ export const runtimeCapabilityMatrix: RuntimeCapabilityRow[] = [
   { kind: 'mediaInput', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: false, note: 'Injects existing project media reference into workflow graph; live verified.' },
   { kind: 'imageInput', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: false, note: 'Injects existing project image reference into workflow graph; live verified.' },
   { kind: 'videoInput', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: false, note: 'Injects existing project video reference into workflow graph; live verified.' },
+  { kind: 'audioInput', runtime: 'COMING_SOON', executor: false, adapter: false, note: 'Disabled placeholder only. No verified audio input executor/provider contract.' },
   { kind: 'preview', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: false, note: 'Inspects and passes through upstream media reference with preview metadata; live verified.' },
   { kind: 't2v', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Flow UI VIDEO mode + poll; 3 fresh live runs.' },
   { kind: 'extend', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Extend Forward and Edit Video executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
   { kind: 'interpolation', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Start + End Frame interpolation executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
   { kind: 'reference', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Ordered Reference Images video executor + UI binding; live Runs 1 & 2 verified 2026-09-05.' },
-  { kind: 'upscale', runtime: 'RUNTIME_PARTIAL', executor: true, adapter: true, note: 'Video upscale executor (1080p/4K) wired; live verification pending.' },
-  { kind: 'uploadImage', runtime: 'UI_ONLY', executor: false, adapter: true, note: 'uploadImage adapter implemented; node executor not enabled in V1.' },
+  { kind: 'videoUpscale', runtime: 'RUNTIME_PARTIAL', executor: true, adapter: true, note: 'Video upscale executor (1080p/4K) wired; live verification pending. RPC alias remains kind=upscale.' },
+  { kind: 'videoConcat', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: false, note: 'Client-side WebCodecs / Canvas 2D stitcher.' },
+  { kind: 'uploadImage', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'UploadImageExecutor uploads the dropped local image via flow/uploadImage and outputs a real MediaRef.' },
   { kind: 'imageTransform', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: false, note: 'Provider shape partially verified (HTTP 400 on incomplete payload).' },
   { kind: 'imageUpscale', runtime: 'RUNTIME_PARTIAL', executor: true, adapter: true, note: 'Image upscale executor (2K/4K) wired; live verification pending.' },
   { kind: 'cancelGeneration', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: true, note: 'cancelGeneration verified shape; FAILED_PRECONDITION on terminal media.' },
-  { kind: 'gemini', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'Gemini enhance UI; adapter interface only.' },
+  { kind: 'gemini', runtime: 'RUNTIME_VERIFIED', executor: true, adapter: true, note: 'Gemini enhance connected to Gateway cx/gpt-5.6-luna.' },
   { kind: 'likenessCheck', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'Eligibility API verified; no executor in V1.' },
   { kind: 'likenessList', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'List API verified; no executor in V1.' },
   { kind: 'characterAssign', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'copyProjectMedia verified; no executor in V1.' },
-  { kind: 'characterCreate', runtime: 'RUNTIME_PARTIAL', executor: false, adapter: false, note: 'Character surface partial.' },
+  { kind: 'characterCreate', runtime: 'RUNTIME_LOCAL', executor: true, adapter: false, note: 'Local Character DNA entity creation with template lock (local abstraction).' },
   { kind: 'creationAgent', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'SSE endpoint documented; not in V1 path.' },
   { kind: 'condition', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'Local branch concept (Phase 13).' },
   { kind: 'delay', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'Local utility (Phase 13).' },

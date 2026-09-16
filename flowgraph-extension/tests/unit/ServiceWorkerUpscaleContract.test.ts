@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { normalizeError, type GeneratePayload, type NormalizedMediaRef } from '../../src/shared/bridge';
 import { buildUpsampleRequest, clientContext } from '../../src/shared/flowPayloads';
+
+const serviceWorkerSource = () => readFileSync(resolve(__dirname, '../../src/background/service-worker.ts'), 'utf8');
 
 describe('Service Worker Upscale Boundary & Async Contract Verification (Task 4A.4)', () => {
   const PROJECT = '64d45b46-4389-4e29-8795-1f48739b93e0';
@@ -147,5 +151,28 @@ describe('Service Worker Upscale Boundary & Async Contract Verification (Task 4A
     expect(parsed.mediaId).toBe('vid-upscaled-done');
     expect(parsed.status).toBe('SUCCESSFUL');
     expect(parsed.type).toBe('VIDEO');
+  });
+
+  it('Contract 6: imageUpscale uses the live Flow UI path while video upscale aliases remain direct API', () => {
+    const source = serviceWorkerSource();
+    expect(source).toContain("if (payload.kind === 'imageUpscale')");
+    expect(source).toContain('return generateImageUpscaleViaFlowUi(tab, payload, requestId);');
+    expect(source).toContain("'USER_ACTION_REQUIRED'");
+    expect(source).toContain("document.querySelector('button.sidebar-upload-btn')");
+    const directPathBlock = source
+      .split('const isDirectApiPath =')[1]
+      .split('if (isDirectApiPath)')[0];
+    expect(directPathBlock).toContain("payload.kind === 'videoUpscale'");
+    expect(directPathBlock).toContain("payload.kind === 'upscale'");
+    expect(directPathBlock).not.toContain("payload.kind === 'imageUpscale'");
+  });
+
+  it('Contract 7: UI-driven generation restores the project composer after /edit media recovery', () => {
+    const source = serviceWorkerSource();
+    expect(source).toContain('async function ensureFlowProjectComposerReady(');
+    expect(source).toContain("if ((current.url ?? '').includes('/edit/'))");
+    expect(source).toContain('const composerTab = await ensureFlowProjectComposerReady(tab, payload.projectId);');
+    expect(source).toContain('await ensureFlowContentScript(tabId);');
+    expect(source).toContain('syncAndVerifyBeforeGenerate(composerTab, { ...payload, prompt })');
   });
 });

@@ -15,6 +15,7 @@ export type PortDataType =
 export interface NodePortDefinition {
   id: string;
   label: string;
+  note: string;
   type: PortDataType;
   role?: string;
   required?: boolean;
@@ -32,134 +33,156 @@ const p = (
   id: string,
   label: string,
   type: PortDataType,
-  options: Partial<Omit<NodePortDefinition, 'id' | 'label' | 'type'>> = {},
-): NodePortDefinition => ({ id, label, type, connectable: true, ...options });
+  note: string,
+  options: Partial<Omit<NodePortDefinition, 'id' | 'label' | 'type' | 'note'>> = {},
+): NodePortDefinition => ({ id, label, type, note, connectable: true, ...options });
 
 export const nodePortCatalog: Record<string, NodePortSpec> = {
   prompt: {
     inputs: [],
-    outputs: [p('prompt', 'Prompt', 'PROMPT')],
+    outputs: [p('prompt', 'Prompt', 'PROMPT', 'Prompt thô')],
   },
   gemini: {
-    inputs: [p('prompt', 'Prompt', 'PROMPT', { required: true })],
-    outputs: [p('enhancedPrompt', 'Enhanced', 'PROMPT')],
+    inputs: [p('prompt', 'Prompt', 'PROMPT', 'Prompt thô', { required: true })],
+    outputs: [p('enhancedPrompt', 'Enhance', 'PROMPT', 'Prompt đã enhance')],
   },
   t2i: {
     inputs: [
-      p('prompt', 'Prompt', 'PROMPT', { required: true }),
-      p('references', 'Refs', 'IMAGE', { multiple: true, role: 'REF' }),
-      p('characters', 'Chars', 'CHARACTER', { multiple: true, role: 'CHAR' }),
+      p('prompt', 'Prompt', 'PROMPT', 'Mô tả ảnh', { required: true, configKey: 'customPrompt' }),
+      p('references', 'Ref', 'IMAGE', 'Ảnh tham chiếu', { multiple: true, role: 'REF' }),
+      p('characters', 'Char', 'CHARACTER', 'DNA nhân vật', { multiple: true, role: 'CHAR' }),
     ],
-    outputs: [p('image', 'Image', 'IMAGE')],
+    outputs: [p('image', 'Image', 'IMAGE', 'Ảnh ra')],
   },
   uploadImage: {
-    inputs: [p('file', 'File', 'FILE', { required: true, connectable: false, configKey: 'source' })],
-    outputs: [p('image', 'Image', 'IMAGE')],
+    inputs: [p('file', 'File', 'FILE', 'File máy', { required: true, connectable: false, configKey: 'mediaId' })],
+    outputs: [p('image', 'Image', 'IMAGE', 'Ảnh tải lên')],
   },
   imageTransform: {
-    inputs: [p('image', 'Image', 'IMAGE', { required: true })],
-    outputs: [p('image', 'Image', 'IMAGE')],
+    inputs: [p('image', 'Image', 'IMAGE', 'Ảnh gốc', { required: true })],
+    outputs: [p('image', 'Image', 'IMAGE', 'Ảnh biến đổi')],
   },
   imageUpscale: {
-    inputs: [p('image', 'Image', 'IMAGE', { required: true })],
-    outputs: [p('image', 'Image', 'IMAGE')],
+    inputs: [
+      p('image', 'Image', 'IMAGE', 'Ảnh gốc', { required: true }),
+    ],
+    outputs: [p('image', 'Image', 'IMAGE', 'Ảnh 2K/4K')],
   },
   t2v: {
-    inputs: [p('prompt', 'Prompt', 'PROMPT', { required: true })],
-    outputs: [p('video', 'Video', 'VIDEO')],
+    inputs: [p('prompt', 'Prompt', 'PROMPT', 'Mô tả video', { required: true, configKey: 'customPrompt' })],
+    outputs: [p('video', 'Video', 'VIDEO', 'Video ra')],
   },
   i2v: {
     inputs: [
-      p('image', 'Start', 'IMAGE', { required: true }),
-      p('prompt', 'Prompt', 'PROMPT'),
+      p('image', 'Start', 'IMAGE', 'Khung đầu', { required: true }),
+      p('prompt', 'Prompt', 'PROMPT', 'Chuyển động', { required: true, configKey: 'prompt' }),
+      p('characters', 'Char', 'CHARACTER', 'DNA nhân vật', { multiple: true, role: 'CHAR' }),
     ],
-    outputs: [p('video', 'Video', 'VIDEO')],
+    outputs: [p('video', 'Video', 'VIDEO', 'Video ra')],
   },
   extend: {
     inputs: [
-      p('video', 'Video', 'VIDEO', { required: true }),
-      p('prompt', 'Prompt', 'PROMPT'),
+      p('video', 'Video', 'VIDEO', 'Video gốc', { required: true }),
+      p('prompt', 'Prompt', 'PROMPT', 'Cách kéo dài', { required: true, configKey: 'prompt' }),
     ],
-    outputs: [p('video', 'Video', 'VIDEO')],
+    outputs: [p('video', 'Video', 'VIDEO', 'Video kéo dài')],
   },
   interpolation: {
     inputs: [
-      p('startImage', 'Start', 'IMAGE', { required: true, role: 'S' }),
-      p('endImage', 'End', 'IMAGE', { required: true, role: 'E' }),
-      p('prompt', 'Prompt', 'PROMPT', { role: 'P' }),
+      p('startImage', 'Start', 'IMAGE', 'Khung đầu', { required: true, role: 'S' }),
+      p('endImage', 'End', 'IMAGE', 'Khung cuối', { required: true, role: 'E' }),
+      p('prompt', 'Prompt', 'PROMPT', 'Chuyển cảnh', { required: true, configKey: 'prompt', role: 'P' }),
     ],
-    outputs: [p('video', 'Video', 'VIDEO')],
+    outputs: [p('video', 'Video', 'VIDEO', 'Video ra')],
   },
   reference: {
     inputs: [
-      p('prompt', 'Prompt', 'PROMPT', { required: true, role: 'P' }),
-      p('references', 'Refs', 'IMAGE', { required: true, multiple: true, role: 'REF' }),
-      p('audio', 'Audio', 'AUDIO', { multiple: true, role: 'AUD' }),
-      p('characters', 'Chars', 'CHARACTER', { multiple: true, role: 'CHAR' }),
+      p('prompt', 'Prompt', 'PROMPT', 'Mô tả video', { required: true, configKey: 'prompt', role: 'P' }),
+      p('references', 'Ref', 'IMAGE', 'Ảnh tham chiếu', { required: true, multiple: true, role: 'REF' }),
+      p('characters', 'Char', 'CHARACTER', 'DNA nhân vật', { multiple: true, role: 'CHAR' }),
     ],
-    outputs: [p('video', 'Video', 'VIDEO')],
+    outputs: [p('video', 'Video', 'VIDEO', 'Video ra')],
   },
   videoUpscale: {
-    inputs: [p('video', 'Video', 'VIDEO', { required: true })],
-    outputs: [p('video', 'Video', 'VIDEO')],
+    inputs: [
+      p('video', 'Video', 'VIDEO', 'Video gốc', { required: true }),
+    ],
+    outputs: [p('video', 'Video', 'VIDEO', 'Video 1080p/4K')],
+  },
+  videoConcat: {
+    inputs: [
+      p('videos', 'Videos', 'VIDEO', 'Danh sách video', { required: true, multiple: true }),
+      p('prompt', 'Prompt', 'PROMPT', 'Kịch bản / Ghi chú'),
+    ],
+    outputs: [p('video', 'Video', 'VIDEO', 'Video đã ghép')],
   },
   cancelGeneration: {
-    inputs: [p('media', 'Active', 'MEDIA', { required: true })],
-    outputs: [p('canceled', 'Canceled', 'BOOLEAN')],
+    inputs: [p('media', 'Task', 'MEDIA', 'Tác vụ đang chạy', { required: true })],
+    outputs: [p('canceled', 'Canceled', 'BOOLEAN', 'Đã hủy')],
   },
   likenessCheck: {
     inputs: [],
-    outputs: [p('eligible', 'Eligible', 'BOOLEAN')],
+    outputs: [p('eligible', 'Eligible', 'BOOLEAN', 'Đủ likeness')],
   },
   likenessList: {
     inputs: [],
-    outputs: [p('characters', 'Likenesses', 'CHARACTER_LIST')],
+    outputs: [p('characters', 'Chars', 'CHARACTER_LIST', 'Danh sách likeness')],
   },
   characterAssign: {
     inputs: [
-      p('image', 'Image', 'IMAGE', { required: true }),
-      p('character', 'Character', 'CHARACTER'),
+      p('image', 'Image', 'IMAGE', 'Ảnh gán', { required: true }),
+      p('character', 'Char', 'CHARACTER', 'Nhân vật'),
     ],
-    outputs: [p('character', 'Character', 'CHARACTER')],
+    outputs: [p('character', 'Char', 'CHARACTER', 'Nhân vật đã gán')],
   },
   characterCreate: {
     inputs: [
-      p('image', 'Image', 'IMAGE', { required: true }),
-      p('prompt', 'Prompt', 'PROMPT'),
+      p('image', 'Face', 'IMAGE', 'Ảnh mặt', { required: true }),
+      p('prompt', 'Desc', 'PROMPT', 'Mô tả DNA'),
     ],
-    outputs: [p('character', 'Character', 'CHARACTER')],
+    outputs: [
+      p('character', 'Char', 'CHARACTER', 'Thực thể nhân vật'),
+      p('image', 'Image', 'IMAGE', 'Ảnh DNA'),
+    ],
   },
   creationAgent: {
-    inputs: [p('prompt', 'Prompt', 'PROMPT', { required: true })],
-    outputs: [p('text', 'Response', 'TEXT')],
+    inputs: [p('prompt', 'Prompt', 'PROMPT', 'Yêu cầu', { required: true })],
+    outputs: [p('text', 'Text', 'TEXT', 'Câu trả lời')],
   },
   download: {
-    inputs: [p('media', 'Media', 'MEDIA', { required: true })],
-    outputs: [p('file', 'File', 'FILE')],
+    inputs: [p('media', 'Media', 'MEDIA', 'Ảnh hoặc video', { required: true })],
+    outputs: [p('file', 'File', 'FILE', 'File tải')],
   },
   mediaInput: {
     inputs: [],
-    outputs: [p('media', 'Media', 'MEDIA')],
+    outputs: [p('media', 'Media', 'MEDIA', 'Nguồn media')],
   },
   imageInput: {
     inputs: [],
-    outputs: [p('image', 'Image', 'IMAGE')],
+    outputs: [p('image', 'Image', 'IMAGE', 'Nguồn ảnh')],
   },
   videoInput: {
     inputs: [],
-    outputs: [p('video', 'Video', 'VIDEO')],
+    outputs: [p('video', 'Video', 'VIDEO', 'Nguồn video')],
+  },
+  audioInput: {
+    inputs: [],
+    outputs: [p('audio', 'Audio', 'AUDIO', 'Coming soon · audio runtime not verified', { connectable: false })],
   },
   preview: {
-    inputs: [p('media', 'Media', 'MEDIA', { required: true })],
-    outputs: [p('media', 'Media', 'MEDIA')],
+    inputs: [p('media', 'Media', 'MEDIA', 'Run target', { required: true })],
+    outputs: [p('media', 'Media', 'MEDIA', 'Pass-through')],
   },
   condition: {
-    inputs: [p('value', 'Value', 'BOOLEAN', { required: true })],
-    outputs: [p('true', 'True', 'BOOLEAN', { role: 'T' }), p('false', 'False', 'BOOLEAN', { role: 'F' })],
+    inputs: [p('value', 'If', 'BOOLEAN', 'Điều kiện', { required: true })],
+    outputs: [
+      p('true', 'True', 'BOOLEAN', 'Nhánh đúng', { role: 'T' }),
+      p('false', 'False', 'BOOLEAN', 'Nhánh sai', { role: 'F' }),
+    ],
   },
   delay: {
-    inputs: [p('input', 'Input', 'ANY')],
-    outputs: [p('output', 'Output', 'ANY')],
+    inputs: [p('input', 'Input', 'ANY', 'Tín hiệu vào')],
+    outputs: [p('output', 'Output', 'ANY', 'Sau khi chờ')],
   },
   note: {
     inputs: [],
@@ -186,10 +209,13 @@ export function outputPort(kind: string, id?: string | null): NodePortDefinition
 }
 
 export function portTypesCompatible(source: PortDataType, target: PortDataType): boolean {
+  if (source === target) return true;
   if (source === 'ANY' || target === 'ANY') return true;
   if (target === 'MEDIA') return source === 'IMAGE' || source === 'VIDEO' || source === 'AUDIO' || source === 'MEDIA';
+  if (source === 'PROMPT' && target === 'TEXT') return true;
+  if (source === 'TEXT' && target === 'PROMPT') return true;
   if (source === 'CHARACTER_LIST' && target === 'CHARACTER') return false;
-  return source === target;
+  return false;
 }
 
 export function portTypeClass(type: PortDataType): string {

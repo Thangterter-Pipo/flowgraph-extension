@@ -12,15 +12,21 @@ import { ReferenceVideoExecutor } from './ReferenceVideoExecutor';
 import { ExtendVideoExecutor } from './ExtendVideoExecutor';
 import { ImageUpscaleExecutor } from './ImageUpscaleExecutor';
 import { VideoUpscaleExecutor } from './VideoUpscaleExecutor';
+import { VideoConcatExecutor } from './VideoConcatExecutor';
 import { MediaInputExecutor } from './MediaInputExecutor';
+import { UploadImageExecutor } from './UploadImageExecutor';
+import { CharacterCreateExecutor } from './CharacterCreateExecutor';
 import { ImageInputExecutor } from './ImageInputExecutor';
 import { VideoInputExecutor } from './VideoInputExecutor';
 import { PreviewExecutor } from './PreviewExecutor';
 import { DownloadExecutor } from './DownloadExecutor';
+import { GeminiEnhanceExecutor } from './GeminiEnhanceExecutor';
+import { GatewayGeminiAdapter } from '../../adapters/gemini/GatewayGeminiAdapter';
 import { PollManager } from '../PollManager';
 
 export const RUNTIME_SUPPORTED_KINDS: ReadonlySet<string> = new Set([
   'prompt',
+  'gemini',
   't2i',
   'i2v',
   't2v',
@@ -29,17 +35,25 @@ export const RUNTIME_SUPPORTED_KINDS: ReadonlySet<string> = new Set([
   'extend',
   'imageUpscale',
   'videoUpscale',
+  'videoConcat',
   'mediaInput',
   'imageInput',
   'videoInput',
+  'uploadImage',
+  'characterCreate',
   'preview',
   'download',
 ]);
 
 export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager): ReadonlyMap<string, NodeExecutor> {
   const executors = new Map<string, NodeExecutor>();
+  const geminiAdapter = new GatewayGeminiAdapter();
+  if (typeof window !== 'undefined') {
+    (window as any).__geminiAdapter = geminiAdapter;
+  }
   for (const executor of [
     new PromptExecutor(),
+    new GeminiEnhanceExecutor({ adapter: geminiAdapter }),
     new TextToImageExecutor({ adapter }),
     new ImageToVideoExecutor({ adapter, poller }),
     new TextToVideoExecutor({ adapter, poller }),
@@ -48,8 +62,11 @@ export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager)
     new ExtendVideoExecutor({ adapter, poller }),
     new ImageUpscaleExecutor({ adapter }),
     new VideoUpscaleExecutor({ adapter, poller }),
+    new VideoConcatExecutor({ adapter }),
     new MediaInputExecutor(),
-    new ImageInputExecutor(),
+    new UploadImageExecutor({ adapter }),
+    new CharacterCreateExecutor(),
+    new ImageInputExecutor({ adapter }),
     new VideoInputExecutor(),
     new PreviewExecutor({ adapter }),
     new DownloadExecutor({ adapter }),
@@ -60,6 +77,7 @@ export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager)
 }
 
 export { RUNTIME_SUPPORTED_KINDS as supportedKinds };
-export { ImageUpscaleExecutor, VideoUpscaleExecutor, MediaInputExecutor, ImageInputExecutor, VideoInputExecutor, PreviewExecutor };
+export { VideoConcatExecutor };
+export { ImageUpscaleExecutor, VideoUpscaleExecutor, MediaInputExecutor, ImageInputExecutor, VideoInputExecutor, PreviewExecutor, UploadImageExecutor, CharacterCreateExecutor, GeminiEnhanceExecutor };
 
 

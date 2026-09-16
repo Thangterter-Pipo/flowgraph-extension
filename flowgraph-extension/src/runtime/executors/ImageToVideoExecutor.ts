@@ -2,10 +2,11 @@
 // previous node, requests real I2V generation, polls, returns video MediaRef.
 import type { NodeExecutor, NodeExecutorOutput, NodeExecutionContext, ValidationResult } from '../../engine/execution/NodeExecutor';
 import type { GoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
-import { asMedia, asText, mediaRefFromPayload } from '../RuntimeValue';
+import { asMedia, asText, mediaRefFromPayload, mergeCharacterDna } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
 import { PollManager } from '../PollManager';
 import { normalizeFlowUiModelLabel } from '../../shared/sync/SyncCapabilityRegistry';
+import { generateCancellable } from './generateCancellable';
 
 export interface ImageToVideoExecutorOptions {
   adapter: GoogleFlowAdapter;
@@ -34,7 +35,9 @@ export class ImageToVideoExecutor implements NodeExecutor {
     const image = asMedia(context.inputs.image);
     if (!image) throw new RuntimeError('INVALID_INPUT', 'Image-to-Video received no image input.', { nodeId: context.nodeId });
     const projectId = context.context.activeProject.projectId;
-    const prompt = asText(context.inputs.prompt) ?? String(context.config.prompt ?? '');
+    const rawPrompt = asText(context.inputs.prompt) ?? String(context.config.prompt ?? '');
+    const characterInput = context.inputs.characters || context.inputs.character;
+    const prompt = mergeCharacterDna(rawPrompt.trim(), characterInput, 'MOTION EXECUTION');
     const modelKey = String(context.config.usageKey ?? context.config.model ?? 'abra_i2v_8s');
 
     // Fail before touching the Flow UI. An empty prompt used to be replaced by a
@@ -51,7 +54,7 @@ export class ImageToVideoExecutor implements NodeExecutor {
 
     let ref;
     try {
-      ref = await this.adapter.generate({
+      ref = await generateCancellable(this.adapter, {
         kind: 'i2v',
         projectId,
         prompt: prompt || undefined,
@@ -62,9 +65,10 @@ export class ImageToVideoExecutor implements NodeExecutor {
         targetResolution: context.config.targetResolution !== undefined || context.config.resolution !== undefined
           ? String(context.config.targetResolution ?? context.config.resolution)
           : undefined,
+        batchCount: context.config.batchCount !== undefined ? Number.parseInt(String(context.config.batchCount).replace(/^x/i, ''), 10) : undefined,
         seed: context.config.seed !== undefined ? Number(context.config.seed) : undefined,
         startImage: { mediaId: image.mediaId },
-      });
+      }, context.context, abortSignal);
     } catch (error) {
       throw toRuntime(error, context.nodeId);
     }
@@ -91,27 +95,32 @@ export class ImageToVideoExecutor implements NodeExecutor {
       };
     }
 
-    const status = await this.poller.untilTerminal(async () => {
-      context.context.throwIfAborted();
-      const poll = await this.adapter.waitForMedia({ projectId, mediaId: ref.mediaId });
-      return { status: poll.status, errorMessage: poll.errorMessage, data: poll.media };
-    }, { abortSignal });
+    context.context.trackMediaJob?.(ref.mediaId);
+    try {
+      const status = await this.poller.untilTerminal(async () => {
+        context.context.throwIfAborted();
+        const poll = await this.adapter.waitForMedia({ projectId, mediaId: ref.mediaId });
+        return { status: poll.status, errorMessage: poll.errorMessage, data: poll.media };
+      }, { abortSignal });
 
-    if (status.status === 'CANCELED') throw new RuntimeError('CANCELLED', 'Generation was cancelled by the provider.', { nodeId: context.nodeId });
-    if (status.status === 'FAILED') throw new RuntimeError('MEDIA_FAILED', status.errorMessage ?? 'Video generation failed.', { nodeId: context.nodeId });
-    if (status.status === 'UNKNOWN') throw new RuntimeError('TIMEOUT', status.errorMessage ?? 'Polling timed out waiting for the generated video.', { nodeId: context.nodeId });
+      if (status.status === 'CANCELED') throw new RuntimeError('CANCELLED', 'Generation was cancelled by the provider.', { nodeId: context.nodeId });
+      if (status.status === 'FAILED') throw new RuntimeError('MEDIA_FAILED', status.errorMessage ?? 'Video generation failed.', { nodeId: context.nodeId });
+      if (status.status === 'UNKNOWN') throw new RuntimeError('TIMEOUT', status.errorMessage ?? 'Polling timed out waiting for the generated video.', { nodeId: context.nodeId });
 
-    const pollMedia = status.data as { previewUrl?: string } | undefined;
-    const media = mediaRefFromPayload({ ...ref, previewUrl: pollMedia?.previewUrl });
-    return {
-      outputs: { video: media },
-      result: {
-        type: 'video',
-        mediaId: ref.mediaId,
-        previewUrl: pollMedia?.previewUrl ?? '',
-        mimeType: 'video/mp4',
-      },
-    };
+      const pollMedia = status.data as { previewUrl?: string } | undefined;
+      const media = mediaRefFromPayload({ ...ref, previewUrl: pollMedia?.previewUrl });
+      return {
+        outputs: { video: media },
+        result: {
+          type: 'video',
+          mediaId: ref.mediaId,
+          previewUrl: pollMedia?.previewUrl ?? '',
+          mimeType: 'video/mp4',
+        },
+      };
+    } finally {
+      context.context.completeMediaJob?.(ref.mediaId);
+    }
   }
 
   retryable(error: { code: string }): boolean {

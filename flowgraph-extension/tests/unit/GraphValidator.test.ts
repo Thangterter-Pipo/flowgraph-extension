@@ -120,7 +120,7 @@ describe('GraphValidator', () => {
         { id: 'references', label: 'References', type: 'IMAGE', required: true, multiple: true },
       ],
       outputs: [{ id: 'video', label: 'Video', type: 'VIDEO' }],
-      config: { usageKey: 'veo_3_1_reference' },
+      config: { model: 'Omni 1.1 Flash', usageKey: 'veo_3_1_reference' },
     };
     const img1: NodeSpecForValidation = {
       id: 'img1',

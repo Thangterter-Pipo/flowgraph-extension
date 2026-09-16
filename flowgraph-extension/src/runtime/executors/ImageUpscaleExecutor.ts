@@ -4,6 +4,7 @@ import type { NodeExecutor, NodeExecutorOutput, NodeExecutionContext, Validation
 import type { GoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
 import { mediaRefFromPayload } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
+import { generateCancellable } from './generateCancellable';
 
 export interface ImageUpscaleExecutorOptions {
   adapter: GoogleFlowAdapter;
@@ -42,7 +43,7 @@ export class ImageUpscaleExecutor implements NodeExecutor {
     return { valid: errors.length === 0, errors };
   }
 
-  async execute(context: NodeExecutionContext, _abortSignal?: AbortSignal): Promise<NodeExecutorOutput> {
+  async execute(context: NodeExecutionContext, abortSignal?: AbortSignal): Promise<NodeExecutorOutput> {
     context.context.throwIfAborted();
     const imageInput = context.inputs.image;
     if (!imageInput) {
@@ -80,13 +81,13 @@ export class ImageUpscaleExecutor implements NodeExecutor {
 
     let result;
     try {
-      result = await this.adapter.generate({
+      result = await generateCancellable(this.adapter, {
         kind: 'imageUpscale' as any,
         projectId,
         modelKey,
         targetResolution,
         imageRefs: [{ mediaId: refImage.mediaId }],
-      });
+      }, context.context, abortSignal);
     } catch (err) {
       throw toRuntimeError(err, context.nodeId);
     }

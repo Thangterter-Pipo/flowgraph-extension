@@ -4,12 +4,16 @@
 // kinds block before any provider call; every success comes from an executor result.
 import type { NodeExecutor, RuntimeInputValue } from '../engine/execution/NodeExecutor';
 import type { GoogleFlowAdapter } from '../adapters/google-flow/GoogleFlowAdapter';
-import type { RuntimeValue } from './RuntimeValue';
-import { ExecutionContext, type ActiveProject, type CachedNodeResult, type RuntimeCache } from './ExecutionContext';
-import { CacheStore, fingerprintNode } from './CacheStore';
+import { asText, type RuntimeValue } from './RuntimeValue';
+import { ExecutionContext, raceWithSignal, whenAborted, type ActiveProject, type CachedNodeResult, type RuntimeCache } from './ExecutionContext';
+import { CacheStore, fingerprintNode, isCacheableNodeKind } from './CacheStore';
 import { planGraph, readyNodes, downstreamOf, type CompiledGraph, type PlanEdge, type PlanNode } from './GraphPlanner';
+import { selectReadyStage } from './executionPolicy';
 import { validateGraph, type NodeSpecForValidation, type RuntimePlanEdge, type ValidationIssue, type ValidationReport } from './GraphValidator';
+import { registryModelResolver } from './registryModelResolver';
+import { retryGraphChanged, workflowRetrySnapshot } from './workflowSnapshot';
 import { RuntimeError, toRuntimeError } from './RuntimeError';
+import { attachTrustedProjectToNodeResult } from './mediaProvenance';
 import { buildExecutors, supportedKinds } from './executors';
 import { PollManager } from './PollManager';
 import type { AccountStatus, FlowStatus } from '../shared/bridge';
@@ -25,8 +29,13 @@ export interface RuntimeRunOptions {
   cache?: RuntimeCache;
   /** Force re-execution of cached nodes (user chose "run anyway" — FG-0904). */
   bypassCache?: boolean;
+  bypassCacheNodeIds?: ReadonlySet<string>;
   /** Max generations executing concurrently (FG-1001). */
   concurrency?: number;
+  /** Initial completed node results from canvas (preserves already generated outputs across runs). */
+  initialOutputs?: Map<string, Record<string, RuntimeValue>>;
+  /** Initial completed node IDs from canvas. */
+  initialCompleted?: Set<string>;
 }
 
 export interface RuntimeNodeEvent {
@@ -35,10 +44,11 @@ export interface RuntimeNodeEvent {
   nodeId: string;
   state: RuntimeNodeState;
   error?: { code: string; message: string; retryable: boolean; diagnosticId?: string };
-  result?: { type: 'image' | 'video'; mediaId: string; previewUrl: string; mimeType?: string; fileName?: string };
+  result?: { type: 'image' | 'video'; mediaId: string; previewUrl: string; mimeType?: string; fileName?: string; projectId?: string };
   creditsUsed?: number;
   /** True when the node result was replayed from the project cache (no provider call). */
   cacheHit?: boolean;
+  outputs?: Record<string, RuntimeValue>;
 }
 
 export interface RuntimeRunEvent {
@@ -64,11 +74,43 @@ const DEFAULT_CONCURRENCY = 1;
  */
 export const VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT = 1;
 
+export function stageReadyNodes(
+  ready: readonly string[],
+  kindById: ReadonlyMap<string, string>,
+): string[] {
+  const byId = new Map([...kindById.entries()].map(([id, kind]) => [id, { kind }]));
+  return selectReadyStage(ready, byId);
+}
+
 export function resolveEffectiveConcurrency(requested?: number): number {
   if (requested === undefined || requested === null || requested < 1) {
     return DEFAULT_CONCURRENCY;
   }
   return Math.min(Math.floor(requested), VERIFIED_GOOGLE_FLOW_CONCURRENCY_LIMIT);
+}
+
+function fingerprintRuntimeValue(value: RuntimeValue): unknown {
+  if (value.type === 'image' || value.type === 'video' || value.type === 'media') {
+    const media = value.value as { mediaId?: string; projectId?: string; type?: string } | null;
+    return {
+      type: value.type,
+      mediaId: media?.mediaId ?? null,
+      projectId: media?.projectId ?? null,
+      mediaType: media?.type ?? null,
+    };
+  }
+  return { type: value.type, value: value.value };
+}
+
+function fingerprintResolvedInputs(inputs: Record<string, RuntimeInputValue>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(inputs)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([handle, value]) => [
+        handle,
+        Array.isArray(value) ? value.map(fingerprintRuntimeValue) : fingerprintRuntimeValue(value),
+      ]),
+  );
 }
 
 interface RunSession {
@@ -80,6 +122,7 @@ interface RunSession {
   planEdges: PlanEdge[];
   plan: CompiledGraph;
   abort: AbortController;
+  retrySnapshot: string;
 }
 
 export class WorkflowRuntime {
@@ -98,6 +141,13 @@ export class WorkflowRuntime {
   private cacheForProject(projectId: string): CacheStore {
     let cache = this.projectCaches.get(projectId);
     if (!cache) {
+      if (this.projectCaches.size >= 10) {
+        const oldest = this.projectCaches.keys().next().value;
+        if (oldest !== undefined) {
+          this.projectCaches.get(oldest)?.clear();
+          this.projectCaches.delete(oldest);
+        }
+      }
       cache = new CacheStore(projectId);
       this.projectCaches.set(projectId, cache);
     }
@@ -114,6 +164,7 @@ export class WorkflowRuntime {
     return validateGraph(nodes, edges, {
       activeProject,
       supportedKinds: supportedKinds,
+      modelResolver: registryModelResolver,
     });
   }
 
@@ -126,9 +177,15 @@ export class WorkflowRuntime {
   async retryFailed(nodes: NodeSpecForValidation[], edges: RuntimePlanEdge[], options: RuntimeRunOptions, emit: RuntimeEmit): Promise<void> {
     const session = this.activeRun;
     if (!session) throw new RuntimeError('PROVIDER_ERROR', 'No run session to retry.');
+    this.assertRetryGraphUnchanged(session, nodes, edges, options);
     const retryable = [...session.failed].filter((nodeId) => session.context.failureFor(nodeId)?.retryable === true);
     if (!retryable.length) throw new RuntimeError('INVALID_INPUT', 'No retryable failures to retry.');
-    for (const nodeId of retryable) session.failed.delete(nodeId);
+    for (const nodeId of retryable) {
+      session.failed.delete(nodeId);
+      // Nodes skipped because of this failure must be reopened as well, otherwise
+      // the retried node can succeed while its downstream remains permanently skipped.
+      for (const downstream of downstreamOf(nodeId, session.planEdges)) session.failed.delete(downstream);
+    }
     await this.executeSession(session, nodes, options, emit, false);
   }
 
@@ -136,6 +193,7 @@ export class WorkflowRuntime {
   async retryNode(nodeId: string, nodes: NodeSpecForValidation[], edges: RuntimePlanEdge[], options: RuntimeRunOptions, emit: RuntimeEmit): Promise<void> {
     const session = this.activeRun;
     if (!session) throw new RuntimeError('PROVIDER_ERROR', 'No run session to retry.');
+    this.assertRetryGraphUnchanged(session, nodes, edges, options);
     const failure = session.context.failureFor(nodeId);
     if (!failure || !failure.retryable) throw new RuntimeError('INVALID_INPUT', `Node ${nodeId} has no retryable failure.`, { nodeId });
     session.failed.delete(nodeId);
@@ -148,14 +206,34 @@ export class WorkflowRuntime {
     const session = this.activeRun;
     if (!session) return;
     session.abort.abort();
-    for (const nodeId of session.context.failedNodeIds) {
-      void this.adapter.cancel({ projectId: session.context.activeProject.projectId, mediaId: nodeId }).catch(() => undefined);
+    // Cancel only provider media jobs whose real mediaId is known. A graph nodeId is
+    // not a provider mediaId, so sending failed node ids here was a no-op at best.
+    for (const mediaId of session.context.activeMediaIds) {
+      void this.adapter.cancel({ projectId: session.context.activeProject.projectId, mediaId }).catch(() => undefined);
     }
   }
 
   // ---------------------------------------------------------------------------
   // Internals
   // ---------------------------------------------------------------------------
+
+  private assertRetryGraphUnchanged(
+    session: RunSession,
+    nodes: NodeSpecForValidation[],
+    edges: RuntimePlanEdge[],
+    options: RuntimeRunOptions,
+  ): void {
+    const report = this.validate(nodes, edges, options.activeProject);
+    if (!report.valid) {
+      throw new RuntimeError('INVALID_INPUT', 'Workflow validation failed — see the pre-run report.');
+    }
+    if (retryGraphChanged(session.retrySnapshot, nodes, edges)) {
+      throw new RuntimeError(
+        'INVALID_INPUT',
+        'Workflow graph or config changed since this run failed. Run the workflow fresh instead of retrying.',
+      );
+    }
+  }
 
   private async prepareRun(nodes: NodeSpecForValidation[], edges: RuntimePlanEdge[], options: RuntimeRunOptions, emit: RuntimeEmit): Promise<RunSession> {
     this.activeRun?.abort.abort();
@@ -182,7 +260,17 @@ export class WorkflowRuntime {
     }
     emit({ type: 'run', runId, state: 'running' });
 
-    const session: RunSession = { runId, context, completed: new Set(), failed: new Set(), outputs: new Map(), planEdges, plan, abort };
+    const session: RunSession = {
+      runId,
+      context,
+      completed: new Set(options.initialCompleted ? [...options.initialCompleted] : []),
+      failed: new Set(),
+      outputs: new Map(options.initialOutputs ? [...options.initialOutputs.entries()] : []),
+      planEdges,
+      plan,
+      abort,
+      retrySnapshot: workflowRetrySnapshot(nodes, edges),
+    };
     this.activeRun = session;
     return session;
   }
@@ -193,6 +281,12 @@ export class WorkflowRuntime {
     const byId = new Map(nodes.map((node) => [node.id, node]));
 
     try {
+      for (const nodeId of session.plan.disconnected) {
+        if (!completed.has(nodeId) && !failed.has(nodeId)) {
+          completed.add(nodeId);
+          emit({ type: 'node', runId, nodeId, state: 'skipped' });
+        }
+      }
       for (;;) {
         // On abort the batch workers drain quickly; break instead of throwing so
         // the cancelled run event is still emitted before the promise rejects.
@@ -200,9 +294,11 @@ export class WorkflowRuntime {
 
         const ready = readyNodes(session.plan.order, planEdges, completed, failed);
         if (!ready.length) break;
-        if (emitQueued) for (const id of ready) emit({ type: 'node', runId, nodeId: id, state: 'queued' });
+        const staged = selectReadyStage(ready, byId);
+        if (!staged.length) break;
+        if (emitQueued) for (const id of staged) emit({ type: 'node', runId, nodeId: id, state: 'queued' });
 
-        await this.executeBatch(session, byId, ready, options, emit, concurrency, this.executors);
+        await this.executeBatch(session, byId, staged, options, emit, concurrency, this.executors);
 
         // A failed node blocks only its downstream — independent branches keep running.
         for (const nodeId of [...failed]) {
@@ -291,13 +387,19 @@ export class WorkflowRuntime {
           const fingerprint = fingerprintNode({
             nodeKind: node.kind,
             config: node.config,
-            prompt: String(node.config.prompt ?? ''),
+            // Cache identity must use the resolved Prompt input, not only node.config.prompt.
+            // Otherwise two T2I/T2V nodes fed by different Prompt nodes can collide and
+            // incorrectly reuse the first node's generated media.
+            prompt: asText(inputValues.prompt) ?? String(node.config.prompt ?? ''),
             model: String(node.config.usageKey ?? node.config.model ?? ''),
             seed: node.config.seed,
             upstreamMediaIds,
+            resolvedInputs: fingerprintResolvedInputs(inputValues),
             projectId: options.activeProject.projectId,
           });
-          const cached = options.bypassCache ? undefined : context.cache?.get(fingerprint);
+          const cached = options.bypassCache || options.bypassCacheNodeIds?.has(nodeId) || !isCacheableNodeKind(node.kind)
+            ? undefined
+            : context.cache?.get(fingerprint);
           if (cached) {
             outputs.set(nodeId, cached.output as Record<string, RuntimeValue>);
             completed.add(nodeId);
@@ -306,25 +408,44 @@ export class WorkflowRuntime {
               runId,
               nodeId,
               state: 'success',
-              result: (cached.fullOutput as { result?: RuntimeNodeEvent['result'] } | undefined)?.result,
+              result: attachTrustedProjectToNodeResult(
+                (cached.fullOutput as { result?: RuntimeNodeEvent['result'] } | undefined)?.result,
+                options.activeProject.projectId,
+              ),
               creditsUsed: 0,
               cacheHit: true,
+              outputs: cached.output as Record<string, RuntimeValue>,
             });
             continue;
           }
 
-          const output = await executor.execute({
+          const execContext = {
             runId,
             nodeId,
             inputs: inputValues,
             config: node.config,
             context,
-          }, abort.signal);
+          };
+          const preflight = executor.validate(execContext);
+          if (!preflight.valid) {
+            throw new RuntimeError('INVALID_INPUT', preflight.errors.join(' ') || 'Executor rejected node inputs.', { nodeId });
+          }
+          const execPromise = executor.execute(execContext, abort.signal);
+          let output;
+          try {
+            output = await raceWithSignal(execPromise, abort.signal);
+          } catch (error) {
+            void execPromise.catch(() => undefined);
+            throw error;
+          }
+          context.throwIfAborted();
 
           outputs.set(nodeId, output.outputs);
-          context.cache?.set(fingerprint, { nodeId, output: output.outputs, fullOutput: output, fingerprint, completedAt: new Date().toISOString() });
+          if (isCacheableNodeKind(node.kind)) {
+            context.cache?.set(fingerprint, { nodeId, output: output.outputs, fullOutput: output, fingerprint, completedAt: new Date().toISOString() });
+          }
           completed.add(nodeId);
-          emit({ type: 'node', runId, nodeId, state: 'success', result: output.result, creditsUsed: output.creditsUsed });
+          emit({ type: 'node', runId, nodeId, state: 'success', outputs: output.outputs, result: attachTrustedProjectToNodeResult(output.result, options.activeProject.projectId), creditsUsed: output.creditsUsed });
         } catch (error) {
           const runtimeError = toRuntimeError(error, nodeId);
           context.fail(nodeId, runtimeError);
@@ -346,5 +467,5 @@ export class WorkflowRuntime {
 }
 
 export { supportedKinds as supportsRuntimeKind } from './executors';
-export { fingerprintNode } from './CacheStore';
+export { fingerprintNode, isCacheableNodeKind } from './CacheStore';
 export type { CachedNodeResult, RuntimeCache };
