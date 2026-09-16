@@ -7,6 +7,7 @@ import {
 } from './model';
 
 export const WORKFLOW_SCHEMA_VERSION = 4;
+const isStitchArtifactId = (id?: string) => Boolean(id?.startsWith('stitch-idb:'));
 export const LEGACY_WORKFLOW_KEY = 'flowgraph.demo.workflow';
 const WORKFLOW_KEY_PREFIX = 'flowgraph.workflow.v1';
 
@@ -18,11 +19,15 @@ export interface SavedWorkflow {
   nodes: FlowNode[];
   edges: FlowEdge[];
   projectBinding?: { projectId: string; projectName: string };
-  runtimeResults?: Record<string, { type: 'image' | 'video'; mediaId: string; mimeType?: string; fileName?: string }>;
+  runtimeResults?: Record<string, { type: 'image' | 'video'; mediaId: string; mimeType?: string; fileName?: string; projectId?: string }>;
 }
 
 type ReadWriteStorage = Pick<Storage, 'getItem' | 'setItem'>;
 type WriteStorage = Pick<Storage, 'setItem'>;
+
+function isLocalPseudoMediaId(mediaId?: string): boolean {
+  return Boolean(mediaId && /^(?:local-|dropped-|local-vid-)/.test(mediaId));
+}
 
 export function workflowStorageKey(projectId: string, workflowId: string) {
   return `${WORKFLOW_KEY_PREFIX}.${encodeURIComponent(projectId)}.${encodeURIComponent(workflowId)}`;
@@ -35,7 +40,7 @@ function nodesForPersistence(nodes: FlowNode[]): FlowNode[] {
     let previewUrl = '';
     if (node.data.result?.previewUrl?.startsWith('data:')) {
       previewUrl = node.data.result.previewUrl;
-    } else if (node.data.config?.localDataUrl?.startsWith('data:')) {
+    } else if (node.data.config?.localDataUrl?.startsWith('data:') || node.data.config?.localDataUrl?.startsWith('blob:')) {
       previewUrl = node.data.config.localDataUrl;
     }
 
@@ -66,12 +71,13 @@ export function buildSavedWorkflow(
 ): SavedWorkflow {
   const runtimeResults: NonNullable<SavedWorkflow['runtimeResults']> = {};
   for (const node of nodes) {
-    if (node.data.result?.mediaId) {
+    if (node.data.result?.mediaId && !isLocalPseudoMediaId(node.data.result.mediaId)) {
       runtimeResults[node.id] = {
         type: node.data.result.type,
         mediaId: node.data.result.mediaId,
         mimeType: node.data.result.mimeType,
         fileName: node.data.result.fileName,
+        projectId: node.data.result.projectId,
       };
     }
   }
@@ -169,6 +175,31 @@ export function readSavedWorkflow(
   return undefined;
 }
 
+export function resolveHydratedProjectId(
+  activeProjectId?: string,
+  hydratedProjectId?: string,
+): string | undefined {
+  return activeProjectId && hydratedProjectId === activeProjectId ? activeProjectId : undefined;
+}
+
+export function shouldPersistToProject(activeProjectId?: string, hydratedProjectId?: string): boolean {
+  return resolveHydratedProjectId(activeProjectId, hydratedProjectId) !== undefined;
+}
+
+export function persistWorkflowIfHydrated(
+  nodes: FlowNode[],
+  edges: FlowEdge[],
+  workflowId: string,
+  workflowName: string,
+  projectBinding: { projectId: string; projectName: string } | undefined,
+  hydratedProjectId: string | undefined,
+  storage: WriteStorage = localStorage,
+): boolean {
+  if (!shouldPersistToProject(projectBinding?.projectId, hydratedProjectId)) return false;
+  persistWorkflow(nodes, edges, workflowId, workflowName, projectBinding, storage);
+  return true;
+}
+
 export function restoreWorkflow(
   projectId?: string,
   workflowId = 'main',
@@ -182,24 +213,27 @@ export function restoreWorkflow(
           const media = saved.runtimeResults[node.id];
           restored.data.result = {
             type: media.type,
-            previewUrl: node.data.result?.previewUrl || (media.type === 'video'
-              ? `https://flow-content.google/image/${media.mediaId}`
+            previewUrl: isStitchArtifactId(media.mediaId) ? '' : node.data.result?.previewUrl || (media.type === 'video'
+              ? (media.mediaId.startsWith('stitched-') || media.mediaId.startsWith('concat-')
+                  ? ''
+                  : `https://flow-content.google/video/${media.mediaId}`)
               : ''),
             mediaId: media.mediaId,
             mimeType: media.mimeType,
             fileName: media.fileName,
+            projectId: media.projectId || node.data.result?.projectId,
           };
           restored.data.status = 'success';
         } else if (node.data.config?.localDataUrl) {
-          // Khôi phục ảnh kéo thả từ ngoài vào bằng Base64 Data URL bền vững
+          // Restore the local preview, but never mark a local pseudo-id as provider success.
           restored.data.result = {
             type: 'image',
             previewUrl: String(node.data.config.localDataUrl),
             mediaId: node.data.result?.mediaId || `local-${node.id}`,
           };
-          restored.data.status = 'success';
+          restored.data.status = 'idle';
         } else if (node.data.result?.mediaId) {
-          restored.data.status = 'success';
+          restored.data.status = isLocalPseudoMediaId(node.data.result.mediaId) ? 'idle' : 'success';
         }
         return restored;
       })

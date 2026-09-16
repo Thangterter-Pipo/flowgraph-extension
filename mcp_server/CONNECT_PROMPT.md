@@ -10,7 +10,9 @@
 
 1. Add Connector → Custom MCP server
 2. URL máy chủ MCP: `https://flowveo.thangterter.online/mcp`
-3. Xác thực: chọn **OAuth** → Advanced settings
+3. Xác thực: chọn **OAuth** → Advanced settings.
+   Khi ChatGPT mở trang `/consent`, gõ PIN trong `mcp_server/.env` (`FLOW_VEO_MCP_CONSENT_PIN`) rồi **Cho phép ChatGPT**.
+   DCR chỉ nhận redirect `https://chatgpt.com/connector/oauth/...` — client lạ bị từ chối.
 4. Server tự thông báo OAuth metadata; ChatGPT tự detect endpoints. Nếu cần nhập tay:
    - `/.well-known/oauth-authorization-server` — metadata
    - Redirect URI: `https://chatgpt.com/connector/oauth/callback`

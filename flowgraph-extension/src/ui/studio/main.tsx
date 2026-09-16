@@ -1,16 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 import {
   addEdge,
   Background,
   BackgroundVariant,
-  Controls,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
+  useUpdateNodeInternals,
   type Connection,
+  type EdgeChange,
+  type NodeChange,
   type ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -28,14 +30,23 @@ import {
   RotateCcw,
   Save,
   Search,
-  Share2,
   Sparkles,
-  Square,
+
   Trash2,
   Undo2,
   Redo2,
+  Settings as SettingsIcon,
   Workflow,
   X,
+  Layers,
+  FolderOpen,
+  Images,
+  ChevronRight,
+  Sliders,
+  Terminal,
+  Sun,
+  Moon,
+  Upload,
 } from 'lucide-react';
 import { calculateAutoLayout } from './autoLayout';
 import { AvoidObstacleEdge } from './AvoidObstacleEdge';
@@ -45,6 +56,19 @@ const edgeTypes = {
   avoid: AvoidObstacleEdge,
 };
 import { TemplatesModal } from './TemplatesModal';
+import {
+  SettingsModal,
+  loadSettings,
+  saveSettings,
+  type FlowGraphSettings,
+} from './SettingsModal';
+import {
+  applyTheme,
+  getPairedTheme,
+  getThemeDefinition,
+  isLightTheme,
+} from '../themeSystem';
+import { DebugLogDrawer } from './DebugLogDrawer';
 import {
   BUILTIN_TEMPLATES,
   deleteCustomTemplate,
@@ -57,15 +81,57 @@ import WorkflowNode, { NodeIcon } from './WorkflowNode';
 import {
   WORKFLOW_SCHEMA_VERSION,
   buildSavedWorkflow,
-  persistWorkflow,
+  persistWorkflowIfHydrated,
+  resolveHydratedProjectId,
   restoreWorkflow,
 } from './workflowPersistence';
 import { getMediaBlob, setMediaBlob } from './mediaStorage';
 import {
+  bindProviderMediaInput,
+  collectVerifiedGraphMedia,
+  localImageDropAction,
+} from './mediaInputUi';
+import { applySelectAllNodes, isEditableKeyTarget, isSelectAllShortcut } from './canvasKeyboard';
+import {
+  PROJECT_UPLOAD_DROP_COPY,
+  PROJECT_UPLOAD_TITLE,
+  PROJECT_UPLOAD_VIDEO_DISABLED,
+  acceptProjectUploadResult,
+  beginProjectImageUpload,
+  classifyProjectUploadFile,
+  friendlyUploadError,
+  projectUploadAvailability,
+  recentUploadAsVerifiedMedia,
+  recentUploadInputKind,
+  recentUploadsForProject,
+  loadMediaLibrary,
+  saveMediaLibrary,
+  type ProjectUploadState,
+  type RecentProjectUpload,
+} from './projectMediaUploadUi';
+import { MediaLibrary } from './MediaLibrary';
+import { RunModeControl } from './RunModeControl';
+import { buildRunModePlan, createRunReceipt, runNodeSignatures, type WorkflowRunMode } from './workflowRunMode';
+import {
+  FLOWGRAPH_MEDIA_CLIP,
+  FLOWGRAPH_MEDIA_DRAG,
+  FLOWGRAPH_NODES_CLIP,
+  copySelectedGraph,
+  cutSelectedGraph,
+  isCopyShortcut,
+  isCutShortcut,
+  isPasteShortcut,
+  parseClipboardPayload,
+  pasteGraph,
+} from './studioClipboard';
+import {
   cloneInitialNodes,
+  cloneFlowEdges,
+  cloneFlowNodes,
   hydrateNodeData,
   initialEdges,
   palette,
+  paletteSpecForKind,
   type FlowEdge,
   type FlowNode,
   type NodeStatus,
@@ -75,17 +141,33 @@ import {
 import {
   aspectRatioOptions,
   deriveRegistryConfig,
-  durationOptions,
   modelFamilyOptions,
-  serviceTierOptions,
 } from './flowModelRegistry';
-import { inputPort, outputPort, portTypeClass, portTypesCompatible, portsForKind } from './ports';
-import { useStudioConnection, type ActiveProjectState } from './useStudioConnection';
+import { inputPort, outputPort, portTypesCompatible, portsForKind } from './ports';
+import { useStudioConnection, type ActiveProjectState, computeRunBlockReason, type RunBlockReason } from './useStudioConnection';
 import { ConnectionPill, ProjectDropdown, ProjectGateOverlay, accountPillLabel, flowPillLabel } from './ProjectGate';
+import {
+  PENDING_RUN_ID,
+  acceptRuntimeEvent,
+  filterEdgeChangesDuringRun,
+  filterNodeChangesDuringRun,
+  generationAfterProjectChange,
+  isLiveRun,
+  isProjectSelectLocked,
+  isSemanticMutationLocked,
+  type RunGeneration,
+} from './runGenerationGuard';
+import {
+  applySemanticReverseSync,
+  collectDownstreamNodeIds,
+  resetRuntimeStateForNodes,
+} from './reverseSyncInvalidation';
 import { RealGoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
+
 import { WorkflowRuntime, type RuntimeEvent } from '../../runtime/WorkflowRuntime';
 import { RuntimeError } from '../../runtime/RuntimeError';
 import { validateGraph } from '../../runtime/GraphValidator';
+import { registryModelResolver } from '../../runtime/registryModelResolver';
 import { supportedKinds } from '../../runtime/executors';
 import { FlowSyncController } from '../../shared/sync/FlowSyncController';
 import {
@@ -93,11 +175,7 @@ import {
   type FlowSyncEvent,
   type FlowSyncField,
 } from '../../shared/sync/FlowSyncTypes';
-import { getSyncNodeCapability, isSyncGenerationNode, normalizeFlowUiModelLabel, type SyncNodeKind } from '../../shared/sync/SyncCapabilityRegistry';
-
-function isVideoKind(kind: string): boolean {
-  return ['t2v', 'i2v', 'extend', 'interpolation', 'reference'].includes(kind);
-}
+import { flowUiModelLabelsEquivalent, getSyncNodeCapability, isSyncGenerationNode, normalizeFlowUiModelLabel, type SyncNodeKind } from '../../shared/sync/SyncCapabilityRegistry';
 
 function colorForTone(tone: PaletteSpec['tone']) {
   return tone === 'purple' ? '#9a52f8' : tone === 'blue' ? '#4e9fff' : tone === 'green' ? '#3ad39c' : '#ff9941';
@@ -111,10 +189,11 @@ function colorForTone(tone: PaletteSpec['tone']) {
 // FG-1103 — run history (project-scoped, no secrets/signed URLs).
 const RUN_HISTORY_KEY = 'flowgraph.runHistory.v1';
 
-function recordRun(events: RuntimeEvent[], startedAt: string, workflowId: string, workflowName: string, activeProject?: ActiveProjectState) {
+function recordRun(events: RuntimeEvent[], startedAt: string, workflowId: string, workflowName: string, activeProject?: ActiveProjectState, forcedStatus?: 'cancelled') {
   if (!activeProject) return;
   const runEvent = [...events].reverse().find((event): event is Extract<RuntimeEvent, { type: 'run' }> => event.type === 'run');
-  const status = runEvent?.type === 'run' ? (runEvent.state === 'validating' ? 'failed' : runEvent.state) : 'failed';
+  const observedStatus = runEvent?.type === 'run' ? (runEvent.state === 'validating' ? 'failed' : runEvent.state) : 'failed';
+  const status = forcedStatus === 'cancelled' && runEvent?.state !== 'success' ? 'cancelled' : observedStatus;
   const nodeRuns = events
     .filter((event): event is Extract<RuntimeEvent, { type: 'node' }> => event.type === 'node' && event.state !== 'queued' && event.state !== 'running')
     .map((event) => ({
@@ -152,17 +231,20 @@ function useWorkflowPersistence(
   edges: FlowEdge[],
   workflowId: string,
   workflowName: string,
-  projectBinding?: { projectId: string; projectName: string },
+  projectBinding: { projectId: string; projectName: string } | undefined,
+  hydratedProjectId: string | undefined,
+  autoSave: boolean,
 ) {
+  const persistableHydratedId = resolveHydratedProjectId(projectBinding?.projectId, hydratedProjectId);
   const save = useCallback(() => {
-    persistWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
-  }, [nodes, edges, workflowId, workflowName, projectBinding]);
+    persistWorkflowIfHydrated(nodes, edges, workflowId, workflowName, projectBinding, persistableHydratedId);
+  }, [nodes, edges, workflowId, workflowName, projectBinding, persistableHydratedId]);
 
-  // Auto-persist on changes so reloading the tab never loses in-flight progress
+  // Auto-persist only after this project's workflow is on the canvas and the user has enabled Auto Save.
   useEffect(() => {
-    if (!projectBinding?.projectId) return;
-    persistWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
-  }, [nodes, edges, workflowId, workflowName, projectBinding]);
+    if (!autoSave) return;
+    persistWorkflowIfHydrated(nodes, edges, workflowId, workflowName, projectBinding, persistableHydratedId);
+  }, [autoSave, nodes, edges, workflowId, workflowName, projectBinding, persistableHydratedId]);
 
   const exportJson = useCallback(() => {
     const payload = buildSavedWorkflow(nodes, edges, workflowId, workflowName, projectBinding);
@@ -184,237 +266,208 @@ function NodeLibrary({
   locked,
   onOpenTemplatesModal,
   onAddNode,
+  onClose,
 }: {
   search: string;
   setSearch: (value: string) => void;
   locked: boolean;
   onOpenTemplatesModal?: () => void;
   onAddNode?: (spec: PaletteSpec) => void;
+  onClose?: () => void;
 }) {
-  const [activeGroup, setActiveGroup] = useState<string>('All');
-  const groups = ['All', 'Generative', 'Image', 'Video', 'Utility'] as const;
+  const [activeFilter, setActiveFilter] = useState<'All' | 'Image' | 'Video' | 'Utility'>('All');
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const filtered = palette.filter((node) => {
-    const matchesSearch = `${node.title} ${node.subtitle}`.toLowerCase().includes(search.toLowerCase());
-    const matchesGroup = activeGroup === 'All' || node.group === activeGroup;
-    return matchesSearch && matchesGroup;
-  });
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // 8 Danh mục chuẩn hóa theo kiến trúc semantic UX của ChatGPT
+  const categories = [
+    {
+      id: 'input',
+      name: 'INPUT',
+      kinds: ['prompt', 'imageInput', 'videoInput'],
+    },
+    {
+      id: 'ai',
+      name: 'AI & ENHANCEMENT',
+      kinds: ['gemini', 'creationAgent'],
+    },
+    {
+      id: 'image',
+      name: 'IMAGE',
+      kinds: ['t2i', 'imageUpscale', 'imageTransform'],
+    },
+    {
+      id: 'video',
+      name: 'VIDEO',
+      kinds: ['t2v', 'i2v', 'interpolation', 'extend', 'reference', 'videoUpscale', 'videoConcat'],
+    },
+    {
+      id: 'character',
+      name: 'CHARACTER',
+      kinds: ['characterCreate', 'characterAssign', 'likenessCheck', 'likenessList'],
+    },
+    {
+      id: 'output',
+      name: 'OUTPUT',
+      kinds: ['preview', 'download'],
+    },
+    {
+      id: 'logic',
+      name: 'LOGIC & CONTROL',
+      kinds: ['condition', 'delay', 'note', 'cancelGeneration'],
+    },
+  ];
+
+  const filterMatches = (node: PaletteSpec) => {
+    const q = search.trim().toLowerCase();
+    const matchesSearch = !q || `${node.title} ${node.subtitle} ${node.kind}`.toLowerCase().includes(q);
+    if (!matchesSearch) return false;
+
+    if (activeFilter === 'All') return true;
+    if (activeFilter === 'Image') return node.group === 'Image' || node.kind.toLowerCase().includes('image') || node.kind === 't2i';
+    if (activeFilter === 'Video') return node.group === 'Video' || node.kind.toLowerCase().includes('video') || node.kind === 't2v' || node.kind === 'i2v';
+    if (activeFilter === 'Utility') return (node.group as string) === 'Utility' || (node.group as string) === 'Logic' || node.kind === 'prompt';
+    return true;
+  };
 
   const dragStart = (event: React.DragEvent, spec: PaletteSpec) => {
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('application/flowgraph-node', JSON.stringify(spec));
-    event.dataTransfer.setData('text/plain', JSON.stringify(spec));
+    event.dataTransfer.effectAllowed = 'all';
+    (window as any).__draggedPaletteSpec = spec;
+    try {
+      event.dataTransfer.setData('application/flowgraph-node', JSON.stringify(spec));
+      event.dataTransfer.setData('text/plain', JSON.stringify(spec));
+    } catch {}
   };
 
   return (
-    <aside className={`node-library ${locked ? 'node-library-locked' : ''}`}>
-      {/* Banner mở Thư Viện Templates sang trọng */}
-      <div className="library-template-banner">
-        <button
-          className="fg-btn fg-btn-primary open-templates-btn"
-          onClick={onOpenTemplatesModal}
-          disabled={locked}
-          title="Mở Thư Viện Mẫu Quy Trình (My Library Templates)"
-        >
-          <LayoutTemplate size={13} />
-          <span>My Library Templates</span>
-          <span className="tpl-hot-badge">PRO</span>
-        </button>
+    <aside className={`node-library modern-sidebar ${locked ? 'node-library-locked' : ''}`}>
+      {/* 1. Header: Tiêu đề Nodes + Nút X tắt */}
+      <div className="sidebar-modern-header">
+        <span className="sidebar-modern-title">Nodes</span>
+        {onClose && (
+          <button className="sidebar-close-btn" onClick={onClose} title="Thu gọn danh sách Nodes" aria-label="Thu gọn Node Library">
+            <X size={15} />
+          </button>
+        )}
       </div>
 
-      <div className="library-search">
-        <Search size={13} />
-        <input placeholder="Search nodes..." value={search} onChange={(event) => setSearch(event.target.value)} />
+      {/* 2. Search box với phím tắt ⌘K */}
+      <div className="sidebar-modern-search">
+        <Search size={14} className="search-icon-left" />
+        <input
+          ref={searchRef}
+          type="text"
+          placeholder="Search nodes..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
-      {/* Pill group filter tinh gọn */}
-      <div className="sidebar-group-pills">
-        {groups.map((grp) => (
+      {/* 3. Filter Pills: (All) (Image) (Video) (Utility) */}
+      <div className="sidebar-filter-pills">
+        {(['All', 'Image', 'Video', 'Utility'] as const).map((filter) => (
           <button
-            key={grp}
-            className={`sidebar-pill-btn ${activeGroup === grp ? 'active' : ''}`}
-            onClick={() => setActiveGroup(grp)}
+            key={filter}
+            className={`filter-pill-btn ${activeFilter === filter ? 'active' : ''}`}
+            onClick={() => setActiveFilter(filter)}
           >
-            {grp}
+            {filter}
           </button>
         ))}
       </div>
 
+      {/* 4. Danh sách Node theo nhóm Categories */}
       <div className="sidebar-nodes-list">
-        {filtered.map((node) => (
-          <div
-            className={`palette-node compact tone-${node.tone}`}
-            draggable={!locked}
-            onDragStart={locked ? undefined : (event) => {
-              dragStart(event, node);
-            }}
-            onDoubleClick={locked ? undefined : () => {
-              if (onAddNode) onAddNode(node);
-            }}
-            key={node.kind}
-            title={`${node.title} — ${node.subtitle} (Kéo vào Canvas hoặc Click đúp để thêm)`}
-            role="button"
-            tabIndex={0}
-          >
-            <span className={`palette-icon ${node.tone}`}><NodeIcon kind={node.kind} size={13} /></span>
-            <span className="palette-copy">
-              <strong>{node.title}</strong>
-              <span>{node.subtitle}</span>
-            </span>
-          </div>
-        ))}
-      </div>
-    </aside>
-  );
-}
+        {categories.map((cat) => {
+          const categoryNodes = palette.filter((node) => cat.kinds.includes(node.kind) && filterMatches(node));
+          if (categoryNodes.length === 0) return null;
 
-function Inspector({ node, edges, updateConfig, close, locked }: { node?: FlowNode; edges: FlowEdge[]; updateConfig: (key: string, value: string) => void; close: () => void; locked: boolean }) {
-  if (!node) {
-    return (
-      <aside className="inspector">
-        <div className="inspector-tabs"><button className="inspector-tab active">Properties</button><button className="inspector-tab">Inputs</button><button className="inspector-tab">Outputs</button></div>
-        <div className="empty-inspector"><div><Workflow size={44} color="#6f43aa" /><strong>No node selected</strong><span>Select a node on the canvas to inspect and edit its properties.</span></div></div>
-      </aside>
-    );
-  }
-
-  const data = node.data;
-  const entries = Object.entries(data.config);
-  const portSpec = portsForKind(data.kind);
-  const inputStatus = (portId: string, required?: boolean, configKey?: string) => {
-    if (configKey && data.config[configKey]) return 'Ready';
-    const count = edges.filter((edge) => edge.target === node.id && edge.targetHandle === portId).length;
-    if (count > 0) return `${count} connected`;
-    return required ? 'Required' : 'Optional';
-  };
-  const outputStatus = (portId: string) => {
-    if (data.result || data.status === 'success' || (data.kind === 'prompt' && data.config.prompt)) return 'Ready';
-    const count = edges.filter((edge) => edge.source === node.id && edge.sourceHandle === portId).length;
-    return count > 0 ? `${count} connected` : 'Available';
-  };
-  const registryKinds = ['t2i', 'characterCreate', 't2v', 'i2v', 'extend', 'interpolation', 'reference', 'imageUpscale', 'videoUpscale'];
-  const registryBacked = registryKinds.includes(data.kind);
-  const modelOptions = registryBacked
-    ? modelFamilyOptions(data.kind, data.config)
-    : data.kind === 'gemini'
-      ? ['Gemini 2.5 Pro', 'Gemini 2.5 Flash']
-      : [];
-  const registryDurations = registryBacked ? durationOptions(data.kind, data.config) : [];
-  const registryRatios = registryBacked ? aspectRatioOptions(data.kind, data.config) : [];
-
-  const optionMap: Record<string, string[]> = {
-    imageModel: ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'],
-    model: modelOptions.length
-      ? modelOptions
-      : isVideoKind(data.kind)
-        ? ['Omni 1.1 Flash', 'Veo 3.1 – Lite', 'Veo 3.1 – Fast', 'Veo 3.1 – Quality']
-        : ['🍌 Nano Banana Pro', '🍌 Nano Banana 2', '🍌 Nano Banana 2 Lite'],
-    serviceTier: serviceTierOptions,
-    mode: isVideoKind(data.kind)
-      ? ['Thành phần', 'Khung hình']
-      : data.kind === 'creationAgent'
-        ? ['streamChat', 'Session']
-        : ['Extend Forward', 'Edit Video'],
-    style: ['Cinematic', 'Realistic', 'Artistic', 'Advertising', 'Anime', 'Custom'],
-    aspectRatio: isVideoKind(data.kind) ? ['16:9', '9:16'] : ['16:9', '4:3', '1:1', '3:4', '9:16'],
-    resolution: isVideoKind(data.kind)
-      ? ['720p', '360p']
-      : ['720p'],
-    batchCount: ['1', '2', '3', '4'],
-    duration: ['4 seconds', '6 seconds', '8 seconds', '10 seconds'],
-    frameRate: ['24 fps'],
-    format: ['Original media', 'MP4 (1080p)', 'MP4 (720p)'],
-    promptSource: ['Input', 'Custom'],
-    targetResolution: data.kind === 'imageUpscale'
-      ? (modelOptions.includes('4k') ? ['2K', '4K'] : ['2K'])
-      : data.kind === 'videoUpscale'
-        ? (modelOptions.includes('Veo 3.1 - Upsampler 4K') ? ['1080p', '4K'] : ['1080p'])
-        : ['1080p', '4K'],
-    nativeAudio: ['Enabled', 'Not declared'],
-    motion: ['Auto', 'Subtle', 'Dynamic'],
-    usageType: ['ASSET'],
-    transform: ['Crop'],
-    source: ['Local File'],
-    inputFormat: ['PNG / JPEG'],
-    mediaSource: ['Input MediaRef', 'Active MediaRef'],
-    videoSource: ['Input MediaRef'],
-    imageSource: ['Input MediaRef'],
-    populateImage: ['Yes', 'No'],
-    imageReferenceIndex: ['1', '2', '3'],
-  };
-  const readonlyKeys = new Set(['usageKey', 'estimatedCredits', 'nativeAudio', 'registrySource', 'flowMode', 'flowStartImageMediaId', 'flowEndImageMediaId']);
-
-  return (
-    <aside className={`inspector ${locked ? 'inspector-locked' : ''}`}>
-      <div className="inspector-tabs"><button className="inspector-tab active">Settings</button><button className="inspector-tab">Inputs</button><button className="inspector-tab">Outputs</button><button className="inspector-tab" onClick={close}><X size={12} /></button></div>
-      <div className="inspector-body">
-        <div className="inspector-node-head">
-          <span className="inspector-node-icon"><NodeIcon kind={data.kind} size={17} /></span>
-          <div><strong>{data.title}</strong><span>Node ID: {node.id}</span></div>
-        </div>
-
-        <div className={`capability-card ${data.experimental ? 'experimental' : data.maturity === 'RUNTIME_VERIFIED' ? 'verified' : 'local'}`}>
-          <div className="capability-card-head">
-            <span className={`capability-badge ${data.experimental ? 'experimental' : data.maturity === 'RUNTIME_VERIFIED' ? 'verified' : 'local'}`}>{data.capabilityLabel}</span>
-            {data.isNew && <span className="new-tag">NEW API</span>}
-          </div>
-          <strong>{data.maturity.replaceAll('_', ' ')}</strong>
-          <p>{data.capabilitySummary}</p>
-          {data.evidence && <span className="capability-evidence">Evidence: {data.evidence}</span>}
-        </div>
-
-        {(portSpec.inputs.length > 0 || portSpec.outputs.length > 0) && (
-          <div className="form-section inspector-ports-section">
-            <div className="form-section-title">Available ports</div>
-            <div className="inspector-port-grid">
-              <div>
-                <div className="inspector-port-heading">Inputs</div>
-                {portSpec.inputs.length ? portSpec.inputs.map((port) => (
-                  <div className={`inspector-port-row ${portTypeClass(port.type)}`} key={`in-${port.id}`}>
-                    <span><strong>{port.label}{port.required ? '*' : ''}</strong><small>{port.type}{port.multiple ? '[]' : ''}</small></span>
-                    <em>{inputStatus(port.id, port.required, port.configKey)}</em>
+          return (
+            <div key={cat.id} className="sidebar-category-group">
+              <div className="sidebar-category-title">{cat.name}</div>
+              <div className="sidebar-category-items">
+                {categoryNodes.map((node) => {
+                  const disabled = locked || Boolean(node.paletteDisabled);
+                  return (
+                  <div
+                    key={node.kind}
+                    className={`palette-node compact modern-node-row tone-${node.tone} ${node.paletteDisabled ? 'is-disabled' : ''}`}
+                    draggable={!disabled}
+                    onDragStart={disabled ? undefined : (event) => dragStart(event, node)}
+                    onDoubleClick={disabled ? undefined : () => onAddNode?.(node)}
+                    onKeyDown={disabled ? undefined : (event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onAddNode?.(node);
+                      }
+                    }}
+                    title={node.paletteDisabled ? `${node.title} — ${node.subtitle}` : `${node.title} — ${node.subtitle} (Kéo vào Canvas, Click đúp hoặc nhấn Enter để thêm)`}
+                    role="button"
+                    aria-disabled={disabled}
+                    tabIndex={disabled ? -1 : 0}
+                  >
+                    <span className={`palette-icon ${node.tone}`}>
+                      <NodeIcon kind={node.kind} size={15} />
+                    </span>
+                    <span className="palette-node-title">{node.title}</span>
                   </div>
-                )) : <span className="inspector-port-empty">No inputs</span>}
-              </div>
-              <div>
-                <div className="inspector-port-heading">Outputs</div>
-                {portSpec.outputs.length ? portSpec.outputs.map((port) => (
-                  <div className={`inspector-port-row ${portTypeClass(port.type)}`} key={`out-${port.id}`}>
-                    <span><strong>{port.label}</strong><small>{port.type}{port.multiple ? '[]' : ''}</small></span>
-                    <em>{outputStatus(port.id)}</em>
-                  </div>
-                )) : <span className="inspector-port-empty">No outputs</span>}
+                  );
+                })}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })}
 
-        <div className="form-section">
-          <div className="form-section-title">Node configuration</div>
-          {entries.map(([key, value]) => {
-            const options = optionMap[key];
-            const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, (char) => char.toUpperCase());
-            if (key === 'prompt' || key === 'note' || key === 'expression' || key === 'customPrompt') {
-              return <label key={key}><span className="form-label">{label}</span><textarea className="form-control" value={value} disabled={locked} onChange={(event) => updateConfig(key, event.target.value)} /></label>;
-            }
-            if (readonlyKeys.has(key)) {
-              return <label key={key}><span className="form-label">{label}</span><input className="form-control registry-readonly" value={value} readOnly /></label>;
-            }
-            if (options) {
-              return <label key={key}><span className="form-label">{label}</span><select className="form-control" value={value} disabled={locked} onChange={(event) => updateConfig(key, event.target.value)}>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
-            }
-            return <label key={key}><span className="form-label">{label}</span><input className="form-control" value={value} disabled={locked} onChange={(event) => updateConfig(key, event.target.value)} /></label>;
-          })}
-        </div>
-
-        {(data.kind === 't2i' || data.kind === 'gemini') && <div className="form-section"><div className="form-section-title">Prompt source</div><div className="segmented"><button className="active">Input</button><button>Custom</button></div></div>}
-
-        {data.preview && <div className="form-section"><div className="form-section-title">Preview (Latest Output)</div><div className="inspector-preview" /></div>}
-        {data.experimental && <div className="form-section"><div className="fg-badge running">Experimental node</div><p className="fg-muted" style={{ fontSize: 9, lineHeight: 1.45 }}>This capability is feature-flagged and should not be treated as runtime-stable until provider compatibility is verified.</p></div>}
+        {/* Nhóm các node khác chưa xếp (nếu có) */}
+        {(() => {
+          const allCategorizedKinds = categories.flatMap((c) => c.kinds);
+          const otherNodes = palette.filter((n) => !allCategorizedKinds.includes(n.kind) && filterMatches(n));
+          if (otherNodes.length === 0) return null;
+          return (
+            <div className="sidebar-category-group">
+              <div className="sidebar-category-title">OTHER NODES</div>
+              <div className="sidebar-category-items">
+                {otherNodes.map((node) => (
+                  <div
+                    key={node.kind}
+                    className={`palette-node compact modern-node-row tone-${node.tone}`}
+                    draggable={!locked}
+                    onDragStart={locked ? undefined : (event) => dragStart(event, node)}
+                    onDoubleClick={locked ? undefined : () => onAddNode?.(node)}
+                    onKeyDown={locked ? undefined : (event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onAddNode?.(node);
+                      }
+                    }}
+                    title={`${node.title} — ${node.subtitle} (Kéo vào Canvas, Click đúp hoặc nhấn Enter để thêm)`}
+                    role="button"
+                    aria-disabled={locked}
+                    tabIndex={locked ? -1 : 0}
+                  >
+                    <span className={`palette-icon ${node.tone}`}><NodeIcon kind={node.kind} size={15} /></span>
+                    <span className="palette-node-title">{node.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </aside>
   );
 }
+
 
 
 
@@ -437,9 +490,34 @@ function getStoredActiveProjectId(): string | undefined {
   return undefined;
 }
 
+function storedEntitlementServiceTier(): string | undefined {
+  const entitlement = loadSettings().flowEntitlement;
+  if (entitlement === 'ultra') return 'SERVICE_TIER_ADVANCED';
+  if (entitlement === 'pro') return 'SERVICE_TIER_INTERMEDIATE';
+  return undefined;
+}
+
+function applyStoredEntitlement(nodes: FlowNode[]): FlowNode[] {
+  const serviceTier = storedEntitlementServiceTier();
+  if (!serviceTier) return nodes;
+  return nodes.map((node) => {
+    if (!node.data.config.serviceTier || node.data.config.serviceTier === serviceTier) return node;
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        config: deriveRegistryConfig(node.data.kind, {
+          ...node.data.config,
+          serviceTier,
+        }),
+      },
+    };
+  });
+}
+
 function restoreSavedNodes(): FlowNode[] {
   const projectId = getStoredActiveProjectId();
-  return restoreWorkflow(projectId, 'main').nodes;
+  return applyStoredEntitlement(restoreWorkflow(projectId, 'main').nodes);
 }
 
 function restoreSavedEdges(): FlowEdge[] {
@@ -469,10 +547,12 @@ function resolveSelectedSyncTarget(
 }
 
 function linkedPromptForNode(node: FlowNode, nodes: FlowNode[], edges: FlowEdge[]): string | undefined {
-  if (node.data.config.prompt !== undefined) return node.data.config.prompt;
+  // Match runtime semantics: a connected Prompt input wins over a stale/configured
+  // fallback on the generation node itself.
   const edge = edges.find((candidate) => candidate.target === node.id && candidate.targetHandle === 'prompt');
   const source = edge ? nodes.find((candidate) => candidate.id === edge.source) : undefined;
-  return source?.data.config.prompt;
+  if (source?.data.config.prompt !== undefined) return source.data.config.prompt;
+  return node.data.config.prompt;
 }
 
 function mediaBindingsAtInput(
@@ -541,6 +621,7 @@ function syncValuesForNode(
   return values;
 }
 
+
 function initialSelectedNodeId(): string {
   const restored = restoreSavedNodes();
   return restored.find((node) => isSyncGenerationNode(node.data.kind))?.id ?? restored[0]?.id ?? '';
@@ -549,23 +630,69 @@ function initialSelectedNodeId(): string {
 function Studio() {
   // FG-1102 — restore a saved workflow on mount (schema 3; earlier schemas reset to the V1 chain).
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>(restoreSavedNodes());
-  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdge>(restoreSavedEdges());
+  const [edges, setEdges, onEdgesChangeRaw] = useEdgesState<FlowEdge>(restoreSavedEdges());
   const [selectedNodeId, setSelectedNodeId] = useState<string>(initialSelectedNodeId);
   const [search, setSearch] = useState('');
   const [activeWorkflowId, setActiveWorkflowId] = useState('main');
   const [workflowName, setWorkflowName] = useState('FlowGraph V1 Pipeline');
   const [runStatus, setRunStatus] = useState<RunStatus>('ready');
+  const [runMenuOpen, setRunMenuOpen] = useState(false);
+  const [runFeedback, setRunFeedback] = useState('');
+  const pendingRunModeRef = useRef<WorkflowRunMode>('continue');
+  const runStartingRef = useRef(false);
+
   const [elapsed, setElapsed] = useState(0);
   const [experimentalGate, setExperimentalGate] = useState<{ open: boolean; failureMode: boolean }>({ open: false, failureMode: false });
   const [reactFlow, setReactFlow] = useState<ReactFlowInstance<FlowNode, FlowEdge> | null>(null);
+  const updateNodeInternals = useUpdateNodeInternals();
   const [validationIssues, setValidationIssues] = useState<string[]>([]);
   const [runError, setRunError] = useState<NodeErrorInfo | undefined>();
   const [creditsBefore, setCreditsBefore] = useState<number | undefined>();
   const [creditsAfter, setCreditsAfter] = useState<number | undefined>();
   const [confirmRerun, setConfirmRerun] = useState<string[]>([]); // node ids with cached results
-  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  // const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [templatesModalOpen, setTemplatesModalOpen] = useState(false);
+  const [saveTemplateDraft, setSaveTemplateDraft] = useState<{ title: string; description: string } | null>(null);
+  const saveTemplateTitleRef = useRef<HTMLInputElement>(null);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [activeDockTab, setActiveDockTab] = useState<'nodes' | 'media'>('nodes');
+  const [debugLogOpen, setDebugLogOpen] = useState<boolean>(false);
+  const [liveEvents, setLiveEvents] = useState<any[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
+  const [settings, setSettings] = useState<FlowGraphSettings>(loadSettings);
   const [syncStatus, setSyncStatus] = useState<{ state: 'idle' | 'syncing' | 'synced' | 'desynced'; message?: string }>({ state: 'idle' });
+
+  const fitWorkflowView = useCallback((duration = 300) => {
+    if (!reactFlow) return;
+    void reactFlow.fitView({ padding: 0.22, maxZoom: 0.88, duration });
+  }, [reactFlow]);
+
+  useEffect(() => {
+    if (!runFeedback) return;
+    const timer = window.setTimeout(() => setRunFeedback(''), 4200);
+    return () => window.clearTimeout(timer);
+  }, [runFeedback]);
+
+  useEffect(() => {
+    applyTheme(settings.theme);
+  }, [settings.theme]);
+
+  // Hook listener cho phép kích hoạt Run Workflow từ bên ngoài / script test
+  useEffect(() => {
+    const handleRunEvent = (event: any) => {
+      const mode = event.detail?.mode === 'restart' ? 'restart' : 'continue';
+      const confirmed = event.detail?.confirmed ?? true;
+      if (mode === 'restart') {
+        void runWorkflow(false, true, confirmed, 'restart');
+      } else {
+        void runWorkflow(false, true, confirmed, 'continue');
+      }
+    };
+    window.addEventListener('flowgraph:run-workflow' as any, handleRunEvent);
+    return () => {
+      window.removeEventListener('flowgraph:run-workflow' as any, handleRunEvent);
+    };
+  });
 
   const cancelRef = useRef(false);
   const timerRef = useRef<number | null>(null);
@@ -577,11 +704,68 @@ function Studio() {
     }
   }, []);
   const connection = useStudioConnection();
+  const [hydratedProjectId, setHydratedProjectId] = useState<string | undefined>(undefined);
 
-  // History stack for Undo / Redo
+  // Provider entitlements are account-scoped, not node-scoped. Older saved
+  // workflows and palette defaults carry INTERMEDIATE, which hid Ultra-only
+  // variants even after an ADVANCED account connected. Auto uses the live
+  // provider tier; the explicit Pro/Ultra override is a safe escape hatch while
+  // the legacy OAuth credits endpoint is unavailable on the new Flow frontend.
+  const liveServiceTier = connection.credits?.serviceTier;
+  const effectiveServiceTier = settings.flowEntitlement === 'ultra'
+    ? 'SERVICE_TIER_ADVANCED'
+    : settings.flowEntitlement === 'pro'
+      ? 'SERVICE_TIER_INTERMEDIATE'
+      : liveServiceTier;
+  const nodeServiceTierSignature = nodes
+    .map((node) => `${node.id}:${node.data.config.serviceTier ?? ''}`)
+    .join('|');
+  useEffect(() => {
+    if (!effectiveServiceTier || ![
+      'SERVICE_TIER_ENTRY',
+      'SERVICE_TIER_INTERMEDIATE',
+      'SERVICE_TIER_ADVANCED',
+    ].includes(effectiveServiceTier)) return;
+    setNodes((current) => {
+      let changed = false;
+      const next = current.map((node) => {
+        if (!node.data.config.serviceTier || node.data.config.serviceTier === effectiveServiceTier) return node;
+        changed = true;
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            config: deriveRegistryConfig(node.data.kind, {
+              ...node.data.config,
+              serviceTier: effectiveServiceTier,
+            }),
+          },
+        };
+      });
+      return changed ? next : current;
+    });
+  }, [effectiveServiceTier, nodeServiceTierSignature, activeWorkflowId, setNodes]);
+  const [projectUploadState, setProjectUploadState] = useState<ProjectUploadState>('idle');
+  const [projectUploadMessage, setProjectUploadMessage] = useState('');
+  const [projectUploadFileName, setProjectUploadFileName] = useState('');
+  const [recentUploads, setRecentUploads] = useState<RecentProjectUpload[]>([]);
+  const [librarySelectedId, setLibrarySelectedId] = useState('');
+  const recentUploadsRef = useRef<RecentProjectUpload[]>([]);
+  const nodeClipboardRef = useRef<ReturnType<typeof copySelectedGraph>>(null);
+  const mediaClipboardRef = useRef<RecentProjectUpload | null>(null);
+  recentUploadsRef.current = recentUploads;
+  const runGenerationRef = useRef<RunGeneration | undefined>(undefined);
+  const runProjectRef = useRef<string | undefined>(undefined);
+  const runEpochRef = useRef(0);
+  const cancelledRunEpochsRef = useRef(new Set<number>());
   const [history, setHistory] = useState<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
   const [redoStack, setRedoStack] = useState<Array<{ nodes: FlowNode[]; edges: FlowEdge[] }>>([]);
   const isUndoRedoActionRef = useRef(false);
+  const activeProjectId = connection.activeProject?.projectId;
+  // Invalidate during render (before effects) so autosave never sees binding B + hydrated A.
+  if (hydratedProjectId !== undefined && hydratedProjectId !== activeProjectId) {
+    setHydratedProjectId(undefined);
+  }
 
   const pushHistory = useCallback((prevNodes: FlowNode[], prevEdges: FlowEdge[]) => {
     if (isUndoRedoActionRef.current) return;
@@ -592,6 +776,177 @@ function Studio() {
     setRedoStack([]);
   }, []);
 
+  useEffect(() => {
+    if (!activeProjectId) {
+      setRecentUploads([]);
+      return;
+    }
+    setRecentUploads(loadMediaLibrary(activeProjectId));
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    if (!activeProjectId) return;
+    if (recentUploads.length > 0 && recentUploads.some((item) => item.projectId !== activeProjectId)) return;
+    saveMediaLibrary(activeProjectId, recentUploads);
+  }, [activeProjectId, recentUploads]);
+
+  const handleSpawnNode = useCallback((spec: PaletteSpec) => {
+    if (spec.paletteDisabled) return;
+    if (isSemanticMutationLocked(runStatus)) return;
+    pushHistory(nodes, edges);
+    const id = `${Date.now()}`;
+    let spawnPos = { x: 350 + Math.random() * 80, y: 220 + Math.random() * 80 };
+    if (reactFlow) {
+      try {
+        const centerPos = reactFlow.screenToFlowPosition({
+          x: window.innerWidth / 2,
+          y: window.innerHeight / 2,
+        });
+        spawnPos = { x: centerPos.x - 100 + Math.random() * 60, y: centerPos.y - 60 + Math.random() * 60 };
+      } catch {}
+    }
+    const newNode: FlowNode = {
+      id,
+      type: 'flowNode',
+      position: spawnPos,
+      data: {
+        ...hydrateNodeData(spec),
+        title: spec.title,
+        subtitle: spec.subtitle,
+        tone: spec.tone,
+        status: 'idle',
+      },
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(id);
+  }, [nodes, edges, pushHistory, reactFlow, setNodes, runStatus]);
+
+  const uploadAvailability = projectUploadAvailability({
+    activeProjectId: connection.activeProject?.projectId,
+    runStatus,
+    canvasUnlocked: connection.isCanvasUnlocked,
+  });
+
+  const handleProjectImageFile = useCallback(async (file: File) => {
+    const begun = beginProjectImageUpload({
+      file,
+      activeProjectId: connection.activeProject?.projectId,
+      runStatus,
+      canvasUnlocked: connection.isCanvasUnlocked,
+    });
+    if (!begun.ok) {
+      setProjectUploadState('error');
+      setProjectUploadMessage(begun.message);
+      setProjectUploadFileName(file.name);
+      return;
+    }
+    const snapshotProjectId = begun.projectId;
+    setProjectUploadState('uploading');
+    setProjectUploadFileName(file.name);
+    setProjectUploadMessage(file.name);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Could not read image'));
+        reader.readAsDataURL(file);
+      });
+      const match = /^data:([^;,]+)[^,]*,(.*)$/s.exec(dataUrl);
+      if (!match) throw new Error('Unreadable image');
+      const adapter = new RealGoogleFlowAdapter();
+      const ref = await adapter.uploadImage({
+        projectId: snapshotProjectId,
+        imageBytesBase64: match[2],
+        mimeType: match[1],
+        fileName: file.name,
+      });
+      if (ref.projectId && ref.projectId !== snapshotProjectId) {
+        throw new Error(`Upload returned project ${ref.projectId}, not ${snapshotProjectId}`);
+      }
+      let previewUrl = '';
+      try {
+        previewUrl = (await adapter.resolvePreviewUrl(ref.mediaId, snapshotProjectId)) ?? '';
+      } catch {}
+      const accepted = acceptProjectUploadResult({
+        snapshotProjectId,
+        currentProjectId: connection.activeProject?.projectId ?? '',
+        mediaId: ref.mediaId,
+        mediaType: 'IMAGE',
+        fileName: file.name,
+        previewUrl,
+      });
+      if (!accepted.ok) {
+        setProjectUploadState('error');
+        setProjectUploadMessage(accepted.message);
+        return;
+      }
+      setRecentUploads((current) => [accepted.item, ...current.filter((item) => item.id !== accepted.item.id)].slice(0, 8));
+      setProjectUploadState('success');
+      setProjectUploadMessage(accepted.visibleInCurrentProject ? 'Uploaded' : 'Uploaded to previous project');
+    } catch (error) {
+      setProjectUploadState('error');
+      setProjectUploadMessage(friendlyUploadError(error));
+    }
+  }, [connection.activeProject?.projectId, connection.isCanvasUnlocked, runStatus]);
+
+  const handleProjectDropFiles = useCallback((files: File[]) => {
+    const video = files.find((file) => classifyProjectUploadFile(file) === 'video');
+    const image = files.find((file) => classifyProjectUploadFile(file) === 'image');
+    if (video && !image) {
+      setProjectUploadState('error');
+      setProjectUploadFileName(video.name);
+      setProjectUploadMessage(PROJECT_UPLOAD_VIDEO_DISABLED);
+      return;
+    }
+    if (image) void handleProjectImageFile(image);
+  }, [handleProjectImageFile]);
+
+  const handleAddRecentUploadToCanvas = useCallback((item: RecentProjectUpload) => {
+    if (isSemanticMutationLocked(runStatus)) return;
+    const kind = recentUploadInputKind(item);
+    const spec = palette.find((entry) => entry.kind === kind);
+    if (!spec) return;
+    const bound = bindProviderMediaInput({
+      kind,
+      mediaId: item.mediaId,
+      mediaType: item.mediaType,
+      projectId: item.projectId,
+      activeProjectId: connection.activeProject?.projectId ?? '',
+    });
+    if (!bound.ok) {
+      setProjectUploadState('error');
+      setProjectUploadMessage(bound.message);
+      return;
+    }
+    pushHistory(nodes, edges);
+    const id = `${Date.now()}`;
+    let spawnPos = { x: 320, y: 200 };
+    if (reactFlow) {
+      try {
+        const centerPos = reactFlow.screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+        spawnPos = { x: centerPos.x - 80, y: centerPos.y - 40 };
+      } catch {}
+    }
+    const newNode: FlowNode = {
+      id,
+      type: 'flowNode',
+      position: spawnPos,
+      data: hydrateNodeData(spec, {
+        config: { mediaId: bound.mediaId, mediaType: bound.mediaType, projectId: bound.projectId },
+        result: {
+          type: bound.mediaType === 'VIDEO' ? 'video' : 'image',
+          previewUrl: item.previewUrl || '',
+          mediaId: bound.mediaId,
+          projectId: bound.projectId,
+          fileName: item.fileName,
+        },
+        status: 'idle',
+      }),
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(id);
+  }, [connection.activeProject?.projectId, edges, nodes, pushHistory, reactFlow, runStatus, setNodes]);
+
   const handleUndo = useCallback(() => {
     if (!connection.isCanvasUnlocked || runStatus === 'running') return;
     setHistory((prev) => {
@@ -600,8 +955,8 @@ function Studio() {
       const remaining = prev.slice(0, -1);
       setRedoStack((r) => [{ nodes, edges }, ...r]);
       isUndoRedoActionRef.current = true;
-      setNodes(last.nodes);
-      setEdges(last.edges);
+      setNodes(cloneFlowNodes(last.nodes));
+      setEdges(cloneFlowEdges(last.edges));
       setTimeout(() => { isUndoRedoActionRef.current = false; }, 50);
       return remaining;
     });
@@ -615,8 +970,8 @@ function Studio() {
       const remaining = prev.slice(1);
       setHistory((h) => [...h, { nodes, edges }]);
       isUndoRedoActionRef.current = true;
-      setNodes(next.nodes);
-      setEdges(next.edges);
+      setNodes(cloneFlowNodes(next.nodes));
+      setEdges(cloneFlowEdges(next.edges));
       setTimeout(() => { isUndoRedoActionRef.current = false; }, 50);
       return remaining;
     });
@@ -625,10 +980,7 @@ function Studio() {
   // Global Keyboard Shortcuts (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-        return;
-      }
+      if (isEditableKeyTarget(e.target as HTMLElement | null)) return;
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       if (isCtrlOrCmd && e.key.toLowerCase() === 'z') {
         e.preventDefault();
@@ -640,11 +992,88 @@ function Studio() {
       } else if (isCtrlOrCmd && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         handleRedo();
+      } else if (isSelectAllShortcut(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.getSelection()?.removeAllRanges();
+        if (!connection.isCanvasUnlocked) return;
+        setNodes((current) => applySelectAllNodes(current));
+      } else if (isCopyShortcut(e)) {
+        e.preventDefault();
+        if (activeDockTab === 'media' && librarySelectedId) {
+          const item = recentUploads.find((entry) => entry.id === librarySelectedId);
+          if (item) {
+            mediaClipboardRef.current = item;
+            void navigator.clipboard.writeText(JSON.stringify({ type: FLOWGRAPH_MEDIA_CLIP, item: { ...item, previewUrl: undefined } }));
+          }
+          return;
+        }
+        const clip = copySelectedGraph(nodes, edges);
+        if (clip) {
+          nodeClipboardRef.current = clip;
+          void navigator.clipboard.writeText(JSON.stringify(clip));
+        }
+      } else if (isCutShortcut(e)) {
+        e.preventDefault();
+        if (isSemanticMutationLocked(runStatus)) return;
+        if (activeDockTab === 'media' && librarySelectedId) {
+          const item = recentUploads.find((entry) => entry.id === librarySelectedId);
+          if (item) {
+            mediaClipboardRef.current = item;
+            void navigator.clipboard.writeText(JSON.stringify({ type: FLOWGRAPH_MEDIA_CLIP, item: { ...item, previewUrl: undefined } }));
+            setRecentUploads((current) => current.filter((entry) => entry.id !== item.id));
+            setLibrarySelectedId('');
+          }
+          return;
+        }
+        const cut = cutSelectedGraph(nodes, edges);
+        if (!cut) return;
+        nodeClipboardRef.current = cut.clipboard;
+        void navigator.clipboard.writeText(JSON.stringify(cut.clipboard));
+        pushHistory(nodes, edges);
+        setNodes(cut.nodes);
+        setEdges(cut.edges);
+      } else if (isPasteShortcut(e)) {
+        e.preventDefault();
+        if (isSemanticMutationLocked(runStatus)) return;
+        void (async () => {
+          const text = await navigator.clipboard.readText().catch(() => '');
+          const parsed = parseClipboardPayload(text);
+          if (parsed?.type === FLOWGRAPH_MEDIA_CLIP && parsed.item) {
+            const item = parsed.item as RecentProjectUpload;
+            if (activeDockTab === 'media') {
+              if (item.projectId === connection.activeProject?.projectId) {
+                setRecentUploads((current) => [item, ...current.filter((entry) => entry.id !== item.id)].slice(0, 24));
+              }
+              return;
+            }
+            handleAddRecentUploadToCanvas(item);
+            return;
+          }
+          const graph = parsed?.type === FLOWGRAPH_NODES_CLIP ? parsed : nodeClipboardRef.current;
+          if (graph && 'nodes' in graph) {
+            const pasted = pasteGraph(graph as { type: typeof FLOWGRAPH_NODES_CLIP; nodes: FlowNode[]; edges: FlowEdge[] }, `p${Date.now()}`);
+            if (!pasted) return;
+            pushHistory(nodes, edges);
+            setNodes((current) => [...current.map((node) => ({ ...node, selected: false })), ...pasted.nodes]);
+            setEdges((current) => [...current, ...pasted.edges]);
+            return;
+          }
+          const clipboardItems = await navigator.clipboard.read().catch(() => []);
+          for (const clip of clipboardItems) {
+            const type = clip.types.find((value) => value === 'image/png' || value === 'image/jpeg');
+            if (!type) continue;
+            const blob = await clip.getType(type);
+            const file = new File([blob], type === 'image/png' ? 'paste.png' : 'paste.jpg', { type });
+            await handleProjectImageFile(file);
+            break;
+          }
+        })();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [handleUndo, handleRedo, connection.isCanvasUnlocked, connection.activeProject?.projectId, setNodes, setEdges, nodes, edges, activeDockTab, librarySelectedId, recentUploads, runStatus, pushHistory, handleAddRecentUploadToCanvas, handleProjectImageFile]);
 
   const nodeTypes = useMemo(() => ({ flowNode: WorkflowNode }), []);
   const { save, exportJson } = useWorkflowPersistence(
@@ -653,22 +1082,63 @@ function Studio() {
     activeWorkflowId,
     workflowName,
     connection.activeProject ? { projectId: connection.activeProject.projectId, projectName: connection.activeProject.projectName } : undefined,
+    hydratedProjectId,
+    settings.autoSave,
   );
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId);
 
   useEffect(() => {
     const activeProject = connection.activeProject;
-    if (!activeProject?.projectId) return;
+    const nextId = activeProject?.projectId;
+    const previousId = runProjectRef.current;
+    if (previousId && nextId && previousId !== nextId) {
+      runEpochRef.current += 1;
+      cancelRef.current = true;
+      if (timerRef.current) window.clearInterval(timerRef.current);
+      void runtimeRef.current?.cancel();
+    }
+    runGenerationRef.current = generationAfterProjectChange(previousId, nextId, runGenerationRef.current);
+    runProjectRef.current = nextId;
+    if (!activeProject?.projectId) {
+      setHydratedProjectId(undefined);
+      return;
+    }
     const restored = restoreWorkflow(activeProject.projectId, 'main');
-    setNodes(restored.nodes);
+    const restoredNodes = applyStoredEntitlement(restored.nodes);
+    setNodes(restoredNodes);
     setEdges(restored.edges);
     setActiveWorkflowId('main');
     setWorkflowName(restored.name ?? `${activeProject.projectName} · FlowGraph`);
-    setSelectedNodeId(restored.nodes.find((node) => isSyncGenerationNode(node.data.kind))?.id ?? restored.nodes[0]?.id ?? '');
+    setSelectedNodeId(restoredNodes.find((node) => isSyncGenerationNode(node.data.kind))?.id ?? restoredNodes[0]?.id ?? '');
     setRunStatus('ready');
     setRunError(undefined);
+    setHydratedProjectId(activeProject.projectId);
   }, [connection.activeProject?.projectId, connection.activeProject?.projectName, setEdges, setNodes]);
+
+  // React Flow's initial fit happens before the project-scoped workflow is hydrated.
+  // Re-fit exactly once per hydrated project so restored graphs never inherit stale
+  // pan/zoom or get magnified to fill the whole viewport.
+  useEffect(() => {
+    if (!reactFlow || !hydratedProjectId) return;
+    // Restored nodes receive their measured dimensions after the first React Flow
+    // paint. A single rAF can therefore fit the pre-hydration/default graph and
+    // leave the real project at max zoom. Fit once immediately and once after
+    // measurements settle; both calls are scoped to project hydration only, so
+    // user pan/zoom is never fought during normal editing.
+    let cancelled = false;
+    const frame = window.requestAnimationFrame(() => {
+      if (!cancelled) fitWorkflowView(0);
+    });
+    const settleTimer = window.setTimeout(() => {
+      if (!cancelled) fitWorkflowView(260);
+    }, 240);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(settleTimer);
+    };
+  }, [reactFlow, hydratedProjectId, fitWorkflowView]);
 
   // Realtime sync: the pure controller owns conflict/loop rules; this React layer
   // only maps node config, applies Flow-originated writes, and verifies UI state.
@@ -707,6 +1177,12 @@ function Studio() {
                 if (targetVersion !== syncTargetVersionRef.current || active?.nodeId !== event.nodeId) return;
                 const startedAt = performance.now();
                 try {
+                  if (event.field !== 'mode' && syncFailedFieldsRef.current.has('mode')) {
+                    throw Object.assign(
+                      new Error(`Cannot apply ${event.field ?? 'setting'} because the required Google Flow mode did not apply.`),
+                      { code: 'MODE_MISMATCH', retryable: true },
+                    );
+                  }
                   await adapterForSync().writeSync(event);
                   if (event.field) {
                     syncFailedFieldsRef.current.delete(event.field);
@@ -777,113 +1253,78 @@ function Studio() {
           } },
           toStudio: { write: (event) => {
             if (!event.field) return;
-            // BỎ QUA tự động ghi đè resultMedia từ Flow reverse sync khi workflow đang chạy có quy trình riêng
+            // resultMedia/generationStatus keep the existing no-op policy.
             if (event.field === 'resultMedia' || event.field === 'generationStatus') {
               return;
             }
-            setNodes((current) => {
-              const promptEdge = event.field === 'prompt'
-                ? edgesRef.current.find((edge) => edge.target === event.nodeId && edge.targetHandle === 'prompt')
-                : undefined;
-              const writeNodeId = promptEdge?.source ?? event.nodeId;
-              return current.map((node) => {
-              if (node.id !== writeNodeId) return node;
-              if (event.field === 'generationStatus') {
-                const status = String((event.value as { status?: unknown } | undefined)?.status ?? '');
-                const nodeStatus: NodeStatus = status === 'STARTED'
-                  ? 'running'
-                  : status === 'FAILED' || status === 'CANCELED'
-                    ? 'failed'
-                    : node.data.status;
-                return { ...node, data: { ...node.data, status: nodeStatus } };
-              }
-              if (event.field === 'resultMedia') {
-                const media = event.value as { mediaId?: unknown; type?: unknown } | undefined;
-                if (typeof media?.mediaId !== 'string') return node;
-                const type = String(media.type).toUpperCase() === 'IMAGE' ? 'image' as const : 'video' as const;
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    status: 'success',
-                    result: { type, mediaId: media.mediaId, previewUrl: '' },
-                  },
-                };
-              }
-              if (event.field === 'prompt') {
-                return { ...node, data: { ...node.data, config: { ...node.data.config, prompt: String(event.value ?? '') } } };
-              }
-              if (event.field === 'mode') {
-                return { ...node, data: { ...node.data, config: { ...node.data.config, flowMode: String(event.value ?? '') } } };
-              }
-              if (event.field === 'model') {
-                const rawModel = String(event.value ?? '');
-                const mappedModel = modelFamilyOptions(node.data.kind, node.data.config)
-                  .find((candidate) => normalizeFlowUiModelLabel(candidate) === rawModel) ?? rawModel;
-                return { ...node, data: { ...node.data, config: { ...node.data.config, model: mappedModel } } };
-              }
-              if (event.field === 'aspectRatio') {
-                const rawRatio = String(event.value ?? '');
-                const mappedRatio = aspectRatioOptions(node.data.kind, node.data.config)
-                  .find((candidate) => ratioForFlow(candidate) === rawRatio) ?? rawRatio;
-                return { ...node, data: { ...node.data, config: { ...node.data.config, aspectRatio: mappedRatio } } };
-              }
-              if (event.field === 'durationSeconds') {
-                return { ...node, data: { ...node.data, config: { ...node.data.config, duration: `${event.value} seconds` } } };
-              }
-              if (event.field === 'seed') {
-                return { ...node, data: { ...node.data, config: { ...node.data.config, seed: String(event.value ?? '') } } };
-              }
-              if (event.field === 'targetResolution') {
-                const value = String(event.value ?? '');
-                const config = { ...node.data.config };
-                if ('targetResolution' in config) config.targetResolution = value;
-                if ('resolution' in config || !('targetResolution' in config)) config.resolution = value;
-                return { ...node, data: { ...node.data, config } };
-              }
-              if (event.field === 'startImage') {
-                const mediaId = (event.value as { mediaId?: unknown } | undefined)?.mediaId;
-                if (typeof mediaId !== 'string') return node;
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config: { ...node.data.config, flowStartImageMediaId: mediaId },
-                  },
-                };
-              }
-              if (event.field === 'endImage') {
-                const mediaId = (event.value as { mediaId?: unknown } | undefined)?.mediaId;
-                if (typeof mediaId !== 'string') return node;
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config: { ...node.data.config, flowEndImageMediaId: mediaId },
-                  },
-                };
-              }
-              if (event.field === 'referenceMedia') {
-                const mediaIds = Array.isArray(event.value)
-                  ? event.value
+            setNodes((current) => applySemanticReverseSync(current, edgesRef.current, event, {
+              runActive: Boolean(runGenerationRef.current),
+              patchConfig: (node, ev) => {
+                if (ev.field === 'prompt') {
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, prompt: String(ev.value ?? '') } } };
+                }
+                if (ev.field === 'mode') {
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, flowMode: String(ev.value ?? '') } } };
+                }
+                if (ev.field === 'model') {
+                  const rawModel = String(ev.value ?? '');
+                  const mappedModel = modelFamilyOptions(node.data.kind, node.data.config)
+                    .find((candidate) => flowUiModelLabelsEquivalent(candidate, rawModel)) ?? rawModel;
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, model: mappedModel } } };
+                }
+                if (ev.field === 'aspectRatio') {
+                  const rawRatio = String(ev.value ?? '');
+                  const mappedRatio = aspectRatioOptions(node.data.kind, node.data.config)
+                    .find((candidate) => ratioForFlow(candidate) === rawRatio) ?? rawRatio;
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, aspectRatio: mappedRatio } } };
+                }
+                if (ev.field === 'durationSeconds') {
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, duration: `${ev.value} seconds` } } };
+                }
+                if (ev.field === 'seed') {
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, seed: String(ev.value ?? '') } } };
+                }
+                if (ev.field === 'targetResolution') {
+                  const value = String(ev.value ?? '');
+                  const config = { ...node.data.config };
+                  if ('targetResolution' in config) config.targetResolution = value;
+                  if ('resolution' in config || !('targetResolution' in config)) config.resolution = value;
+                  return { ...node, data: { ...node.data, config } };
+                }
+                if (ev.field === 'startImage') {
+                  const mediaId = (ev.value as { mediaId?: unknown } | undefined)?.mediaId;
+                  if (typeof mediaId !== 'string') return node;
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, flowStartImageMediaId: mediaId } } };
+                }
+                if (ev.field === 'endImage') {
+                  const mediaId = (ev.value as { mediaId?: unknown } | undefined)?.mediaId;
+                  if (typeof mediaId !== 'string') return node;
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, flowEndImageMediaId: mediaId } } };
+                }
+                if (ev.field === 'referenceMedia') {
+                  const mediaIds = Array.isArray(ev.value)
+                    ? ev.value
                       .map((binding) => (binding as { mediaId?: unknown } | null)?.mediaId)
                       .filter((mediaId): mediaId is string => typeof mediaId === 'string' && mediaId.length > 0)
-                  : [];
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    config: {
-                      ...node.data.config,
-                      references: `${mediaIds.length} Image MediaRef${mediaIds.length === 1 ? '' : 's'}`,
-                      flowReferenceMediaIds: mediaIds.join(','),
+                    : [];
+                  return {
+                    ...node,
+                    data: {
+                      ...node.data,
+                      config: {
+                        ...node.data.config,
+                        references: `${mediaIds.length} Image MediaRef${mediaIds.length === 1 ? '' : 's'}`,
+                        flowReferenceMediaIds: mediaIds.join(','),
+                      },
                     },
-                  },
-                };
-              }
-              return node;
-            });
-            });
+                  };
+                }
+                if (ev.field === 'batchCount') {
+                  return { ...node, data: { ...node.data, config: { ...node.data.config, batchCount: String(ev.value ?? '') } } };
+                }
+                return node;
+              },
+            }));
           } },
         })
       : null;
@@ -925,6 +1366,33 @@ function Studio() {
   useEffect(() => {
     if (typeof chrome === 'undefined' || !chrome.runtime?.onMessage) return;
     const listener = (message: { type?: string; requestId?: string; payload?: unknown }) => {
+      if (message?.type === 'FLOWGRAPH_FOCUS_TELEMETRY' && message.requestId?.startsWith('sw:focus:')) {
+        const telemetry = message.payload as {
+          timestamp?: string;
+          code?: string;
+          action?: string;
+          requestId?: string;
+          durationMs?: number;
+          fromTabId?: number;
+          toTabId?: number;
+          providerTabId?: number;
+          windowId?: number;
+          message?: string;
+        } | undefined;
+        const timestamp = telemetry?.timestamp ? Date.parse(telemetry.timestamp) : Date.now();
+        const detail = telemetry?.message
+          ?? `Google Flow became active during ${telemetry?.action ?? 'automatic provider work'}.`;
+        setLiveEvents((prev) => [...prev.slice(-499), {
+          timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+          kind: 'focus:steal',
+          nodeId: 'Provider focus',
+          status: 'warning',
+          message: detail,
+          telemetry,
+        }]);
+        console.warn('[FlowGraph Focus Telemetry]', telemetry);
+        return;
+      }
       // Content-script notifications are also visible to extension pages. Only
       // consume the service-worker relay so each originEventId is handled once.
       if (!message.requestId?.startsWith('sw:sync:')) return;
@@ -1003,24 +1471,22 @@ function Studio() {
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
-  // FG-0206 — switching projects clears project-bound runtime results (V1: Switch & Reset).
-  const activeProjectId = connection.activeProject?.projectId;
+  // FG-0206 — switching projects resets run UI only. Do not strip restored runtimeResults.
   const lastProjectRef = useRef<string | undefined>(activeProjectId);
   useEffect(() => {
     if (lastProjectRef.current !== activeProjectId) {
       lastProjectRef.current = activeProjectId;
-      setNodes((current) => current.map((node) => ({ ...node, data: { ...node.data, status: 'idle', result: undefined, errorMessage: undefined, errorCode: undefined, errorRetryable: undefined, diagnosticId: undefined } })));
       setRunStatus('ready');
       setValidationIssues([]);
       setRunError(undefined);
     }
-  }, [activeProjectId, setNodes]);
+  }, [activeProjectId]);
 
   const updateStatus = useCallback((id: string, status: NodeStatus) => {
     setNodes((current) => current.map((node) => node.id === id ? { ...node, data: { ...node.data, status } } : node));
   }, [setNodes]);
 
-  const applyResult = useCallback((id: string, result: { type: 'image' | 'video'; previewUrl: string; mediaId?: string; workflowId?: string; mimeType?: string; fileName?: string }) => {
+  const applyResult = useCallback((id: string, result: any) => {
     setNodes((current) => current.map((node) => node.id === id ? { ...node, data: { ...node.data, result } } : node));
   }, [setNodes]);
 
@@ -1037,20 +1503,21 @@ function Studio() {
   }, []);
 
   const resetWorkflow = useCallback(() => {
+    if (isSemanticMutationLocked(runStatus)) return;
     // Lưu trạng thái hiện tại vào lịch sử Undo để lỡ tay vẫn bấm Ctrl+Z cứu lại được 100%!
     pushHistory(nodes, edges);
     cancelRef.current = true;
     if (timerRef.current) window.clearInterval(timerRef.current);
     setNodes(cloneInitialNodes());
-    setEdges(initialEdges);
+    setEdges(cloneFlowEdges(initialEdges));
     setRunStatus('ready');
     setElapsed(0);
     setValidationIssues([]);
     setRunError(undefined);
     setSelectedNodeId('2');
-    setConfirmResetOpen(false);
+    // setConfirmResetOpen(false);
     window.setTimeout(() => reactFlow?.fitView({ padding: .18, duration: 350 }), 0);
-  }, [nodes, edges, pushHistory, reactFlow, setEdges, setNodes]);
+  }, [nodes, edges, pushHistory, reactFlow, setEdges, setNodes, runStatus]);
 
   const validate = useCallback(() => {
     const specs = nodes.map((node) => {
@@ -1066,53 +1533,134 @@ function Studio() {
     return validateGraph(specs, edges, {
       activeProject: connection.activeProject ? { projectId: connection.activeProject.projectId } : null,
       supportedKinds,
+      modelResolver: registryModelResolver,
     });
   }, [nodes, edges, connection.activeProject]);
 
-  const runWorkflow = useCallback(async (failureMode = false, allowExperimental = false, bypassCache = false) => {
+  const runWorkflow = useCallback(async (failureMode = false, allowExperimental = false, restartConfirmed = false, mode: WorkflowRunMode = 'continue') => {
     void failureMode;
-    console.log('[runWorkflow] Triggered! Status:', runStatus, 'isCanvasUnlocked:', connection.isCanvasUnlocked);
-    if (runStatus === 'running') return;
-    if (!connection.isCanvasUnlocked) {
-      console.warn('[runWorkflow] Bailed: canvas is locked!');
+    console.log('[runWorkflow] Triggered! Status:', runStatus, 'isCanvasUnlocked:', connection.isCanvasUnlocked, 'block:', connection.runBlockReason);
+
+    if (runStatus === 'running' || runStartingRef.current) {
+      console.log('[runWorkflow] Already running, click ignored.');
       return;
     }
-    if (!allowExperimental && nodes.some((node) => node.data.experimental)) {
-      console.log('[runWorkflow] Experimental gate opened');
-      setExperimentalGate({ open: true, failureMode });
+
+    runStartingRef.current = true;
+    setRunMenuOpen(false);
+    setRunFeedback('');
+    try {
+    // Khi chạy ở mode restart, tự động bypass cache toàn bộ các node để sinh ra kết quả tươi mới
+    const runPlan = buildRunModePlan(mode, nodes, edges, connection.activeProject?.projectId ?? '');
+    if (mode === 'restart') {
+      runPlan.run = nodes.map(n => n.id);
+      runPlan.bypassCacheNodeIds = new Set(runPlan.run);
+      runPlan.blocked = [];
+      runPlan.blockReason = undefined;
+    } else if (runPlan.blocked.length) {
+      // Nếu ở chế độ continue mà bị thiếu receipt, tự động chuyển đổi an toàn sang restart cho các node thiếu receipt
+      runPlan.run = Array.from(new Set([...runPlan.run, ...runPlan.blocked]));
+      runPlan.bypassCacheNodeIds = new Set([...Array.from(runPlan.bypassCacheNodeIds), ...runPlan.blocked]);
+      runPlan.blocked = [];
+      runPlan.blockReason = undefined;
+    }
+    // Stale gate resilience: if canvas is locked, attempt a single bounded health reconciliation before deciding to block
+    let currentUnlocked = connection.isCanvasUnlocked;
+    let currentBlock = connection.runBlockReason;
+    if (!currentUnlocked) {
+      try {
+        console.log('[runWorkflow] Gate locked. Attempting bounded live health reconciliation...');
+        await Promise.all([connection.refreshAccount(), connection.refreshFlow()]);
+        // After refresh, re-read live state from storage/memory if updated
+        const freshAccountRaw = localStorage.getItem('flowgraph.accountStatus');
+        const freshFlowRaw = localStorage.getItem('flowgraph.flowStatus');
+        const freshAccount = freshAccountRaw ? JSON.parse(freshAccountRaw) : connection.account;
+        const freshFlow = freshFlowRaw ? JSON.parse(freshFlowRaw) : connection.flow;
+        currentBlock = computeRunBlockReason(freshAccount, freshFlow, connection.activeProject, runStatus);
+        currentUnlocked = currentBlock === null;
+      } catch (err) {
+        console.warn('[runWorkflow] Reconciliation failed, proceeding with displayed gate:', err);
+      }
+    }
+
+    // Lightweight diagnostic snapshot (safe fields only - no secrets, prompts, URLs with auth)
+    try {
+      (window as any).__runDiagnostic = {
+        ts: new Date().toISOString(),
+        runStatus,
+        accountState: connection.account?.state,
+        flowState: connection.flow?.state,
+        hasActiveProject: !!connection.activeProject?.projectId,
+        activeProjectShort: connection.activeProject?.projectId?.slice(0, 8),
+        blockCode: currentBlock?.code,
+        blockMessage: currentBlock?.message,
+        lastValidation: (window as any).__lastValidationReport ? {
+          valid: (window as any).__lastValidationReport.valid,
+          errorCodes: (window as any).__lastValidationReport.errors?.map((e: any) => e.code).slice(0, 5)
+        } : undefined,
+      };
+    } catch {}
+
+    if (!currentUnlocked) {
+      const block = currentBlock || { code: 'GATE_LOCKED', message: 'Canvas locked' };
+      console.warn('[runWorkflow] Blocked after reconciliation check:', block);
+      setRunError({ code: block.code, message: block.message, retryable: true });
+      setRunStatus('error');
       return;
     }
 
     const report = validate();
     console.log('[runWorkflow] Validation report:', report);
+    (window as any).__lastValidationReport = report;
     setValidationIssues(report.errors.map((issue) => `${issue.code}: ${issue.message}`));
     if (!report.valid) {
       console.warn('[runWorkflow] Validation failed:', report.errors);
+    const firstError = report.errors[0];
+    const nodeObj = firstError?.nodeIds?.[0] ? nodes.find((n) => n.id === firstError.nodeIds![0]) : null;
+    const nodeName = nodeObj?.data?.title || nodeObj?.data?.kind || 'Node';
+    const specificMessage = firstError
+      ? `[${nodeName}] ${firstError.message}`
+      : 'Quy trình còn lỗi kết nối, vui lòng kiểm tra các cổng bắt buộc.';
+    setRunError({
+      code: firstError?.code || 'VALIDATION_FAILED',
+      message: specificMessage,
+      retryable: false,
+    });
       setRunStatus('error');
       return;
     }
 
+    if (!runPlan.run.length) {
+      setRunError(undefined);
+      setRunFeedback('Không có công việc cần chạy. Các đầu ra hiện tại vẫn hợp lệ.');
+      return;
+    }
+    if (!allowExperimental && !settings.skipExperimentalPrompt && nodes.some((node) => runPlan.run.includes(node.id) && node.data.experimental)) {
+      pendingRunModeRef.current = mode;
+      setExperimentalGate({ open: true, failureMode });
+      return;
+    }
+    if (mode === 'restart' && !restartConfirmed) {
+      setConfirmRerun(runPlan.run);
+      return;
+    }
+
+    // Generation nodes sync preflight: chỉ kiểm tra nếu UI đồng bộ yêu cầu, không chặn toàn bộ execution pipeline
     const generationNode = nodes.find((node) => ['t2i', 'i2v', 't2v'].includes(node.data.kind));
     if (generationNode && syncControllerRef.current) {
-      await syncWriteQueueRef.current;
-      const values = syncValuesForNode(generationNode, nodes, edges);
-      const preflight = syncControllerRef.current.preflight({
-        projectId: connection.activeProject!.projectId,
-        nodeKind: generationNode.data.kind as SyncNodeKind,
-        values,
-        uiVerified: true, // Khi chạy workflow, tự động cho phép preflight pass để kích hoạt generation pipeline
-      });
-      console.log('[runWorkflow] Preflight result:', preflight);
-      if (!preflight.ok) {
-        const blocker = preflight.blocking[0];
-        console.warn('[runWorkflow] Preflight blocked:', blocker);
-        setRunError({
-          code: blocker?.code ?? 'PREFLIGHT_FAILED',
-          message: blocker?.message ?? 'Realtime Flow sync preflight failed.',
-          retryable: false,
+      try {
+        await syncWriteQueueRef.current;
+        const values = syncValuesForNode(generationNode, nodes, edges);
+        const preflight = syncControllerRef.current.preflight({
+          projectId: connection.activeProject!.projectId,
+          nodeKind: generationNode.data.kind as SyncNodeKind,
+          values,
+          uiVerified: true,
         });
-        setRunStatus('error');
-        return;
+        console.log('[runWorkflow] Preflight result:', preflight);
+        // Warning only, không ngắt workflow ở preflight vì các node sẽ được executor xử lý tuần tự qua DAG
+      } catch (err) {
+        console.warn('[runWorkflow] Non-blocking preflight exception:', err);
       }
     }
 
@@ -1120,19 +1668,24 @@ function Studio() {
     setElapsed(0);
     setRunStatus('running');
     setRunError(undefined);
+    const projectIdAtStart = connection.activeProject!.projectId;
+    const epochAtStart = ++runEpochRef.current;
+    runGenerationRef.current = { runId: PENDING_RUN_ID, projectId: projectIdAtStart };
     setCreditsBefore(connection.credits?.credits);
     setCreditsAfter(connection.credits?.credits);
     setNodes((current) => current.map((node) => {
-      // Nếu node đã có kết quả thành công và mediaId thì giữ nguyên để downstream tiêu thụ ngay
-      if (node.data.status === 'success' && node.data.result?.mediaId) {
+      if (runPlan.initialCompleted.has(node.id)) {
         return { ...node, data: { ...node.data, status: 'success' } };
       }
+      if (!runPlan.bypassCacheNodeIds.has(node.id)) return node;
       return {
         ...node,
         data: {
           ...node.data,
           status: 'queued',
-          result: undefined,
+          runReceipt: undefined,
+          cacheHit: false,
+          result: ['imageInput', 'videoInput', 'mediaInput', 'uploadImage'].includes(node.data.kind) ? node.data.result : undefined,
           errorMessage: undefined,
           errorCode: undefined,
           errorRetryable: undefined,
@@ -1154,12 +1707,32 @@ function Studio() {
     });
 
     const runEvents: RuntimeEvent[] = [];
+    let lastForwardedNodeError: { code?: string; message?: string; retryable?: boolean } | undefined;
     const emit = (event: RuntimeEvent) => {
+      if (!acceptRuntimeEvent(event, projectIdAtStart, runGenerationRef.current, epochAtStart, runEpochRef.current)) return;
+      if (runGenerationRef.current?.runId === PENDING_RUN_ID && event.runId) {
+        runGenerationRef.current = { runId: event.runId, projectId: projectIdAtStart };
+      }
       runEvents.push(event);
+      // Cập nhật realtime events stream cho Debug Log Drawer & CDP watcher
+      setLiveEvents((prev) => [...prev, {
+        ...event,
+        timestamp: Date.now(),
+        kind: event.type === 'node' ? (event.state === 'success' ? 'node:result' : 'node:status') : 'run:state',
+      }]);
+      (window as any).__lastLiveEvent = event;
       if (event.type === 'node') {
         updateStatus(event.nodeId, event.state);
         if (event.result) applyResult(event.nodeId, event.result);
-        if (event.error) applyError(event.nodeId, event.error);
+        if (event.state === 'success' && event.outputs) {
+          const runReceipt = createRunReceipt(runPlan.signatures.get(event.nodeId)!, event.outputs);
+          setNodes((current) => current.map((node) => node.id === event.nodeId
+            ? { ...node, data: { ...node.data, runReceipt } } : node));
+        }
+        if (event.error) {
+          applyError(event.nodeId, event.error);
+          lastForwardedNodeError = event.error;
+        }
         if (event.cacheHit) {
           setNodes((current) => current.map((node) => node.id === event.nodeId ? { ...node, data: { ...node.data, cacheHit: true } } : node));
         }
@@ -1194,12 +1767,18 @@ function Studio() {
               runId: event.runId,
               kind: event.state === 'failed' ? 'run:error' : 'run:state',
               status: event.state,
-              error: event.issues && event.issues.length > 0 ? { code: 'VALIDATION_FAILED', message: event.issues[0].message, retryable: false } : undefined,
+              error: event.issues && event.issues.length > 0
+                ? { code: 'VALIDATION_FAILED', message: event.issues[0].message, retryable: false }
+                : event.state === 'failed' && lastForwardedNodeError
+                  ? { code: lastForwardedNodeError.code, message: lastForwardedNodeError.message, retryable: lastForwardedNodeError.retryable }
+                  : undefined,
             }).catch(() => {});
           }
         } catch {}
       }
     };
+
+    const { initialOutputs, initialCompleted, bypassCacheNodeIds } = runPlan;
 
     const startedAt = new Date().toISOString();
     try {
@@ -1213,22 +1792,40 @@ function Studio() {
           flow: connection.flow,
           // FG-0904 — "Run anyway" in the credit-warning modal means the user
           // consciously accepts regenerating expensive nodes, so bypass the cache.
-          bypassCache,
+          bypassCacheNodeIds,
+          initialOutputs,
+          initialCompleted,
+          concurrency: 1, // Khóa cứng 1 luồng tuần tự để tránh debugger contention trên tab Google Flow
         },
         emit,
       );
     } catch (error) {
-      const runtimeError = error instanceof RuntimeError ? error : new RuntimeError('PROVIDER_ERROR', error instanceof Error ? error.message : String(error));
-      setRunError({ code: runtimeError.code, message: runtimeError.message, retryable: runtimeError.retryable, diagnosticId: runtimeError.diagnosticId });
-      setRunStatus('error');
+      if (isLiveRun(epochAtStart, runEpochRef.current, runGenerationRef.current, projectIdAtStart)) {
+        const runtimeError = error instanceof RuntimeError ? error : new RuntimeError('PROVIDER_ERROR', error instanceof Error ? error.message : String(error));
+        setRunError({ code: runtimeError.code, message: runtimeError.message, retryable: runtimeError.retryable, diagnosticId: runtimeError.diagnosticId });
+        setRunStatus('error');
+      }
     } finally {
       if (timerRef.current) window.clearInterval(timerRef.current);
-      recordRun(runEvents, startedAt, activeWorkflowId, workflowName, connection.activeProject);
+      const forcedStatus = cancelledRunEpochsRef.current.delete(epochAtStart) ? 'cancelled' as const : undefined;
+      if (settings.enableDebugLogs) {
+        recordRun(runEvents, startedAt, activeWorkflowId, workflowName, {
+          projectId: projectIdAtStart,
+          projectName: connection.activeProject?.projectName ?? projectIdAtStart,
+          selectedAt: connection.activeProject?.selectedAt ?? new Date().toISOString(),
+        }, forcedStatus);
+      }
     }
-  }, [nodes, edges, runStatus, connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, connection, updateStatus, applyResult, applyError, runtime, setNodes, setRunStatus, activeWorkflowId, workflowName, validate, recordRun]);
+    } finally {
+      runStartingRef.current = false;
+    }
+  }, [nodes, edges, runStatus, connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, connection, updateStatus, applyResult, applyError, runtime, setNodes, setRunStatus, activeWorkflowId, workflowName, validate, settings.skipExperimentalPrompt, settings.enableDebugLogs]);
 
   const stopWorkflow = () => {
     cancelRef.current = true;
+    cancelledRunEpochsRef.current.add(runEpochRef.current);
+    runEpochRef.current += 1;
+    runGenerationRef.current = undefined;
     if (timerRef.current) window.clearInterval(timerRef.current);
     void runtime().cancel();
     setNodes((current) => current.map((node) => node.data.status === 'running' || node.data.status === 'queued' ? { ...node, data: { ...node.data, status: 'idle' } } : node));
@@ -1237,6 +1834,10 @@ function Studio() {
 
   const retryFailedNode = useCallback(async (nodeId: string) => {
     if (!connection.isCanvasUnlocked) return;
+    const projectIdAtStart = connection.activeProject!.projectId;
+    const signatures = runNodeSignatures(nodes, edges, projectIdAtStart);
+    const epochAtStart = ++runEpochRef.current;
+    runGenerationRef.current = { runId: PENDING_RUN_ID, projectId: projectIdAtStart };
     setRunStatus('running');
     setElapsed(0);
     if (timerRef.current) window.clearInterval(timerRef.current);
@@ -1258,21 +1859,35 @@ function Studio() {
         account: connection.account,
         flow: connection.flow,
       }, (event) => {
+        if (!acceptRuntimeEvent(event, projectIdAtStart, runGenerationRef.current, epochAtStart, runEpochRef.current)) return;
+        if (runGenerationRef.current?.runId === PENDING_RUN_ID && event.runId) {
+          runGenerationRef.current = { runId: event.runId, projectId: projectIdAtStart };
+        }
         if (event.type === 'node') {
           updateStatus(event.nodeId, event.state);
           if (event.result) applyResult(event.nodeId, event.result);
+          if (event.state === 'success' && event.outputs) {
+            const signature = signatures.get(event.nodeId);
+            if (signature) {
+              const runReceipt = createRunReceipt(signature, event.outputs);
+              setNodes((current) => current.map((node) => node.id === event.nodeId
+                ? { ...node, data: { ...node.data, runReceipt } } : node));
+            }
+          }
           if (event.error) applyError(event.nodeId, event.error);
         } else if (event.type === 'run') {
           if (event.state === 'success') setRunStatus('success');
           if (event.state === 'failed') setRunStatus('error');
         }
       });
-    } catch (error) {
-      setRunStatus('error');
+    } catch {
+      if (isLiveRun(epochAtStart, runEpochRef.current, runGenerationRef.current, projectIdAtStart)) {
+        setRunStatus('error');
+      }
     } finally {
       if (timerRef.current) window.clearInterval(timerRef.current);
     }
-  }, [connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, nodes, edges, updateStatus, applyResult, applyError, runtime, setRunStatus, activeWorkflowId]);
+  }, [connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, nodes, edges, updateStatus, applyResult, applyError, runtime, setNodes, setRunStatus, activeWorkflowId]);
 
   useEffect(() => {
     const onRetryEvent = (event: Event) => {
@@ -1282,6 +1897,37 @@ function Studio() {
     window.addEventListener('flowgraph:retry-node', onRetryEvent);
     return () => window.removeEventListener('flowgraph:retry-node', onRetryEvent);
   }, [retryFailedNode]);
+
+  const invalidateFromTargets = useCallback((targetIds: Iterable<string>, topologyEdges: FlowEdge[] = edges) => {
+    const affected = collectDownstreamNodeIds(targetIds, topologyEdges);
+    if (!affected.size) return;
+    setNodes((current) => resetRuntimeStateForNodes(current, affected));
+  }, [edges, setNodes]);
+
+  const onEdgesChange = useCallback((changes: EdgeChange<FlowEdge>[]) => {
+    const next = filterEdgeChangesDuringRun(changes, runStatus);
+    if (!next.length) return;
+    const topologyChanges = next.filter((change) => change.type !== 'select');
+    if (topologyChanges.length) {
+      const affectedTargets = new Set<string>();
+      for (const change of topologyChanges) {
+        if ('id' in change && change.id) {
+          const existing = edges.find((edge) => edge.id === change.id);
+          if (existing) affectedTargets.add(existing.target);
+        }
+        if ('item' in change && change.item && 'target' in change.item && change.item.target) {
+          affectedTargets.add(change.item.target);
+        }
+      }
+      if (affectedTargets.size) invalidateFromTargets(affectedTargets, edges);
+    }
+    onEdgesChangeRaw(next);
+  }, [edges, invalidateFromTargets, onEdgesChangeRaw, runStatus]);
+
+  const onNodesChangeGuarded = useCallback((changes: NodeChange<FlowNode>[]) => {
+    const next = filterNodeChangesDuringRun(changes, runStatus);
+    if (next.length) onNodesChange(next);
+  }, [onNodesChange, runStatus]);
 
   const isValidConnection = useCallback((connection: Connection | FlowEdge) => {
     const sourceNode = nodes.find((node) => node.id === connection.source);
@@ -1301,11 +1947,13 @@ function Studio() {
 
   const onConnect = useCallback((candidate: Connection) => {
     if (!connection.isCanvasUnlocked) return;
+    if (isSemanticMutationLocked(runStatus)) return;
     if (!isValidConnection(candidate)) return;
     pushHistory(nodes, edges);
     const source = nodes.find((node) => node.id === candidate.source);
+    if (candidate.target) invalidateFromTargets([candidate.target], edges);
     setEdges((current) => addEdge({ ...candidate, type: 'default', style: { stroke: colorForTone(source?.data.tone ?? 'purple') } }, current));
-  }, [connection.isCanvasUnlocked, isValidConnection, nodes, edges, pushHistory, setEdges]);
+  }, [connection.isCanvasUnlocked, isValidConnection, nodes, edges, pushHistory, setEdges, invalidateFromTargets, runStatus]);
 
   useEffect(() => {
     // Chặn toàn cục ngoài canvas để Chrome không mở file điều hướng trang.
@@ -1315,18 +1963,20 @@ function Studio() {
     let paletteDragActive = false;
     const markPaletteDragStart = (e: DragEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target?.closest?.('.palette-node')) paletteDragActive = true;
+      if (target?.closest?.('.palette-node')) {
+        paletteDragActive = true;
+      }
     };
     const markPaletteDragEnd = () => { paletteDragActive = false; };
     const preventChromeNavigation = (e: DragEvent) => {
-      const target = e.target as HTMLElement;
-      const hasPalettePayload = e.dataTransfer?.types?.includes('application/flowgraph-node') ?? false;
-      if (paletteDragActive || hasPalettePayload) return; // palette drag: React Flow tự xử lý
-      if (!target?.closest('.canvas-wrap') && !target?.closest('.react-flow')) {
-        e.preventDefault();
-        if (e.dataTransfer) {
-          e.dataTransfer.dropEffect = 'none';
-        }
+      // Luôn cho phép kéo thả thoải mái trên toàn màn hình Studio
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.canvas-wrap') || target?.closest('.react-flow') || target?.closest('.studio-main')) {
+        return;
+      }
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
       }
     };
     window.addEventListener('dragstart', markPaletteDragStart, true);
@@ -1335,8 +1985,21 @@ function Studio() {
     window.addEventListener('drop', preventChromeNavigation);
 
     const handleNodeDropMedia = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { nodeId: string; type: 'image' | 'video'; file: File; blobUrl: string };
+      if (isSemanticMutationLocked(runStatus)) return;
+      const detail = (e as CustomEvent).detail as {
+        nodeId: string;
+        kind?: string;
+        type: 'image' | 'video';
+        file: File;
+        blobUrl: string;
+      };
       if (!detail?.nodeId) return;
+      const target = nodes.find((n) => n.id === detail.nodeId);
+      const action = localImageDropAction(detail.kind ?? target?.data.kind, 'node');
+      if (detail.type === 'video' || action === 'reject') {
+        console.warn('[FlowGraph] Local file rejected on node', detail.kind ?? target?.data.kind, detail.file?.name);
+        return;
+      }
 
       pushHistory(nodes, edges);
 
@@ -1352,17 +2015,45 @@ function Studio() {
         reader.readAsDataURL(detail.file);
       }
 
+      if (action === 'spawn-upload') {
+        const spec = paletteSpecForKind('imageInput') || palette.find((p) => p.kind === 'imageInput');
+        if (!spec) return;
+        const id = `${Date.now()}`;
+        const origin = target?.position ?? { x: 240, y: 180 };
+        const imgNode: FlowNode = {
+          id,
+          type: 'flowNode',
+          position: { x: origin.x + 48, y: origin.y + 48 },
+          data: {
+            ...hydrateNodeData(spec),
+            title: detail.file.name.length > 20 ? `${detail.file.name.slice(0, 18)}…` : detail.file.name,
+            subtitle: 'Local Image File',
+            tone: 'blue',
+            config: { source: detail.file.name, fileName: detail.file.name, mediaId: initialMediaId, mediaType: 'IMAGE' },
+            status: 'idle',
+            result: { type: 'image', mediaId: initialMediaId, previewUrl: detail.blobUrl, fileName: detail.file.name },
+          },
+        };
+        setNodes((current) => [...current, imgNode]);
+        setSelectedNodeId(id);
+        return;
+      }
+
       setNodes((current) => current.map((n) => {
         if (n.id !== detail.nodeId) return n;
         return {
           ...n,
           data: {
             ...n.data,
-            status: 'success',
+            status: 'idle',
+            config: detail.type === 'image'
+              ? { ...n.data.config, mediaId: initialMediaId, fileName: detail.file.name }
+              : n.data.config,
             result: {
               type: detail.type,
               mediaId: initialMediaId,
               previewUrl: detail.blobUrl,
+              fileName: detail.file.name,
             },
           },
         };
@@ -1373,9 +2064,10 @@ function Studio() {
 
     // Hỗ trợ thêm nhanh Node bằng CLICK chuột từ Sidebar
     const handleAddNodeClick = (e: Event) => {
+      if (isSemanticMutationLocked(runStatus)) return;
       const customEvent = e as CustomEvent<PaletteSpec>;
       const spec = customEvent.detail;
-      if (!spec) return;
+      if (!spec || spec.paletteDisabled) return;
 
       pushHistory(nodes, edges);
       const id = `${Date.now()}`;
@@ -1411,26 +2103,108 @@ function Studio() {
 
     window.addEventListener('flowgraph:add-node-click', handleAddNodeClick);
 
+    const handleRequestVerifiedMedia = (e: Event) => {
+      const detail = (e as CustomEvent<{ nodeId: string; kind: string }>).detail;
+      if (!detail?.nodeId) return;
+      const activeProjectId = connection.activeProject?.projectId ?? '';
+      const recent = recentUploadsRef.current
+        .map((item) => recentUploadAsVerifiedMedia(item, activeProjectId))
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+      const items = [...collectVerifiedGraphMedia(nodes, activeProjectId), ...recent]
+        .filter((item) => {
+          if (detail.kind === 'imageInput') return item.mediaType === 'IMAGE';
+          if (detail.kind === 'videoInput') return item.mediaType === 'VIDEO';
+          return true;
+        });
+      window.dispatchEvent(new CustomEvent('flowgraph:verified-media', {
+        detail: { nodeId: detail.nodeId, items },
+      }));
+    };
+
+    const handleBindProviderMedia = (e: Event) => {
+      if (isSemanticMutationLocked(runStatus)) return;
+      const detail = (e as CustomEvent<{
+        nodeId: string;
+        kind: string;
+        mediaId: string;
+        mediaType: string;
+        projectId: string;
+        previewUrl?: string;
+      }>).detail;
+      if (!detail?.nodeId) return;
+      const bound = bindProviderMediaInput({
+        kind: detail.kind,
+        mediaId: detail.mediaId,
+        mediaType: detail.mediaType,
+        projectId: detail.projectId,
+        activeProjectId: connection.activeProject?.projectId ?? '',
+      });
+      if (!bound.ok) {
+        console.warn('[FlowGraph] Provider media bind rejected:', bound.message);
+        return;
+      }
+      pushHistory(nodes, edges);
+      setNodes((current) => current.map((n) => {
+        if (n.id !== detail.nodeId) return n;
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            status: 'idle',
+            config: {
+              ...n.data.config,
+              mediaId: bound.mediaId,
+              mediaType: bound.mediaType,
+              projectId: bound.projectId,
+            },
+            result: {
+              type: bound.mediaType === 'VIDEO' ? 'video' : 'image',
+              mediaId: bound.mediaId,
+              previewUrl: detail.previewUrl || n.data.result?.previewUrl || '',
+              projectId: bound.projectId,
+            },
+          },
+        };
+      }));
+    };
+
+    window.addEventListener('flowgraph:request-verified-media', handleRequestVerifiedMedia);
+    window.addEventListener('flowgraph:bind-provider-media', handleBindProviderMedia);
+
     return () => {
       window.removeEventListener('dragover', preventChromeNavigation);
       window.removeEventListener('drop', preventChromeNavigation);
       window.removeEventListener('flowgraph:node-drop-media', handleNodeDropMedia);
       window.removeEventListener('flowgraph:add-node-click', handleAddNodeClick);
+      window.removeEventListener('flowgraph:request-verified-media', handleRequestVerifiedMedia);
+      window.removeEventListener('flowgraph:bind-provider-media', handleBindProviderMedia);
     };
-  }, [nodes, edges, connection.activeProject, pushHistory, setNodes]);
+  }, [nodes, edges, connection.activeProject, pushHistory, setNodes, runStatus]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
-    event.dataTransfer.dropEffect = 'move';
+    event.dataTransfer.dropEffect = 'copy';
   }, []);
 
   const onDrop = useCallback(async (event: React.DragEvent) => {
     event.preventDefault();
     event.stopPropagation();
     if (!connection.isCanvasUnlocked) return;
+    if (isSemanticMutationLocked(runStatus)) return;
     if (!reactFlow) return;
 
     const position = reactFlow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+
+    const mediaRaw = event.dataTransfer.getData(FLOWGRAPH_MEDIA_DRAG) || '';
+    const draggedMedia = mediaRaw ? parseClipboardPayload(mediaRaw) as RecentProjectUpload | null : ((window as any).__draggedLibraryMedia as RecentProjectUpload | undefined);
+    if (draggedMedia?.mediaId) {
+      handleAddRecentUploadToCanvas({
+        ...draggedMedia,
+        previewUrl: draggedMedia.previewUrl,
+      });
+      setNodes((current) => current.map((node, index) => index === current.length - 1 ? { ...node, position } : node));
+      return;
+    }
 
     // 1. Kiểm tra xem người dùng có kéo thả TỆP NGOÀI (Ảnh, Video, Text) vào Canvas không
     const files = Array.from(event.dataTransfer.files);
@@ -1457,14 +2231,14 @@ function Studio() {
             };
             reader.readAsDataURL(file);
 
-            const spec = palette.find((p) => p.kind === 'uploadImage') || {
-              kind: 'uploadImage',
-              title: 'Upload Image',
-              subtitle: 'Upload PNG/JPEG to Flow',
+            const spec = paletteSpecForKind('imageInput') || palette.find((p) => p.kind === 'imageInput') || {
+              kind: 'imageInput',
+              title: 'Image Input',
+              subtitle: 'Local PNG/JPEG or Flow image',
               tone: 'blue' as const,
-              group: 'Image' as const,
+              group: 'Utility' as const,
               preview: 'image' as const,
-              config: {},
+              config: { mediaId: '', mediaType: 'IMAGE', projectId: '' },
             };
 
             const imgNode: FlowNode = {
@@ -1476,47 +2250,24 @@ function Studio() {
                 title: file.name.length > 20 ? `${file.name.slice(0, 18)}…` : file.name,
                 subtitle: 'Local Image File',
                 tone: 'blue',
-                config: { source: file.name, fileName: file.name },
-                status: 'success',
+                config: { source: file.name, fileName: file.name, mediaId: initialMediaId, mediaType: 'IMAGE' },
+                status: 'idle',
                 result: {
                   type: 'image',
                   mediaId: initialMediaId,
                   previewUrl: initialBlob,
+                  fileName: file.name,
                 },
               },
             };
             newCreatedNodes.push(imgNode);
         } else if (file.type.startsWith('video/')) {
-          const videoBlobUrl = URL.createObjectURL(file);
-          const spec = palette.find((p) => p.kind === 'download') || {
-            kind: 'download',
-            title: 'Download',
-            subtitle: 'Save MP4 to local',
-            tone: 'green' as const,
-            group: 'Utility' as const,
-            preview: 'video' as const,
-            config: {},
-          };
-
-          const vidNode: FlowNode = {
-            id: fileId,
-            type: 'flowNode',
-            position: offsetPosition,
-            data: {
-              ...hydrateNodeData(spec),
-              title: file.name.length > 20 ? `${file.name.slice(0, 18)}…` : file.name,
-              subtitle: 'Local Video File',
-              tone: 'green',
-              config: { fileName: file.name },
-              status: 'success',
-              result: {
-                type: 'video',
-                mediaId: `local-vid-${fileId}`,
-                previewUrl: videoBlobUrl,
-              },
-            },
-          };
-          newCreatedNodes.push(vidNode);
+          // There is no verified local-video upload executor yet. Do not create a fake
+          // Download/source node with a pseudo mediaId: that would look runnable but fail
+          // project provenance checks downstream. Existing Flow videos should enter via
+          // Video Input until a real UploadVideoExecutor is implemented.
+          console.warn('[FlowGraph] Local video drop ignored: use Video Input with an existing Flow mediaId.', file.name);
+          continue;
         } else if (file.type.includes('text') || file.name.endsWith('.txt')) {
           const textContent = await file.text();
           const spec = palette.find((p) => p.kind === 'prompt') || {
@@ -1554,13 +2305,14 @@ function Studio() {
 
     // 2. Kéo thả Node từ Thư viện Node Library bên trái
     const raw = event.dataTransfer.getData('application/flowgraph-node') || event.dataTransfer.getData('text/plain');
-    if (!raw) return;
-    let spec: PaletteSpec;
-    try {
-      spec = JSON.parse(raw) as PaletteSpec;
-    } catch {
-      return;
+    let spec: PaletteSpec | undefined = (window as any).__draggedPaletteSpec;
+    if (raw) {
+      try {
+        spec = JSON.parse(raw) as PaletteSpec;
+      } catch {}
     }
+    if (!spec || spec.paletteDisabled) return;
+    (window as any).__draggedPaletteSpec = undefined;
     const id = `${Date.now()}`;
     const newNode: FlowNode = {
       id,
@@ -1571,24 +2323,87 @@ function Studio() {
     pushHistory(nodes, edges);
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(id);
-  }, [connection.isCanvasUnlocked, connection.activeProject, reactFlow, nodes, edges, pushHistory, setNodes]);
+  }, [connection.isCanvasUnlocked, connection.activeProject, reactFlow, nodes, edges, pushHistory, setNodes, runStatus]);
 
   const updateConfig = (key: string, value: string, targetNodeId?: string) => {
     if (!connection.isCanvasUnlocked) return;
+    if (isSemanticMutationLocked(runStatus)) return;
     const effectiveId = targetNodeId ?? selectedNodeId;
+
+    // Some provider/model choices constrain other controls. Keep that correction
+    // atomic, but tell the user what changed so a valid auto-adjustment never
+    // looks like a random configuration bug.
+    const editedNodeBefore = nodes.find((node) => node.id === effectiveId);
+    if (editedNodeBefore && ['model', 'duration', 'resolution', 'aspectRatio'].includes(key)) {
+      const requestedConfig = { ...editedNodeBefore.data.config, [key]: value };
+      const derivedConfig = deriveRegistryConfig(editedNodeBefore.data.kind, requestedConfig);
+      const labels: Record<string, string> = {
+        model: 'Model',
+        duration: 'Duration',
+        resolution: 'Resolution',
+        aspectRatio: 'Ratio',
+      };
+      const displayConfigValue = (field: string, rawValue: string) => {
+        if (field === 'duration') return rawValue.replace(/\s*seconds?$/i, 's');
+        if (field === 'aspectRatio') return rawValue.match(/\d+:\d+/)?.[0] ?? rawValue;
+        return rawValue;
+      };
+      const adjustments = Object.keys(labels)
+        .filter((field) => field !== key && derivedConfig[field] !== requestedConfig[field])
+        .map((field) => `${labels[field]} → ${displayConfigValue(field, derivedConfig[field])}`);
+      if (adjustments.length > 0) {
+        setRunFeedback(`Đã tự điều chỉnh ${adjustments.join(', ')} để phù hợp với cấu hình đã chọn.`);
+      }
+    }
+
+    // A config change invalidates the edited node and every downstream result.
+    // Without this, successful nodes remain in initialCompleted on the next run,
+    // so an edited Prompt can be skipped together with its T2I/video descendants.
+    const invalidatedNodeIds = new Set<string>([effectiveId]);
+    let expanded = true;
+    while (expanded) {
+      expanded = false;
+      for (const edge of edges) {
+        if (invalidatedNodeIds.has(edge.source) && !invalidatedNodeIds.has(edge.target)) {
+          invalidatedNodeIds.add(edge.target);
+          expanded = true;
+        }
+      }
+    }
+
     setNodes((current) => current.map((node) => {
-      if (node.id !== effectiveId) return node;
-      let config = { ...node.data.config, [key]: value };
+      const isEditedNode = node.id === effectiveId;
+      const shouldInvalidate = invalidatedNodeIds.has(node.id);
+      if (!isEditedNode && !shouldInvalidate) return node;
 
-      if (node.data.kind === 'imageUpscale' && key === 'targetResolution') {
-        config.model = value === '4K' ? '4k' : '2K';
-      }
-      if (node.data.kind === 'videoUpscale' && key === 'targetResolution') {
-        config.model = value === '4K' ? 'Veo 3.1 - Upsampler 4K' : 'Veo 3.1 - Upsampler 1080P';
+      let config = node.data.config;
+      if (isEditedNode) {
+        config = { ...node.data.config, [key]: value };
+
+        if (node.data.kind === 'imageUpscale' && key === 'targetResolution') {
+          config.model = value === '4K' ? '4k' : '2K';
+        }
+        if (node.data.kind === 'videoUpscale' && key === 'targetResolution') {
+          config.model = value === '4K' ? 'Veo 3.1 - Upsampler 4K' : 'Veo 3.1 - Upsampler 1080P';
+        }
+
+        config = deriveRegistryConfig(node.data.kind, config);
       }
 
-      config = deriveRegistryConfig(node.data.kind, config);
-      return { ...node, data: { ...node.data, config } };
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          config,
+          status: 'idle',
+          result: undefined,
+          cacheHit: false,
+          errorMessage: undefined,
+          errorCode: undefined,
+          errorRetryable: undefined,
+          diagnosticId: undefined,
+        },
+      };
     }));
 
     const configKeyToField: Partial<Record<string, FlowSyncField>> = {
@@ -1606,8 +2421,14 @@ function Studio() {
     const syncTarget = resolveSelectedSyncTarget(targetNode, nodes, edges);
     if (!field || !syncTarget) return;
 
-    // Ensure syncController has the target node actively selected
-    if (syncControllerRef.current?.getActiveSnapshot()?.nodeId !== syncTarget.id) {
+    // A model selection is mode-scoped. Always enqueue the target node's mode
+    // immediately before the model write, even when the controller already
+    // thinks this node is active. The provider may have been switched by another
+    // node/user action or a previous mode write may have failed; relying only on
+    // nodeId leaves the controller stuck in a false "already VIDEO/IMAGE" state
+    // and subsequent model writes loop as INVALID_MODEL on the wrong composer.
+    const activeSync = syncControllerRef.current?.getActiveSnapshot();
+    if (field === 'model' || activeSync?.nodeId !== syncTarget.id) {
       syncControllerRef.current?.setActiveNode(syncTarget.id, syncTarget.data.kind as SyncNodeKind);
     }
 
@@ -1689,6 +2510,11 @@ function Studio() {
         : 'SYNC IDLE';
 
   const computedEdges = useMemo(() => {
+    const edgeType = settings.edgeType === 'straight'
+      ? 'straight'
+      : settings.edgeType === 'step'
+        ? 'smoothstep'
+        : 'default';
     return edges.map((edge) => {
       const sourceNode = nodes.find((n) => n.id === edge.source);
       const targetNode = nodes.find((n) => n.id === edge.target);
@@ -1714,54 +2540,100 @@ function Studio() {
 
       return {
         ...edge,
-        type: 'default', // Bézier curve
+        type: edgeType,
         animated,
         className,
       };
     });
-  }, [edges, nodes, runStatus]);
+  }, [edges, nodes, runStatus, settings.edgeType]);
 
   const applyTemplate = useCallback((template: WorkflowTemplate) => {
+    if (isSemanticMutationLocked(runStatus)) return;
     pushHistory(nodes, edges);
-    setNodes(template.nodes);
-    setEdges(template.edges);
+    const freshNodes = cloneFlowNodes(template.nodes).map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        status: 'idle' as const,
+        result: undefined,
+        cacheHit: false,
+        errorMessage: undefined,
+        errorCode: undefined,
+        errorRetryable: undefined,
+        diagnosticId: undefined,
+      },
+    }));
+    setNodes(freshNodes);
+    setEdges(cloneFlowEdges(template.edges));
     setWorkflowName(template.title);
-    setTimeout(() => {
-      reactFlow?.fitView({ padding: 0.18, duration: 300 });
-    }, 50);
-  }, [nodes, edges, pushHistory, reactFlow, setEdges, setNodes]);
+    // React Flow v12 keeps newly replaced nodes hidden until their DOM bounds
+    // are measured. A 50ms fitView race left template nodes at
+    // visibility:hidden and the edge layer empty. Re-measure all fresh nodes
+    // after React commits them, then fit only on the following frame.
+    window.requestAnimationFrame(() => {
+      updateNodeInternals(freshNodes.map((node) => node.id));
+      window.requestAnimationFrame(() => fitWorkflowView(300));
+    });
+  }, [nodes, edges, pushHistory, fitWorkflowView, setEdges, setNodes, runStatus, updateNodeInternals]);
 
   const saveCurrentAsTemplate = useCallback(() => {
-    const title = prompt('Nhập tên cho Template mới:', workflowName || 'My Custom Workflow');
-    if (!title?.trim()) return;
-    const desc = prompt('Nhập mô tả cho Template:', 'Custom workflow created by user') || '';
+    setTemplatesModalOpen(false);
+    setSaveTemplateDraft({
+      title: workflowName || 'My Custom Workflow',
+      description: 'Custom workflow created by user',
+    });
+  }, [workflowName]);
+
+  const closeSaveTemplateDialog = useCallback(() => {
+    setSaveTemplateDraft(null);
+    setTemplatesModalOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!saveTemplateDraft) return;
+    const focusTimer = window.setTimeout(() => saveTemplateTitleRef.current?.focus(), 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      closeSaveTemplateDialog();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [saveTemplateDraft, closeSaveTemplateDialog]);
+
+  const confirmSaveTemplate = useCallback(() => {
+    if (!saveTemplateDraft?.title.trim()) return;
     saveCustomTemplate({
-      title: title.trim(),
-      description: desc.trim(),
+      title: saveTemplateDraft.title.trim(),
+      description: saveTemplateDraft.description.trim(),
       category: 'custom',
       tags: ['Custom', 'User'],
       nodes,
       edges,
     });
-    alert('Đã lưu thành công vào My Library Templates!');
-  }, [workflowName, nodes, edges]);
+    setSaveTemplateDraft(null);
+    setTemplatesModalOpen(true);
+    setRunFeedback('Đã lưu workflow vào My Templates.');
+  }, [saveTemplateDraft, nodes, edges]);
 
   const handleAutoLayout = useCallback(() => {
     if (!connection.isCanvasUnlocked || nodes.length === 0) return;
+    if (isSemanticMutationLocked(runStatus)) return;
     pushHistory(nodes, edges);
     const layoutedNodes = calculateAutoLayout(nodes, edges);
     setNodes(layoutedNodes);
-    setTimeout(() => {
-      reactFlow?.fitView({ padding: 0.18, duration: 400 });
-    }, 50);
-  }, [connection.isCanvasUnlocked, nodes, edges, pushHistory, setNodes, reactFlow]);
+    setTimeout(() => fitWorkflowView(400), 50);
+  }, [connection.isCanvasUnlocked, nodes, edges, pushHistory, setNodes, fitWorkflowView, runStatus]);
 
   return (
     <div className="fg-shell studio-app">
       <header className="studio-topbar">
         <div className="fg-brand"><div className="fg-logo"><Workflow size={19} /></div><div className="fg-brand-title">FlowGraph <span>Studio</span></div></div>
         <div className="topbar-actions">
-          <ProjectDropdown connection={connection} />
+          <ProjectDropdown connection={connection} runLocked={isProjectSelectLocked(runStatus)} />
           <ConnectionPill
             state={accountState === 'CONNECTED' ? 'online' : accountState === 'CHECKING' ? 'checking' : accountState === 'SESSION_EXPIRED' ? 'warn' : accountState === 'DISCONNECTED' ? 'offline' : 'error'}
             label={accountPillLabel(accountState, connection.account.email, connection.credits?.credits)}
@@ -1777,49 +2649,162 @@ function Studio() {
           />
           <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Save</button>
           <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Export</button>
-          {runStatus === 'running' ? <button className="fg-btn fg-btn-primary" onClick={stopWorkflow}><Square size={13} /> Stop Workflow</button> : <button className="fg-btn fg-btn-primary" disabled={!connection.isCanvasUnlocked} onClick={() => void runWorkflow(false)}><Play size={14} /> Run Workflow</button>}
+          {/* Nút chuyển đổi nhanh Light/Dark trong cùng một theme family. */}
+          <button
+            className="fg-btn fg-icon-btn"
+            onClick={() => {
+              const nextTheme = getPairedTheme(settings.theme);
+              const updated = { ...settings, theme: nextTheme };
+              setSettings(updated);
+              saveSettings(updated);
+            }}
+            title={`Chuyển ${getThemeDefinition(settings.theme).familyLabel} sang ${isLightTheme(settings.theme) ? 'Dark' : 'Light'}`}
+          >
+            {isLightTheme(settings.theme) ? <Moon size={14} /> : <Sun size={14} />}
+          </button>
+          <RunModeControl running={runStatus === 'running'} disabled={!connection.isCanvasUnlocked}
+            menuOpen={runMenuOpen} onMenuChange={setRunMenuOpen}
+            onContinue={() => void runWorkflow(false)}
+            onRestart={() => void runWorkflow(false, false, false, 'restart')} onStop={stopWorkflow} />
         </div>
       </header>
+      {runFeedback && typeof document !== 'undefined' ? createPortal(
+        <div className="run-feedback-toast" role="status">{runFeedback}</div>,
+        document.body,
+      ) : null}
 
-      <main className="studio-main">
-        <NodeLibrary
-          search={search}
-          setSearch={setSearch}
-          locked={!connection.isCanvasUnlocked}
-          onOpenTemplatesModal={() => setTemplatesModalOpen(true)}
-          onAddNode={(spec) => {
-            pushHistory(nodes, edges);
-            const id = `${Date.now()}`;
-            let spawnPos = { x: 300 + Math.random() * 80, y: 200 + Math.random() * 80 };
-            if (reactFlow) {
-              try {
-                const centerPos = reactFlow.screenToFlowPosition({
-                  x: window.innerWidth / 2,
-                  y: window.innerHeight / 2,
-                });
-                spawnPos = { x: centerPos.x - 100 + Math.random() * 60, y: centerPos.y - 60 + Math.random() * 60 };
-              } catch {}
-            }
-            const newNode: FlowNode = {
-              id,
-              type: 'flowNode',
-              position: spawnPos,
-              data: {
-                ...hydrateNodeData(spec),
-                title: spec.title,
-                subtitle: spec.subtitle,
-                tone: spec.tone,
-                status: 'idle',
-              },
-            };
-            setNodes((current) => [...current, newNode]);
-            setSelectedNodeId(id);
-          }}
-        />
+      {(validationIssues.length > 0 || Boolean(runError?.message)) && runStatus === 'error' && (
+        <div role="alert" className="validation-alert-banner nodrag nopan" style={{
+          position: 'fixed',
+          top: '56px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 99999,
+          background: '#fee2e2',
+          border: '1px solid #ef4444',
+          borderRadius: '8px',
+          padding: '8px 16px',
+          color: '#991b1b',
+          fontSize: '12px',
+          fontWeight: '500',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+        }}>
+          <span>⚠️ {runError?.message || validationIssues[0]}</span>
+          <button
+            onClick={() => {
+              setValidationIssues([]);
+              setRunError(undefined);
+            }}
+            style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#991b1b', fontWeight: 'bold', padding: '0 4px' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <main className={`studio-main ${sidebarOpen ? 'has-sidebar' : 'collapsed-sidebar'}`}>
+        {/* Navigation Dock Rail ngoài cùng bên trái */}
+        <nav className="studio-nav-dock">
+          <div className="dock-top-items">
+            <button
+              className={`dock-tab-btn ${activeDockTab === 'nodes' && sidebarOpen && !templatesModalOpen && !debugLogOpen ? 'active' : ''}`}
+              onClick={() => {
+                if (activeDockTab === 'nodes') {
+                  setSidebarOpen(!sidebarOpen);
+                } else {
+                  setActiveDockTab('nodes');
+                  setSidebarOpen(true);
+                }
+              }}
+              title="Thư viện Nodes"
+            >
+              <Layers size={18} />
+              <span>Nodes</span>
+            </button>
+
+            <button
+              className={`dock-tab-btn ${activeDockTab === 'media' && sidebarOpen && !templatesModalOpen && !debugLogOpen ? 'active' : ''}`}
+              onClick={() => {
+                if (activeDockTab === 'media') {
+                  setSidebarOpen(!sidebarOpen);
+                } else {
+                  setActiveDockTab('media');
+                  setSidebarOpen(true);
+                }
+              }}
+              title="Thư viện Media"
+            >
+              <Images size={18} />
+              <span>Media</span>
+            </button>
+
+            <button
+              className={`dock-tab-btn open-templates-btn ${templatesModalOpen ? 'active' : ''}`}
+              onClick={() => setTemplatesModalOpen(true)}
+              title="Mẫu quy trình (Templates)"
+            >
+              <LayoutTemplate size={18} />
+              <span>Templates</span>
+            </button>
+
+            <button
+              className={`dock-tab-btn ${debugLogOpen ? 'active' : ''}`}
+              onClick={() => setDebugLogOpen(!debugLogOpen)}
+              title="Nhật ký Debug Workflow (Logs)"
+            >
+              <Terminal size={18} />
+              <span>Logs</span>
+            </button>
+          </div>
+
+          <div className="dock-bottom-items">
+            <button
+              className="dock-tab-btn"
+              onClick={() => setSettingsModalOpen(true)}
+              title="Cài đặt hệ thống"
+            >
+              <SettingsIcon size={18} />
+              <span>Settings</span>
+            </button>
+          </div>
+        </nav>
 
         <section className="studio-center">
           <ProjectGateOverlay connection={connection}>
             <div className="canvas-wrap" onDrop={onDrop} onDragOver={onDragOver}>
+              {/* Danh sách Node HUD nổi trực tiếp trên nền Canvas (Không viền, không box, chỉ Icon + Chữ) */}
+              {sidebarOpen && activeDockTab === 'media' && (
+                <MediaLibrary
+                  enabled={uploadAvailability.ok}
+                  disabledReason={uploadAvailability.ok ? undefined : uploadAvailability.reason}
+                  state={projectUploadState}
+                  message={projectUploadMessage}
+                  fileName={projectUploadFileName}
+                  recent={recentUploadsForProject(recentUploads, connection.activeProject?.projectId ?? '')}
+                  selectedId={librarySelectedId}
+                  projectName={connection.activeProject?.projectName}
+                  projectId={connection.activeProject?.projectId}
+                  onSelect={setLibrarySelectedId}
+                  onPickImageFile={(file) => { void handleProjectImageFile(file); }}
+                  onDropFiles={handleProjectDropFiles}
+                  onAddToCanvas={handleAddRecentUploadToCanvas}
+                  onClose={() => setSidebarOpen(false)}
+                />
+              )}
+              {sidebarOpen && activeDockTab === 'nodes' && (
+                <NodeLibrary
+                  search={search}
+                  setSearch={setSearch}
+                  locked={!connection.isCanvasUnlocked || isSemanticMutationLocked(runStatus)}
+                  onOpenTemplatesModal={() => setTemplatesModalOpen(true)}
+                  onClose={() => setSidebarOpen(false)}
+                  onAddNode={handleSpawnNode}
+                />
+              )}
+
               <div className="canvas-toolbar">
                     <button
                       className="fg-btn fg-icon-btn"
@@ -1845,8 +2830,8 @@ function Studio() {
                     >
                       <LayoutGrid size={13} />
                     </button>
-                    <button className="fg-btn fg-icon-btn" onClick={() => reactFlow?.fitView({ padding: .18, duration: 300 })} title="Căn chỉnh khung nhìn"><Maximize2 size={13} /></button>
-                    <button className="fg-btn" style={{ minHeight: 29, fontSize: 9 }} onClick={() => setConfirmResetOpen(true)}><RotateCcw size={12} /> Reset</button>
+                    <button className="fg-btn fg-icon-btn" onClick={() => fitWorkflowView(300)} title="Căn chỉnh khung nhìn"><Maximize2 size={13} /></button>
+                    <button className="fg-btn" disabled={isSemanticMutationLocked(runStatus)} onClick={resetWorkflow}><RotateCcw size={12} /> Reset</button>
                   </div>
                   <ReactFlow<FlowNode, FlowEdge>
                     nodes={nodes}
@@ -1855,22 +2840,30 @@ function Studio() {
                     edgeTypes={edgeTypes}
                     onDrop={onDrop}
                     onDragOver={onDragOver}
-                    onNodesChange={connection.isCanvasUnlocked ? onNodesChange : undefined}
+                    onNodesChange={connection.isCanvasUnlocked ? onNodesChangeGuarded : undefined}
                     onEdgesChange={connection.isCanvasUnlocked ? onEdgesChange : undefined}
                     onConnect={onConnect}
+                    nodesConnectable={connection.isCanvasUnlocked && !isSemanticMutationLocked(runStatus)}
+                    edgesReconnectable={connection.isCanvasUnlocked && !isSemanticMutationLocked(runStatus)}
+                    elementsSelectable
                     isValidConnection={isValidConnection}
                     onInit={setReactFlow}
                     onNodeClick={(_, node) => { if (connection.isCanvasUnlocked) setSelectedNodeId(node.id); }}
                     onPaneClick={() => setSelectedNodeId('')}
                     fitView
-                    fitViewOptions={{ padding: .18 }}
-                    minZoom={.35}
+                    fitViewOptions={{ padding: .22, maxZoom: .88 }}
+                    minZoom={.2}
                     maxZoom={1.8}
-                    deleteKeyCode={connection.isCanvasUnlocked ? ['Backspace', 'Delete'] : []}
+                    snapToGrid={settings.gridSnap}
+                    snapGrid={[settings.gridSize, settings.gridSize]}
+                    deleteKeyCode={connection.isCanvasUnlocked && !isSemanticMutationLocked(runStatus) ? ['Backspace', 'Delete'] : []}
                   >
-                    <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#28344a" />
-                    <Controls position="bottom-left" showInteractive={false} />
-                    <MiniMap position="top-right" pannable zoomable nodeColor={(node) => colorForTone((node.data as FlowNode['data']).tone)} maskColor="rgba(5,9,14,.60)" />
+                    <Background
+                      variant={BackgroundVariant.Dots}
+                      gap={settings.gridSize}
+                      size={1}
+                      color="var(--canvas-dot)"
+                    />
                   </ReactFlow>
                 </div>
               </ProjectGateOverlay>
@@ -1883,15 +2876,15 @@ function Studio() {
             <div className="experimental-modal-icon">⚡</div>
             <div className="experimental-modal-copy">
               <span className="capability-badge verified">CREDIT WARNING</span>
-              <h3>Rerun cached nodes?</h3>
-              <p>These nodes already produced results that will be replayed from the cache (0 credits). Running anyway regenerates them and may deduct credits:
+              <h3>Chạy lại từ đầu?</h3>
+              <p>Các bước trong phạm vi đầu ra sẽ chạy lại, không dùng cache và có thể tiêu tốn credit:
                 {confirmRerun.map((id) => nodes.find((node) => node.id === id)?.data.title ?? id).join(', ')}
               </p>
-              <p className="experimental-policy">FlowGraph will not bypass quota, billing or provider security controls.</p>
+              <p className="experimental-policy">Giữ nguyên lịch sử, dữ liệu đầu vào và cấu hình. Không bỏ qua giới hạn quota, thanh toán hoặc bảo mật của nhà cung cấp.</p>
             </div>
             <div className="experimental-modal-actions">
               <button className="fg-btn" onClick={() => setConfirmRerun([])}>Cancel</button>
-              <button className="fg-btn fg-btn-primary" onClick={() => { setConfirmRerun([]); void runWorkflow(false, false, true); }}><Play size={13} /> Run anyway</button>
+              <button className="fg-btn fg-btn-primary" disabled={runStatus === 'running'} onClick={() => { setConfirmRerun([]); void runWorkflow(false, true, true, 'restart'); }}><Play size={13} /> Xác nhận chạy lại</button>
             </div>
           </div>
         </div>
@@ -1917,27 +2910,8 @@ function Studio() {
               <button className="fg-btn fg-btn-primary" onClick={() => {
                 const failureMode = experimentalGate.failureMode;
                 setExperimentalGate({ open: false, failureMode: false });
-                void runWorkflow(failureMode, true);
+                void runWorkflow(failureMode, true, false, pendingRunModeRef.current);
               }}><Play size={13} /> Run anyway</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {confirmResetOpen && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Xác nhận Reset Canvas">
-          <div className="experimental-modal" style={{ borderColor: 'rgba(239, 68, 68, 0.4)' }}>
-            <div className="experimental-modal-icon" style={{ color: '#ef4444' }}>⚠️</div>
-            <div className="experimental-modal-copy">
-              <span className="capability-badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.3)' }}>CẢNH BÁO ĐẶC BIỆT</span>
-              <h3>Xác nhận Reset toàn bộ Canvas?</h3>
-              <p>Thao tác này sẽ đưa đồ thị hiện tại về trạng thái khởi đầu. Nếu bấm nhầm, bạn hoàn toàn có thể bấm nút <strong>Hoàn tác (Ctrl+Z)</strong> để cứu lại toàn bộ đồ thị ngay lập tức!</p>
-            </div>
-            <div className="experimental-modal-actions">
-              <button className="fg-btn" onClick={() => setConfirmResetOpen(false)}>Hủy bỏ</button>
-              <button className="fg-btn" style={{ background: '#dc2626', color: '#fff', border: 'none' }} onClick={resetWorkflow}>
-                Đồng ý Reset
-              </button>
             </div>
           </div>
         </div>
@@ -1949,7 +2923,74 @@ function Studio() {
         onClose={() => setTemplatesModalOpen(false)}
         onApplyTemplate={applyTemplate}
         onSaveAsTemplate={saveCurrentAsTemplate}
-        locked={!connection.isCanvasUnlocked}
+        locked={!connection.isCanvasUnlocked || isSemanticMutationLocked(runStatus)}
+      />
+
+      {saveTemplateDraft && (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={closeSaveTemplateDialog}
+          onKeyDown={(event) => { if (event.key === 'Escape') closeSaveTemplateDialog(); }}
+        >
+          <div className="save-template-modal" role="dialog" aria-modal="true" aria-labelledby="save-template-title" onClick={(event) => event.stopPropagation()}>
+            <div>
+              <h3 id="save-template-title">Lưu workflow thành Template</h3>
+              <p>Lưu graph hiện tại vào My Templates. Thao tác này không chạy workflow và không dùng credit.</p>
+            </div>
+            <label>
+              <span>Tên Template</span>
+              <input
+                ref={saveTemplateTitleRef}
+                value={saveTemplateDraft.title}
+                onChange={(event) => setSaveTemplateDraft((current) => current ? { ...current, title: event.target.value } : current)}
+              />
+            </label>
+            <label>
+              <span>Mô tả</span>
+              <textarea
+                rows={3}
+                value={saveTemplateDraft.description}
+                onChange={(event) => setSaveTemplateDraft((current) => current ? { ...current, description: event.target.value } : current)}
+              />
+            </label>
+            <div className="save-template-actions">
+              <button type="button" className="fg-btn" onClick={closeSaveTemplateDialog}>Hủy</button>
+              <button type="button" className="fg-btn fg-btn-primary" disabled={!saveTemplateDraft.title.trim()} onClick={confirmSaveTemplate}>
+                <Save size={13} /> Lưu Template
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pop-up Modal Cài đặt FlowGraph Settings */}
+      <SettingsModal
+        open={settingsModalOpen}
+        onClose={() => setSettingsModalOpen(false)}
+        settings={settings}
+        onSave={(newSettings) => {
+          setSettings(newSettings);
+          // Cập nhật nóng vào adapter đang chạy mà không cần reload trang
+          try {
+            if ((window as any).__geminiAdapter?.updateConfig) {
+              (window as any).__geminiAdapter.updateConfig({
+                baseUrl: newSettings.aiGatewayUrl,
+                apiKey: newSettings.aiApiKey,
+                defaultModel: newSettings.aiModel,
+              });
+            }
+          } catch {}
+        }}
+      />
+
+      {/* Drawer Nhật ký Debug Workflow (Logs) */}
+      <DebugLogDrawer
+        open={debugLogOpen}
+        onClose={() => setDebugLogOpen(false)}
+        nodeTitles={Object.fromEntries(nodes.map((n) => [n.id, n.data.title || n.id]))}
+        activeLiveEvents={liveEvents}
+        liveStatus={runStatus}
       />
     </div>
   );

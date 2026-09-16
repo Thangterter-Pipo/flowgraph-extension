@@ -22,7 +22,7 @@ export interface NodeExecutionContext {
 export interface NodeExecutorOutput {
   outputs: Record<string, RuntimeValue>;
   /** Media result for UI preview, when the node produced media. */
-  result?: { type: 'image' | 'video'; mediaId: string; previewUrl: string; mimeType?: string; fileName?: string };
+  result?: { type: 'image' | 'video'; mediaId: string; previewUrl: string; mimeType?: string; fileName?: string; projectId?: string };
   creditsUsed?: number;
 }
 

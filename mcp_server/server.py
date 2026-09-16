@@ -2,13 +2,12 @@
 MCP server exposing E:\\Flow_veo as a remote filesystem over streamable HTTP.
 
 Design (see README.md):
-- Python FastMCP 3.x, transport="http", bound to 0.0.0.0 so a Cloudflare
-  tunnel can reach it.
-- Bearer API key auth enforced in the FastMCP app: every /mcp request must
-  carry `Authorization: Bearer <key>`, matching FLOW_VEO_MCP_API_KEY.
-- All paths are relative to FLOW_VEO_MCP_ROOT (default E:\\Flow_veo) and
-  validated against path traversal (`..`, absolute paths, drive letters).
-- Read tools and write tools are strictly separated (Anthropic review rule).
+- Python FastMCP 3.x, transport="http", bound to FLOW_VEO_MCP_HOST
+  (default 127.0.0.1). Public reach is Cloudflare → VPS → SSH reverse tunnel.
+- Bearer API key on /mcp. OAuth DCR is public but redirect_uris are ChatGPT
+  allowlisted; /authorize requires the owner PIN (no implicit consent).
+- Tools are full-machine (current user ACL). ChatGPT Web Bridge (port 5005)
+  is a separate local channel: Pipo → ChatGPT tab; MCP OAuth: ChatGPT → máy.
 """
 
 from __future__ import annotations
@@ -30,6 +29,7 @@ from fastmcp.server.auth.auth import (
 )
 
 from register_all import register_all_tools
+from security import oauth_policy
 from services.process_manager import PROCESS_MANAGER
 from mcp.server.auth.provider import (
     AccessToken,
@@ -157,6 +157,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/healthz",
             "/.well-known/",
             "/authorize",
+            "/consent",
             "/token",
             "/register",
             "/revoke",
@@ -332,6 +333,9 @@ class PersistentOAuthProvider(OAuthProvider):
         return self._clients.get(client_id)
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
+        oauth_policy.assert_client_redirects(
+            [str(u) for u in (client_info.redirect_uris or [])]
+        )
         # Guarantee the client can request every scope we support. Some clients
         # (ChatGPT) request scopes individually during /authorize
         # (scope=filesystem+read+write) and validate_scope rejects anything the
@@ -348,13 +352,24 @@ class PersistentOAuthProvider(OAuthProvider):
         self._save()
 
     async def authorize(self, client: OAuthClientInformationFull, params) -> str:
-        """Generate an auth code bound to this request and redirect to the client.
+        """Park the request and send the browser to the owner PIN page.
 
-        Implements the implicit-consent flow: the resource owner (the single
-        operator of this server) is assumed to approve every request, so we
-        skip an interactive consent page and redirect straight back with the
-        code, mirroring RFC 6749 §4.1.2.
+        ChatGPT can still complete OAuth; a random internet client cannot
+        silently mint tokens. After PIN confirmation, issue_code() redirects
+        to the allowlisted ChatGPT callback.
         """
+        try:
+            ticket = oauth_policy.park_consent(
+                client_id=client.client_id,
+                client_name=getattr(client, "client_name", None) or "ChatGPT",
+                params=params,
+            )
+        except ValueError:
+            return f"{BASE_URL}/consent?error=redirect_not_allowed"
+        return f"{BASE_URL}/consent?ticket={ticket}"
+
+    async def issue_code(self, client: OAuthClientInformationFull, params) -> str:
+        """Issue the authorization code and return the client redirect URL."""
         import urllib.parse as _up
 
         code = self._new_token(32)
@@ -796,7 +811,7 @@ def main() -> None:
     import uvicorn
     from starlette.applications import Starlette
     from starlette.middleware import Middleware
-    from starlette.responses import JSONResponse
+    from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
     from starlette.routing import Mount, Route
 
     # FastMCP app — mounts its MCP endpoints under "/mcp" plus the OAuth
@@ -808,10 +823,68 @@ def main() -> None:
     async def health(request):
         return JSONResponse({
             "status": "ok",
-            "root": str(ROOT),
-            "pid": os.getpid(),
             "active_requests": _ACTIVE_REQUESTS,
         })
+
+    async def consent_get(request):
+        err = request.query_params.get("error")
+        if err and not request.query_params.get("ticket"):
+            return HTMLResponse(oauth_policy.error_page("OAuth bị từ chối: redirect không nằm trong allowlist ChatGPT."), 400)
+        ticket = request.query_params.get("ticket", "")
+        payload = oauth_policy.take_ticket(ticket)
+        if payload is None:
+            return HTMLResponse(oauth_policy.error_page("Ticket hết hạn hoặc không hợp lệ."), 400)
+        return HTMLResponse(oauth_policy.consent_page(
+            ticket=ticket,
+            client_name=payload["client_name"],
+            redirect_uri=payload["redirect_uri"],
+        ))
+
+    async def consent_post(request):
+        import urllib.parse as _up
+
+        raw = (await request.body()).decode("utf-8", errors="replace")
+        form = dict(_up.parse_qsl(raw))
+        ticket = str(form.get("ticket") or "")
+        decision = str(form.get("decision") or "")
+        payload = oauth_policy.take_ticket(ticket)
+        if payload is None:
+            return HTMLResponse(oauth_policy.error_page("Ticket hết hạn hoặc không hợp lệ."), 400)
+
+        def _client_error_redirect(code: str) -> RedirectResponse:
+            import urllib.parse as _up
+            url = payload["redirect_uri"]
+            q = {"error": code}
+            if payload.get("state"):
+                q["state"] = payload["state"]
+            sep = "&" if "?" in url else "?"
+            return RedirectResponse(url + sep + _up.urlencode(q), status_code=302)
+
+        if decision != "allow":
+            oauth_policy.consume_ticket(ticket)
+            return _client_error_redirect("access_denied")
+
+        if not oauth_policy.pin_ok(str(form.get("pin") or "")):
+            burned = oauth_policy.record_pin_failure(ticket)
+            msg = "Sai PIN." + (" Ticket đã hủy." if burned else "")
+            remaining = oauth_policy.take_ticket(ticket)
+            if remaining is None:
+                return HTMLResponse(oauth_policy.error_page(msg), 401)
+            return HTMLResponse(oauth_policy.consent_page(
+                ticket=ticket,
+                client_name=remaining["client_name"],
+                redirect_uri=remaining["redirect_uri"],
+                error=msg,
+            ), 401)
+
+        payload = oauth_policy.consume_ticket(ticket)
+        if payload is None:
+            return HTMLResponse(oauth_policy.error_page("Ticket hết hạn."), 400)
+        client = await mcp.auth.get_client(payload["client_id"])
+        if client is None:
+            return HTMLResponse(oauth_policy.error_page("OAuth client không còn tồn tại."), 400)
+        url = await mcp.auth.issue_code(client, payload["params"])
+        return RedirectResponse(url, status_code=302)
 
     from fastmcp.server.lifespan import Lifespan
 
@@ -829,7 +902,12 @@ def main() -> None:
     # tracking is outermost so the supervisor can distinguish a busy server from
     # a wedged one; API-key enforcement remains in front of the MCP app.
     app = Starlette(
-        routes=[Route("/health", health), Mount("/", app=mcp_app)],
+        routes=[
+            Route("/health", health),
+            Route("/consent", consent_get, methods=["GET"]),
+            Route("/consent", consent_post, methods=["POST"]),
+            Mount("/", app=mcp_app),
+        ],
         middleware=[
             Middleware(RequestActivityMiddleware),
             Middleware(APIKeyMiddleware),

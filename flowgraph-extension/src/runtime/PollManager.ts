@@ -47,7 +47,7 @@ export class PollManager {
           ? { status: 'UNKNOWN', errorMessage: `Polling timed out after ${this.maxWaitMs}ms` }
           : result;
       }
-      await sleep(interval);
+      await sleep(interval, signal);
       interval = Math.min(interval * (this.backoffFactor > 1 ? this.backoffFactor : 1), this.maxWaitMs);
     }
   }
@@ -60,6 +60,21 @@ function abortError(): Error & { code: string; retryable: boolean } {
   return error;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(abortError());
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      cleanup();
+      reject(abortError());
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }

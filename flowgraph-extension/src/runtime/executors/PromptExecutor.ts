@@ -1,6 +1,7 @@
 // PromptExecutor (FG-0601) — outputs text from a configured prompt (no provider call).
 import type { NodeExecutor, NodeExecutorOutput, NodeExecutionContext, ValidationResult } from '../../engine/execution/NodeExecutor';
 import { textValue } from '../RuntimeValue';
+import { RuntimeError } from '../RuntimeError';
 
 export class PromptExecutor implements NodeExecutor {
   readonly kind = 'prompt';
@@ -13,7 +14,7 @@ export class PromptExecutor implements NodeExecutor {
 
   async execute(context: NodeExecutionContext): Promise<NodeExecutorOutput> {
     const prompt = String(context.config.prompt ?? '').trim();
-    if (!prompt) throw new Error('Prompt is empty');
+    if (!prompt) throw new RuntimeError('INVALID_INPUT', 'Prompt is empty', { nodeId: context.nodeId });
     return { outputs: { prompt: textValue(prompt) } };
   }
 }

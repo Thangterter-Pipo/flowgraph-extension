@@ -116,7 +116,7 @@ describe('VideoUpscaleExecutor', () => {
     const ctx = createValidContext();
     const output = await executor.execute(ctx);
 
-    expect(mockAdapter.generate).toHaveBeenCalledWith(
+    expect((mockAdapter.generate as ReturnType<typeof vi.fn>).mock.calls[0][0]).toEqual(
       expect.objectContaining({
         kind: 'upscale',
         projectId: 'proj-1',

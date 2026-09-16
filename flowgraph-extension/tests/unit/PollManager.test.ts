@@ -30,6 +30,16 @@ describe('PollManager', () => {
       .rejects.toMatchObject({ code: 'CANCELLED' });
   });
 
+  it('aborts immediately during sleep when signal fires mid-interval', async () => {
+    const poller = new PollManager({ intervalMs: 10_000, maxWaitMs: 60_000 });
+    const controller = new AbortController();
+    const started = Date.now();
+    setTimeout(() => controller.abort(), 20);
+    await expect(poller.untilTerminal(async () => ({ status: 'ACTIVE' }), { abortSignal: controller.signal }))
+      .rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
   it('times out to UNKNOWN beyond maxWaitMs', async () => {
     const poller = new PollManager({ intervalMs: 5, maxWaitMs: 20 });
     const controller = new AbortController();

@@ -95,8 +95,10 @@
       await closeOpenMenus();
       return { ok: false, reason: 'mode-tab-not-found', tabs: tabs.map((t) => (t.innerText || '').trim().slice(0, 40)) };
     }
+    // clickMenuItemLike already dispatches one complete semantic click. Calling
+    // tab.click() again can toggle Angular Material radios twice (IMAGE→VIDEO→IMAGE)
+    // and makes writeMode retry forever from the original modality.
     clickMenuItemLike(tab);
-    tab.click();
     let after = readChip();
     for (let attempt = 0; attempt < 25 && after?.isVideo !== wantVideo; attempt += 1) {
       await syncSleep(60);
@@ -440,12 +442,12 @@
         emitTrusted('targetResolution', resolution.toLowerCase());
         return;
       }
-      const duration = text.match(/\b(\d+)s\b/i)?.[1];
-      if (duration) {
-        emitTrusted('durationSeconds', Number(duration));
+      const duration = durationSecondsFromText(text);
+      if (duration !== null) {
+        emitTrusted('durationSeconds', duration);
         return;
       }
-      if (element.getAttribute('role') === 'tab') {
+      if (element.getAttribute('role') === 'tab' || element.getAttribute('role') === 'radio') {
         if (/(?:^|\s)(?:Hình ảnh|Image)$/i.test(text)) emitTrusted('mode', 'IMAGE');
         if (/(?:^|\s)Video$/i.test(text)) emitTrusted('mode', 'VIDEO');
       }
@@ -569,50 +571,32 @@
     return 'IMAGE';
   }
 
-  function modelFromChip(chip) {
-    // 1. Kiểm tra trước nút chọn model độc lập trong Angular Flow UI mới
-    const modelBtn = Array.from(document.querySelectorAll('button')).find((b) =>
-      b.getAttribute('aria-label')?.includes('mô hình')
-      || b.getAttribute('aria-label')?.toLowerCase().includes('model')
-      || (b.innerText && (b.innerText.includes('Veo') || b.innerText.includes('Banana') || b.innerText.includes('Omni')))
-    );
-    if (modelBtn) {
-      let t = (modelBtn.innerText || '')
-        .replace(/arrow_drop_down/gi, '')
-        .replace(/volume_up/gi, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (t) return t;
-    }
-
-    if (!chip) return null;
-    // The first chip text node contains the mode/model/resolution segment.
-    // Descendant icon text must never be treated as model text.
-    const rawText = (chip.firstChild?.nodeValue ?? chip.innerText ?? '')
-      .replace(/volume_up/gi, '')
+  function modelFromChip(_chip) {
+    // The collapsed composer chip only contains mode/scalars (for example
+    // "Video · 720p · 8 giây") and is NOT model identity. Reading it as a model
+    // was the source of false Omni/Veo reverse-sync values. Model identity is
+    // authoritative only while the real Settings model trigger is mounted.
+    const clean = (value) => normalizeSettingText(value)
+      .replace(/arrow_drop_down/gi, ' ')
+      .replace(/volume_up/gi, ' ')
       .replace(/\s+/g, ' ')
       .trim();
-    if (!rawText) return null;
-    if (/^Video\b/i.test(rawText)) {
-      const parts = rawText
-        .replace(/^Video\s*(?:·\s*)?/i, '')
-        .split(/\s*·\s*/)
-        .map((part) => part.replace(/[^A-Za-z0-9 .:+_-]/gu, ' ').replace(/\s+/g, ' ').trim());
-      return parts.find((part) =>
-        part
-        && !/^\d{3,4}p$/i.test(part)
-        && !/^\d+s$/i.test(part)
-        && !/^\d+:\d+$/.test(part)
-        && !/^x\d+$/i.test(part)
-      ) ?? null;
-    }
-    let text = rawText;
-    text = text.replace(/[^A-Za-z0-9 .:+_-]/gu, ' ');
-    text = text.replace(/\bcrop_\d+_\d+\b/gi, ' ');
-    text = text.replace(/\bcrop_free\b/gi, ' ');
-    text = text.replace(/\bx\d+\b/gi, ' ');
-    text = text.replace(/\s+/g, ' ').trim();
-    return text;
+    const roots = [
+      ...document.querySelectorAll('.cdk-overlay-pane'),
+      ...document.querySelectorAll('[role="menu"][data-state="open"]'),
+    ];
+    const settingsRoot = roots.find((root) => {
+      const buttons = Array.from(root.querySelectorAll('button'));
+      const hasModeControl = buttons.some((button) => /(?:^|\s)(?:Hình ảnh|Image|Video)$/i.test(clean(button.innerText)));
+      const hasModelTrigger = buttons.some((button) => button.getAttribute('aria-haspopup') === 'menu'
+        && /banana|veo|omni|imagen/i.test(clean(button.innerText)));
+      return hasModeControl && hasModelTrigger;
+    });
+    const modelBtn = settingsRoot && Array.from(settingsRoot.querySelectorAll('button')).find((button) =>
+      button.getAttribute('aria-haspopup') === 'menu'
+      && /banana|veo|omni|imagen/i.test(clean(button.innerText)));
+    const model = clean(modelBtn?.innerText);
+    return isKnownFlowModel(model) ? model : null;
   }
 
   function aspectRatioFromChip(chip) {
@@ -642,9 +626,14 @@
     return match ? match[1] : null;
   }
 
-  function durationFromChip(chip) {
-    const match = normalizeSettingText(chip?.innerText).match(/\b(\d+)s\b/i);
+  function durationSecondsFromText(value) {
+    const text = normalizeSettingText(value);
+    const match = text.match(/\b(\d+)\s*(?:s|sec(?:ond)?s?|giây|giay)\b/i);
     return match ? Number(match[1]) : null;
+  }
+
+  function durationFromChip(chip) {
+    return durationSecondsFromText(chip?.innerText);
   }
 
   function resolutionFromChip(chip) {
@@ -838,6 +827,35 @@
     return { ok: true, value: requested, originEventId };
   }
 
+
+  async function writeReferenceComponentMode(originEventId) {
+    await closeOpenMenus();
+    const opened = await openComposerSettings();
+    if (!opened.ok || !opened.menu) {
+      return { ok: false, code: 'UI_NOT_READY', message: opened.message || 'Flow settings menu did not open.', originEventId };
+    }
+    const tab = findSettingsTab(opened.menu, 'Thành phần') || findSettingsTab(opened.menu, 'Components');
+    if (!tab) {
+      await closeOpenMenus();
+      return { ok: false, code: 'NO_UI_COUNTERPART', message: 'Flow Components mode was not found in Settings.', originEventId };
+    }
+    // One semantic click only; clickMenuItemLike already includes the click.
+    clickMenuItemLike(tab);
+    await syncSleep(450);
+    await closeOpenMenus();
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const add = document.querySelector('button.add-menu-trigger')
+        || document.querySelector('button[aria-label="Thêm thành phần vào ô nhập câu lệnh"]')
+        || Array.from(document.querySelectorAll('button')).find((button) => {
+          const aria = normalizeSettingText(button.getAttribute('aria-label') || '');
+          const rect = button.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && aria.startsWith('Thêm thành phần');
+        });
+      if (add) return { ok: true, value: 'COMPONENTS', originEventId };
+      await syncSleep(150);
+    }
+    return { ok: false, code: 'UI_NOT_READY', message: 'Flow Components mode did not expose the add-component trigger.', originEventId };
+  }
   async function writeMode(value, originEventId) {
     if (value !== 'IMAGE' && value !== 'VIDEO') {
       return { ok: false, code: 'INVALID_VALUE', message: 'Sync mode must be IMAGE or VIDEO.' };
@@ -870,15 +888,16 @@
           return value === 'VIDEO' ? (t.includes('video') || t.includes('videocam')) : (t.includes('hình ảnh') || t.includes('image'));
         });
         if (targetBtn) {
+          // clickMenuItemLike already emits the click event with pointer geometry.
+          // A second targetBtn.click() can immediately toggle the radio back.
           clickMenuItemLike(targetBtn);
-          targetBtn.click();
           await syncSleep(300);
           applied = modeFromChip(findModelChip());
         }
         await closeOpenMenus();
       }
     }
-    if (applied !== value && !result?.ok) {
+    if (applied !== value) {
       return {
         ok: false,
         code: 'UI_NOT_READY',
@@ -925,15 +944,18 @@
     fire('mousedown');
     fire('pointerup');
     fire('mouseup');
+    // One semantic click only, preserving pointer coordinates for Angular/CDK.
+    // Using both a synthetic click and element.click() caused duplicate toggles;
+    // element.click() alone can lose the pointer geometry some Flow controls use.
     fire('click');
-    element.click();
     try {
       element.focus();
     } catch {}
   }
 
   function findSettingsChip() {
-    const settingsBtn = document.querySelector('button.settings-trigger-button');
+    const settingsBtn = document.querySelector('button.settings-trigger-button')
+      || Array.from(document.querySelectorAll('button')).find(b => b.classList.contains('settings-trigger-button') || b.querySelector('.settings-summary') || b.getAttribute('aria-label')?.includes('cài đặt') || b.getAttribute('aria-label')?.includes('Điều kiện kích hoạt cài đặt'));
     if (settingsBtn) return settingsBtn;
     return Array.from(document.querySelectorAll('button')).find((button) => {
       const text = normalizeSettingText(button.innerText || '').toLowerCase();
@@ -972,32 +994,47 @@
   }
 
   async function openComposerSettings() {
-    const chip = findSettingsChip();
-    if (!chip) return { ok: false, message: 'Flow settings chip not found.' };
-
     const existingMenu = findOpenMenus()
       .find((menu) => /Hình ảnh|Video|image|videocam/i.test(normalizeSettingText(menu.innerText)));
     if (existingMenu) {
       return { ok: true, menu: existingMenu };
     }
 
-    // Direct click trigger
-    clickMenuItemLike(chip);
-    chip.click();
-
     for (let attempt = 0; attempt < 5; attempt += 1) {
+      // Flow remounts the composer after model/scalar changes. Never retain a
+      // trigger element across retries; a detached Angular button accepts our
+      // synthetic events but cannot open the current CDK overlay.
+      const chip = findSettingsChip();
+      if (!chip || !chip.isConnected) {
+        await syncSleep(100);
+        continue;
+      }
+      // The composer can sit below the current viewport after Studio/background
+      // automation. Flow's Angular/CDK trigger may ignore a synthetic click on an
+      // off-screen element even though the element is still connected. Bring the
+      // live trigger into view before clicking so Duration/Components controls are
+      // discoverable consistently.
+      try {
+        chip.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+      } catch {
+        chip.scrollIntoView?.({ block: 'center', inline: 'center' });
+      }
+      await syncSleep(80);
+      clickMenuItemLike(chip);
+
       for (let waited = 0; waited < 1200; waited += 100) {
         const menu = findOpenMenus()
           .find((candidate) => /Hình ảnh|Video|image|videocam/i.test(normalizeSettingText(candidate.innerText)));
         if (menu) return { ok: true, menu };
         await syncSleep(100);
       }
-      clickMenuItemLike(chip);
-      chip.click();
     }
     const menu = findOpenMenus()
       .find((candidate) => /Hình ảnh|Video|image|videocam/i.test(normalizeSettingText(candidate.innerText)));
-    return menu ? { ok: true, menu } : { ok: false, message: 'Flow settings menu did not open.' };
+    if (menu) return { ok: true, menu };
+    return findSettingsChip()
+      ? { ok: false, message: 'Flow settings menu did not open.' }
+      : { ok: false, message: 'Flow settings chip not found.' };
   }
 
   function findSettingsTab(menu, expected) {
@@ -1037,14 +1074,14 @@
       return {
         ok: false,
         code: (() => {
-          const texts = Array.from(opened.menu.querySelectorAll('[role="tab"]'))
+          const texts = Array.from(opened.menu.querySelectorAll('button, [role="tab"], [role="radio"], .mat-button-toggle-button'))
             .map((candidate) => normalizeSettingText(candidate.innerText));
           const hasCounterpart = field === 'aspectRatio'
             ? texts.some((text) => /\b\d{1,2}:\d{1,2}\b/.test(text))
             : field === 'batchCount'
               ? texts.some((text) => /\bx[1-4]\b/i.test(text))
               : field === 'durationSeconds'
-                ? texts.some((text) => /\b\d+s\b/i.test(text))
+                ? texts.some((text) => durationSecondsFromText(text) !== null)
                 : field === 'targetResolution'
                   ? texts.some((text) => /\b\d{3,4}p\b/i.test(text))
                   : false;
@@ -1081,6 +1118,46 @@
     return { ok: true, value, originEventId };
   }
 
+  function flowModelOptionMatchesRequested(optionText, requested) {
+    const normalize = (value) => String(value || '')
+      .replace(/🍌/g, ' ')
+      .replace(/arrow_drop_down/gi, ' ')
+      .replace(/volume_up/gi, ' ')
+      .replace(/[–—]/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+      .replace(/\bomni 1\.1 flash\b/g, 'omni flash');
+    const text = normalize(optionText);
+    const req = normalize(requested);
+    if (!text || !req) return false;
+    if (text === req) return true;
+    const reqPro = /\bpro\b/.test(req);
+    const reqLite = /\blite\b/.test(req);
+    const textPro = /\bpro\b/.test(text);
+    const textLite = /\blite\b/.test(text);
+    if (req.includes('banana') || text.includes('banana')) {
+      if (!req.includes('banana') || !text.includes('banana')) return false;
+      if (reqPro) return textPro && !textLite;
+      if (reqLite) return textLite;
+      if (req.includes('2')) return /\b2\b/.test(text) && !textLite && !textPro;
+      return false;
+    }
+    if (req.includes('veo') || text.includes('veo')) {
+      if (!req.includes('veo') || !text.includes('veo')) return false;
+      if (/\bquality\b/.test(req)) return /\bquality\b/.test(text);
+      if (/\bfast\b/.test(req)) return /\bfast\b/.test(text) && !/\bquality\b/.test(text);
+      if (reqLite) return textLite && !/\bquality\b/.test(text);
+      return false;
+    }
+    if (req.includes('omni') || text.includes('omni')) {
+      if (text.includes('veo') || text.includes('banana')) return false;
+      // The generic Video composer chip is not model identity proof.
+      return text.includes('omni') && req.includes('omni');
+    }
+    return text.endsWith(` ${req}`) || req.endsWith(` ${text}`);
+  }
+
   async function writeModel(value, originEventId) {
     const requested = normalizeSettingText(value);
     if (!requested) {
@@ -1096,46 +1173,54 @@
     if (!opened.ok) {
       return { ok: false, code: 'UI_NOT_READY', message: opened.message, originEventId };
     }
-    const modelButton = Array.from(opened.menu.querySelectorAll('button'))
-      .find((button) => button.getAttribute('aria-haspopup') === 'menu');
-    if (!modelButton) {
-      await closeOpenMenus();
-      return { ok: false, code: 'UI_NOT_READY', message: 'Flow model submenu trigger not found.', originEventId };
-    }
 
+    // 1. Thử tìm nút trigger submenu model trong popup settings
+    let modelButton = Array.from(opened.menu.querySelectorAll('button'))
+      .find((button) => button.getAttribute('aria-haspopup') === 'menu' || button.innerText?.includes('Nano Banana') || button.innerText?.includes('Imagen') || button.innerText?.includes('Veo'));
+    
+    // 2. Thử tìm nút option trực tiếp trong settings menu nếu model list nằm ngay trên pane
     const fire = (element, type) => {
       const EventCtor = type.startsWith('pointer') ? PointerEvent : MouseEvent;
       element.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true, pointerType: 'mouse', button: 0 }));
     };
-    fire(modelButton, 'pointerdown');
-    fire(modelButton, 'mousedown');
-    fire(modelButton, 'pointerup');
-    fire(modelButton, 'mouseup');
-    modelButton.click();
-    await syncSleep(400);
 
-    // The new Angular Flow UI renders the model submenu inside a CDK overlay
-    // pane (not a Radix [role=menu]) and its options are plain buttons rather
-    // than [role=menuitem]. Search every open overlay for the newest pane that
-    // is not the settings pane itself, then match options by their visible text.
-    const submenu = findOpenMenus()
-      .filter((menu) => menu !== opened.menu)
-      .pop();
-    const optionText = (candidate) => normalizeSettingText(candidate.innerText)
-      .replace(/arrow_drop_down/gi, ' ')
-      .replace(/volume_up/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-    const matchesRequested = (candidate) => {
-      const text = optionText(candidate).replace('–', '-').toLowerCase();
-      const req = requested.replace('–', '-').toLowerCase();
-      return text === req || text.endsWith(` ${req}`) || text.includes(req);
+    const findOptionInElement = (container) => {
+      const optionText = (candidate) => normalizeSettingText(candidate.innerText)
+        .replace(/arrow_drop_down/gi, ' ')
+        .replace(/volume_up/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const matchesRequested = (candidate) => {
+        const text = optionText(candidate);
+        return flowModelOptionMatchesRequested(text, requested);
+      };
+      return Array.from(
+        container?.querySelectorAll('[role="menuitem"],[role="option"],[role="radio"],button,.mat-button-toggle-button') ?? [],
+      ).find(matchesRequested);
     };
-    const item = Array.from(
-      submenu?.querySelectorAll('[role="menuitem"],[role="option"],button') ?? [],
-    ).find(matchesRequested);
+
+    let item = findOptionInElement(opened.menu);
+
+    if (!item && modelButton) {
+      fire(modelButton, 'pointerdown');
+      fire(modelButton, 'mousedown');
+      fire(modelButton, 'pointerup');
+      fire(modelButton, 'mouseup');
+      modelButton.click();
+      await syncSleep(400);
+
+      const submenu = findOpenMenus()
+        .filter((menu) => menu !== opened.menu)
+        .pop();
+      item = findOptionInElement(submenu);
+    }
     if (!item) {
       await closeOpenMenus();
+      // Nếu không tìm thấy trong menu con nhưng nút model trên trang đã trùng khớp hoặc chứa Veo thì coi như thành công
+      const cur = modelFromChip(findModelChip()) || '';
+      if (flowModelOptionMatchesRequested(cur, requested)) {
+        return { ok: true, value: requested, originEventId };
+      }
       return {
         ok: false,
         code: 'INVALID_MODEL',
@@ -1221,7 +1306,13 @@
     if (!btn) {
       echoSuppression.delete('aspectRatio');
       await closeOpenMenus();
-      return { ok: false, code: 'INVALID_VALUE', message: `Flow aspectRatio control "${requested}" not found.`, originEventId };
+      const hasCounterpart = btns.some((b) => /\b\d{1,2}:\d{1,2}\b/.test(normalizeSettingText(b.innerText || '')));
+      return {
+        ok: false,
+        code: hasCounterpart ? 'INVALID_VALUE' : 'NO_UI_COUNTERPART',
+        message: `Flow aspectRatio control "${requested}" not found.`,
+        originEventId,
+      };
     }
 
     clickMenuItemLike(btn);
@@ -1262,7 +1353,13 @@
     if (!btn) {
       echoSuppression.delete('batchCount');
       await closeOpenMenus();
-      return { ok: false, code: 'INVALID_VALUE', message: `Flow batch control "x${requested}" not found.`, originEventId };
+      const hasCounterpart = btns.some((b) => /\bx[1-4]\b/i.test(normalizeSettingText(b.innerText || '')));
+      return {
+        ok: false,
+        code: hasCounterpart ? 'INVALID_VALUE' : 'NO_UI_COUNTERPART',
+        message: `Flow batch control "x${requested}" not found.`,
+        originEventId,
+      };
     }
 
     clickMenuItemLike(btn);
@@ -1283,21 +1380,54 @@
     if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
       return { ok: false, code: 'INVALID_VALUE', message: 'Duration must be a positive number.', originEventId };
     }
-    const requested = String(value);
-    return writeComposerSetting(
-      'durationSeconds',
-      value,
-      `${requested}s`,
-      () => durationFromChip(findModelChip()),
-      originEventId,
-    );
+    if (durationFromChip(findModelChip()) === value) {
+      suppressEcho('durationSeconds', value);
+      emitSyncState();
+      return { ok: true, value, originEventId };
+    }
+
+    const opened = await openComposerSettings();
+    if (!opened.ok || !opened.menu) {
+      return { ok: false, code: 'UI_NOT_READY', message: opened.message || 'Flow settings menu did not open.', originEventId };
+    }
+    const controls = Array.from(opened.menu.querySelectorAll('button, [role="tab"], [role="radio"], .mat-button-toggle-button'));
+    const durationControls = controls.filter((control) => durationSecondsFromText(control.innerText || control.textContent) !== null);
+    const target = durationControls.find((control) => durationSecondsFromText(control.innerText || control.textContent) === value);
+    if (!target) {
+      await closeOpenMenus();
+      return {
+        ok: false,
+        code: durationControls.length > 0 ? 'INVALID_VALUE' : 'NO_UI_COUNTERPART',
+        message: durationControls.length > 0
+          ? `Flow does not expose ${value}s for the selected model/mode.`
+          : 'Flow duration control is not available for the selected model/mode.',
+        originEventId,
+      };
+    }
+
+    suppressEcho('durationSeconds', value);
+    clickMenuItemLike(target);
+    await syncSleep(450);
+    const applied = durationFromChip(findModelChip());
+    if (applied !== value) {
+      echoSuppression.delete('durationSeconds');
+      await closeOpenMenus();
+      return {
+        ok: false,
+        code: 'UI_NOT_READY',
+        message: `Flow duration did not commit ${value}s (read back ${applied ?? 'unknown'}).`,
+        originEventId,
+      };
+    }
+    await closeOpenMenus();
+    emitSyncState();
+    return { ok: true, value, originEventId };
   }
 
   async function writeResolution(value, originEventId) {
     const requested = normalizeSettingText(value).toLowerCase();
     if (!/^\d{3,4}p$/.test(requested)) {
-      // Nếu là '4k', '2k' hoặc định dạng không hỗ trợ trên video chips, trả về NO_UI_COUNTERPART an toàn để không chặn pipeline
-      return { ok: false, code: 'NO_UI_COUNTERPART', message: 'Resolution must use 360p/720p format.', originEventId };
+      return { ok: false, code: 'INVALID_VALUE', message: 'Resolution must use 360p/720p format.', originEventId };
     }
     return writeComposerSetting(
       'targetResolution',
@@ -1306,6 +1436,67 @@
       () => resolutionFromChip(findModelChip()),
       originEventId,
     );
+  }
+
+  async function writeSeed(value, originEventId) {
+    if (typeof value !== 'number' || !Number.isInteger(value)) {
+      return { ok: false, code: 'INVALID_VALUE', message: 'Seed must be an integer.', originEventId };
+    }
+    const requested = String(value);
+    const opened = await openComposerSettings();
+    if (!opened.ok) {
+      return { ok: false, code: 'UI_NOT_READY', message: opened.message, originEventId };
+    }
+    const labeled = (el) => {
+      const text = [
+        el.getAttribute('aria-label'),
+        el.getAttribute('name'),
+        el.getAttribute('placeholder'),
+        el.id,
+        el.getAttribute('autocomplete'),
+      ].filter(Boolean).join(' ').toLowerCase();
+      return /seed|hạt giống|hat giong/.test(text);
+    };
+    const inputs = Array.from(opened.menu.querySelectorAll('input, textarea, [contenteditable="true"]'));
+    const seedInput = inputs.find(labeled);
+    if (!seedInput) {
+      await closeOpenMenus();
+      return {
+        ok: false,
+        code: 'UI_NOT_READY',
+        message: 'Flow seed control is not available; refusing to spend credits with an unverified explicit seed.',
+        originEventId,
+      };
+    }
+    suppressEcho('seed', value);
+    seedInput.focus();
+    if ('value' in seedInput) {
+      const proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')
+        || Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+      proto?.set?.call(seedInput, requested);
+      seedInput.dispatchEvent(new Event('input', { bubbles: true }));
+      seedInput.dispatchEvent(new Event('change', { bubbles: true }));
+    } else {
+      seedInput.textContent = requested;
+      seedInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    await syncSleep(300);
+    const applied = 'value' in seedInput
+      ? String(seedInput.value || '').trim()
+      : String(seedInput.textContent || '').trim();
+    if (applied !== requested) {
+      echoSuppression.delete('seed');
+      await closeOpenMenus();
+      return {
+        ok: false,
+        code: 'UI_NOT_READY',
+        message: 'Flow seed did not commit the value.',
+        originEventId,
+      };
+    }
+    await closeOpenMenus();
+    emitSyncState();
+    return { ok: true, value, originEventId };
   }
 
   function unsupportedSettingsWrite(field, value, originEventId) {
@@ -1349,7 +1540,7 @@
       case 'FLOWGRAPH_SYNC_SET_DURATION':
         return writeDuration(payload.value, originEventId);
       case 'FLOWGRAPH_SYNC_SET_SEED':
-        return unsupportedSettingsWrite('seed', payload.value, originEventId);
+        return writeSeed(payload.value, originEventId);
       case 'FLOWGRAPH_SYNC_SET_RESOLUTION':
         return writeResolution(payload.value, originEventId);
       case 'FLOWGRAPH_SYNC_BIND_MEDIA':
@@ -1516,6 +1707,11 @@
       return true;
     }
     switch (message?.type) {
+      case 'FLOWGRAPH_INTERNAL_SET_COMPONENT_MODE':
+        void writeReferenceComponentMode(message?.originEventId)
+          .then(sendResponse)
+          .catch((error) => sendResponse({ ok: false, code: 'UI_NOT_READY', message: error instanceof Error ? error.message : 'Component mode switch failed' }));
+        return true;
       case 'FLOWGRAPH_SYNC_SUPPRESS_ECHO':
         if (typeof message.field === 'string') suppressEcho(message.field, message.value);
         sendResponse({ ok: true });

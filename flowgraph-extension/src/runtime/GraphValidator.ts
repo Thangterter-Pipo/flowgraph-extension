@@ -8,7 +8,9 @@ export interface RuntimePlanEdge extends Omit<PlanEdge, 'sourceHandle' | 'target
   sourceHandle?: string | null;
   targetHandle?: string | null;
 }
-import type { PortDataType } from '../ui/studio/ports';
+import { portTypesCompatible, type PortDataType } from '../ui/studio/ports';
+
+export { portTypesCompatible };
 
 export type ValidationSeverity = 'ERROR' | 'WARNING';
 
@@ -55,6 +57,8 @@ const BASIC_TYPES: Record<string, PortDataType> = {
   image: 'IMAGE',
   video: 'VIDEO',
   media: 'MEDIA',
+  file: 'FILE',
+  character: 'CHARACTER',
   number: 'NUMBER',
   boolean: 'BOOLEAN',
 };
@@ -64,17 +68,6 @@ export function runtimeTypeToPort(runtimeType: string): PortDataType | undefined
   return BASIC_TYPES[runtimeType];
 }
 
-/** Port type compatibility (mirrors ui/studio/ports.ts portTypesCompatible core rules). */
-export function portTypesCompatible(source: PortDataType, target: PortDataType): boolean {
-  if (source === target) return true;
-  if (source === 'ANY' || target === 'ANY') return true;
-  if (source === 'MEDIA' && ['IMAGE', 'VIDEO', 'FILE'].includes(target)) return true;
-  if (target === 'MEDIA' && ['IMAGE', 'VIDEO', 'FILE'].includes(source)) return true;
-  if (source === 'PROMPT' && target === 'TEXT') return true;
-  if (source === 'TEXT' && target === 'PROMPT') return true;
-  return false;
-}
-
 /** Build node specs from plan nodes without requiring full FlowNode types. */
 export function validateGraph(nodes: NodeSpecForValidation[], edges: RuntimePlanEdge[], options: ValidateOptions = {}): ValidationReport {
   const planEdges: PlanEdge[] = edges.map((edge) => ({ ...edge, sourceHandle: edge.sourceHandle ?? undefined, targetHandle: edge.targetHandle ?? undefined }));
@@ -82,6 +75,33 @@ export function validateGraph(nodes: NodeSpecForValidation[], edges: RuntimePlan
   const warnings: ValidationIssue[] = [];
   const supported = options.supportedKinds;
   const byId = new Map(nodes.map((node) => [node.id, node]));
+
+  // Edge integrity: imported/persisted graphs must not smuggle dangling nodes or
+  // invalid handles past the UI connection guard. Runtime input assembly is handle-
+  // keyed, so an unknown/missing handle would otherwise become a silent empty input.
+  for (const edge of planEdges) {
+    const sourceNode = byId.get(edge.source);
+    const targetNode = byId.get(edge.target);
+    if (!sourceNode || !targetNode) {
+      errors.push({
+        severity: 'ERROR',
+        code: 'DANGLING_EDGE',
+        message: `Edge "${edge.id}" references a missing source or target node.`,
+        nodeIds: [edge.source, edge.target].filter((id) => byId.has(id)),
+      });
+      continue;
+    }
+    const sourcePort = edge.sourceHandle ? sourceNode.outputs.find((port) => port.id === edge.sourceHandle) : undefined;
+    const targetPort = edge.targetHandle ? targetNode.inputs.find((port) => port.id === edge.targetHandle) : undefined;
+    if (!sourcePort || !targetPort) {
+      errors.push({
+        severity: 'ERROR',
+        code: 'INVALID_EDGE_HANDLE',
+        message: `Edge "${edge.id}" references an unknown or missing port handle.`,
+        nodeIds: [edge.source, edge.target],
+      });
+    }
+  }
 
   // Graph-level: cycles (via planner)
   const compiled = planGraph(nodes.map(({ id, kind }) => ({ id, kind })), planEdges);
@@ -104,8 +124,10 @@ export function validateGraph(nodes: NodeSpecForValidation[], edges: RuntimePlan
     });
   }
 
+  const disconnectedSet = new Set(compiled.disconnected);
   for (const node of nodes) {
     const nodeId = node.id;
+    const isDisconnectedLeaf = disconnectedSet.has(nodeId);
 
     // Unsupported node kind
     if (supported && !supported.has(node.kind)) {
@@ -122,14 +144,18 @@ export function validateGraph(nodes: NodeSpecForValidation[], edges: RuntimePlan
     const incoming = planEdges.filter((edge) => edge.target === nodeId);
     for (const input of node.inputs) {
       const connections = incoming.filter((edge) => edge.targetHandle === input.id);
-      const configProvided = input.configKey !== undefined && Boolean(node.config[input.configKey]);
+      const configProvided = input.configKey !== undefined
+        && Boolean(node.config[input.configKey])
+        && (input.configKey !== 'customPrompt' || node.config.promptSource === 'Custom');
       if (input.required && connections.length === 0 && !configProvided) {
-        errors.push({
-          severity: 'ERROR',
-          code: 'MISSING_REQUIRED_INPUT',
-          message: `Node requires "${input.label}" input but nothing is connected.`,
-          nodeIds: [nodeId],
-        });
+        if (!isDisconnectedLeaf) {
+          errors.push({
+            severity: 'ERROR',
+            code: 'MISSING_REQUIRED_INPUT',
+            message: `Node requires "${input.label}" input but nothing is connected.`,
+            nodeIds: [nodeId],
+          });
+        }
         continue;
       }
       if (!input.multiple && connections.length > 1) {
@@ -157,22 +183,24 @@ export function validateGraph(nodes: NodeSpecForValidation[], edges: RuntimePlan
     }
 
     // Config validation: prompt nodes must have a prompt; generation nodes need a model
-    const configNode = node.config as Record<string, unknown>;
-    if (node.kind === 'prompt' && !String(configNode.prompt ?? '').trim()) {
-      errors.push({
-        severity: 'ERROR',
-        code: 'MISSING_CONFIG',
-        message: 'Prompt node has an empty prompt.',
-        nodeIds: [nodeId],
-      });
-    }
-    if (['t2i', 'i2v', 't2v', 'extend'].includes(node.kind) && !configNode.model) {
-      errors.push({
-        severity: 'ERROR',
-        code: 'INVALID_MODEL',
-        message: `Node is missing its model/resolution config.`,
-        nodeIds: [nodeId],
-      });
+    if (!isDisconnectedLeaf) {
+      const configNode = node.config as Record<string, unknown>;
+      if (node.kind === 'prompt' && !String(configNode.prompt ?? '').trim()) {
+        errors.push({
+          severity: 'ERROR',
+          code: 'MISSING_CONFIG',
+          message: 'Prompt node has an empty prompt.',
+          nodeIds: [nodeId],
+        });
+      }
+      if (['t2i', 'i2v', 't2v', 'extend', 'interpolation', 'reference'].includes(node.kind) && !configNode.model) {
+        errors.push({
+          severity: 'ERROR',
+          code: 'INVALID_MODEL',
+          message: `Node is missing its model/resolution config.`,
+          nodeIds: [nodeId],
+        });
+      }
     }
 
     // Model/duration/aspect validation via provider resolver
@@ -194,7 +222,7 @@ export function validateGraph(nodes: NodeSpecForValidation[], edges: RuntimePlan
     warnings.push({
       severity: 'WARNING',
       code: 'DISCONNECTED_NODES',
-      message: `Nodes with no root path will be skipped: ${compiled.disconnected.join(', ')}.`,
+      message: `Nodes outside the output execution scope will be skipped: ${compiled.disconnected.join(', ')}.`,
       nodeIds: compiled.disconnected,
     });
   }

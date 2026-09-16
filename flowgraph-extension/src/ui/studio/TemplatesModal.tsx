@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BookmarkCheck,
   BookmarkPlus,
@@ -41,6 +41,47 @@ export function TemplatesModal({
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [templates, setTemplates] = useState<WorkflowTemplate[]>(() => loadAllTemplates());
   const [selectedTpl, setSelectedTpl] = useState<WorkflowTemplate | null>(() => templates[0] || null);
+  const [deleteCandidate, setDeleteCandidate] = useState<WorkflowTemplate | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const deleteCandidateRef = useRef<WorkflowTemplate | null>(null);
+  deleteCandidateRef.current = deleteCandidate;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => searchRef.current?.focus(), 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (deleteCandidateRef.current) setDeleteCandidate(null);
+        else onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), [role="button"][tabindex="0"]',
+      )].filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKeyDown);
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -59,8 +100,8 @@ export function TemplatesModal({
   });
 
   return (
-    <div className="modal-backdrop templates-modal-backdrop" role="dialog" aria-modal="true" aria-label="Templates Library">
-      <div className="templates-modal-window">
+    <div className="modal-backdrop templates-modal-backdrop" role="presentation">
+      <div ref={dialogRef} className="templates-modal-window" role="dialog" aria-modal="true" aria-label="Templates Library">
         {/* Modal Header */}
         <div className="tpl-modal-header">
           <div className="tpl-modal-title">
@@ -69,7 +110,7 @@ export function TemplatesModal({
             </div>
             <div>
               <h2>FLOWGRAPH TEMPLATES LIBRARY</h2>
-              <p>Khám phá và khởi chạy nhanh các đường ống sản xuất AI điện ảnh chuẩn mực</p>
+              <p>Khám phá và nạp nhanh các workflow AI dựng sẵn vào Canvas</p>
             </div>
           </div>
           <div className="tpl-header-actions">
@@ -78,9 +119,9 @@ export function TemplatesModal({
               onClick={onSaveAsTemplate}
               disabled={locked}
             >
-              <BookmarkCheck size={14} /> Save Current Graph
+              <BookmarkCheck size={14} /> Lưu Graph hiện tại
             </button>
-            <button className="fg-icon-btn close-modal-btn" onClick={onClose} title="Đóng">
+            <button className="fg-icon-btn close-modal-btn" onClick={onClose} title="Đóng" aria-label="Đóng Templates Library">
               <X size={16} />
             </button>
           </div>
@@ -91,10 +132,10 @@ export function TemplatesModal({
           <div className="tpl-search-input-wrap">
             <Search size={15} />
             <input
+              ref={searchRef}
               placeholder="Tìm kiếm mẫu workflow, hashtags, mô hình (Veo, Omni, Banana)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              autoFocus
             />
           </div>
           <div className="tpl-category-filters">
@@ -142,7 +183,16 @@ export function TemplatesModal({
                   <div
                     key={tpl.id}
                     className={`tpl-card-showcase ${isSelected ? 'selected' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
                     onClick={() => setSelectedTpl(tpl)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedTpl(tpl);
+                      }
+                    }}
                   >
                     <div className="tpl-card-showcase-top">
                       <span className={`tpl-badge ${tpl.category}`}>
@@ -170,18 +220,16 @@ export function TemplatesModal({
                         }}
                         disabled={locked}
                       >
-                        <Sparkles size={13} /> Khởi Chạy Ngay
+                        <Sparkles size={13} /> Dùng Template
                       </button>
                       {tpl.category === 'custom' && (
                         <button
                           className="fg-btn fg-icon-btn tpl-delete-btn"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (confirm(`Xác nhận xóa template '${tpl.title}'?`)) {
-                              deleteCustomTemplate(tpl.id);
-                              reload();
-                            }
+                            setDeleteCandidate(tpl);
                           }}
+                          aria-label={`Xóa template ${tpl.title}`}
                           title="Xóa template này"
                         >
                           <Trash2 size={13} />
@@ -231,7 +279,7 @@ export function TemplatesModal({
                     }}
                     disabled={locked}
                   >
-                    <Sparkles size={15} /> Nạp Template Vào Canvas Ngay
+                    <Sparkles size={15} /> Nạp vào Canvas
                   </button>
                 </div>
               </div>
@@ -243,6 +291,29 @@ export function TemplatesModal({
             )}
           </div>
         </div>
+
+        {deleteCandidate && (
+          <div className="tpl-inline-confirm" role="alertdialog" aria-modal="true" aria-label="Xác nhận xóa template">
+            <div>
+              <strong>Xóa template “{deleteCandidate.title}”?</strong>
+              <span>Thao tác này chỉ xóa template tùy chỉnh đã lưu trên máy.</span>
+            </div>
+            <div className="tpl-inline-confirm-actions">
+              <button type="button" className="fg-btn" onClick={() => setDeleteCandidate(null)}>Hủy</button>
+              <button
+                type="button"
+                className="fg-btn fg-btn-danger"
+                onClick={() => {
+                  deleteCustomTemplate(deleteCandidate.id);
+                  setDeleteCandidate(null);
+                  reload();
+                }}
+              >
+                <Trash2 size={13} /> Xóa
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

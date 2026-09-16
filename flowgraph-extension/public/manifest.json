@@ -4,8 +4,6 @@
   "description": "Visual node-based workflow builder for Google Flow",
   "version": "0.1.0",
   "permissions": [
-    "identity",
-    "identity.email",
     "storage",
     "sidePanel",
     "scripting",
@@ -16,8 +14,15 @@
     "https://labs.google/*",
     "https://flow.google.com/*",
     "https://aisandbox-pa.googleapis.com/*",
-    "http://127.0.0.1:3091/*"
+    "http://127.0.0.1:3091/*",
+    "http://localhost:20128/*",
+    "http://127.0.0.1:20128/*",
+    "http://localhost:10100/*",
+    "http://127.0.0.1:10100/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'none'; base-uri 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' data: blob: https: http://localhost:* http://127.0.0.1:*; font-src 'self' data:"
+  },
   "action": {
     "default_title": "Open FlowGraph"
   },
@@ -28,12 +33,6 @@
   "side_panel": {
     "default_path": "sidepanel.html"
   },
-  "web_accessible_resources": [
-    {
-      "resources": ["studio.html", "sidepanel.html", "assets/*"],
-      "matches": ["<all_urls>"]
-    }
-  ],
   "content_scripts": [
     {
       "matches": ["https://labs.google/fx/*", "https://labs.google/fx/vi/*", "https://labs.google/fx/en/*", "https://flow.google/*", "https://flow.google.com/*"],
