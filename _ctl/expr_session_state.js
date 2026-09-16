@@ -1,1 +1,0 @@
-(async()=>{try{const r=await fetch('https://labs.google/fx/api/auth/session',{credentials:'include'});const j=await r.json().catch(()=>({}));return {http:r.status,hasAccessToken:!!j.access_token,email:j.user?.email||null,name:j.user?.name||null,expires:j.expires||null};}catch(e){return {error:String(e)}}})()
