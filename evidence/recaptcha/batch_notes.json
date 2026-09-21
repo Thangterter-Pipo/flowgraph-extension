@@ -1,8 +1,0 @@
-{
-  "invalid_token_rejection_verified": true,
-  "httpStatus": 403,
-  "errorStatus": "PERMISSION_DENIED",
-  "single_use_replay_verified": false,
-  "batch_boundary_verified": false,
-  "notes": "Current runtime fixture uses an invalid/unapproved token and proves only that such a token is rejected with HTTP 403. It does NOT prove replay of a previously valid token, single-use semantics, or successful batch-boundary behavior."
-}

@@ -1,7 +1,0 @@
-{
-  "error": {
-    "code": 403,
-    "message": "reCAPTCHA evaluation failed",
-    "status": "PERMISSION_DENIED"
-  }
-}

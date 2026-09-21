@@ -1,3 +1,0 @@
-fastmcp>=3.4
-uvicorn>=0.30
-python-dotenv>=1.0
