@@ -37,6 +37,20 @@ const structuredPrompt = (prompt: string) => ({ parts: [{ text: prompt }] });
 export function aspectCode(label?: string): string | undefined {
   if (!label) return undefined;
   const normalized = label.trim();
+  // Bare ratios ("16:9") are just as valid as full labels ("16:9 (Landscape)") —
+  // nodes created before the label migration store the short form.
+  const ratio = normalized.match(/\b\d{1,2}:\d{1,2}\b/)?.[0];
+  if (ratio) {
+    const byRatio: Record<string, string> = {
+      '16:9': 'LANDSCAPE',
+      '9:16': 'PORTRAIT',
+      '1:1': 'SQUARE',
+      '3:4': 'PORTRAIT_3_4',
+      '4:3': 'LANDSCAPE_4_3',
+    };
+    const code = byRatio[ratio];
+    if (code) return code;
+  }
   const map: Record<string, string> = {
     '16:9 (Landscape)': 'LANDSCAPE',
     '9:16 (Portrait)': 'PORTRAIT',
@@ -44,7 +58,13 @@ export function aspectCode(label?: string): string | undefined {
     '3:4 (Portrait)': 'PORTRAIT_3_4',
     '4:3 (Landscape)': 'LANDSCAPE_4_3',
   };
-  return map[normalized] ?? normalized.replace('VIDEO_ASPECT_RATIO_', '').replace('IMAGE_ASPECT_RATIO_', '');
+  const passthrough = normalized.replace('VIDEO_ASPECT_RATIO_', '').replace('IMAGE_ASPECT_RATIO_', '');
+  // Never emit an enum value the provider hasn't verified — unknown shapes
+  // (e.g. "21:9") fall back to the caller's default instead of 400-ing.
+  const known = new Set(['LANDSCAPE', 'PORTRAIT', 'SQUARE', 'PORTRAIT_3_4', 'LANDSCAPE_4_3']);
+  return map[normalized] && known.has(map[normalized]) ? map[normalized]
+    : known.has(passthrough) ? passthrough
+    : undefined;
 }
 
 /** Normalize a UI aspect label ("16:9 (Landscape)") to the Flow video enum. */

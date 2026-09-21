@@ -17,9 +17,12 @@ export type RequestType =
   | 'FLOWGRAPH_PROJECT_SELECT'
   | 'FLOWGRAPH_MEDIA_UPLOAD'
   | 'FLOWGRAPH_GENERATE'
+  | 'FLOWGRAPH_ABORT_GENERATE'
+  | 'FLOWGRAPH_GENERATE_PROGRESS'
   | 'FLOWGRAPH_MEDIA_STATUS'
   | 'FLOWGRAPH_MEDIA_DOWNLOAD'
   | 'FLOWGRAPH_CANCEL'
+  | 'FLOWGRAPH_PROXY_FETCH'
   | 'FLOWGRAPH_CREDITS'
   | 'FLOWGRAPH_EVENT'
   | 'GET_FX_SESSION'
@@ -218,11 +221,17 @@ export interface GeneratePayload {
   videoInput?: { mediaId: string };
   targetResolution?: string;
   durationSeconds?: number;
+  /** Requested provider batch size. Runtime still exposes the primary media output. */
+  batchCount?: number;
 }
 
 export interface MediaStatusPayload {
   projectId: string;
   mediaId: string;
+  /** Exact-ID playback recovery. Passive unless playbackRefresh is explicitly true. */
+  playbackRecovery?: boolean;
+  /** Explicit user-intent refresh for the exact VIDEO source; may drive Flow's own download UI but must not save a duplicate. */
+  playbackRefresh?: boolean;
 }
 
 export interface MediaStatusData {

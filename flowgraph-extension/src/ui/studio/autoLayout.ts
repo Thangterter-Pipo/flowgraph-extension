@@ -76,8 +76,11 @@ export function calculateAutoLayout(nodes: FlowNode[], edges: FlowEdge[]): FlowN
   }
 
   // 4. Sắp xếp vị trí tọa độ (X, Y)
-  const HORIZONTAL_GAP = 480;
-  const VERTICAL_GAP = 320;
+  // Media-first nodes keep labels/handles/tools outside the visual surface.
+  // Reserve enough air between columns/rows so those external controls never
+  // collide after Auto Layout.
+  const HORIZONTAL_GAP = 640;
+  const VERTICAL_GAP = 380;
   const START_X = 80;
   const START_Y = 80;
 

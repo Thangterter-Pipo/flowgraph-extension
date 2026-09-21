@@ -3,6 +3,7 @@ import type { NodeExecutor, NodeExecutorOutput, NodeExecutionContext, Validation
 import type { GoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
 import { asMedia, mediaRefFromPayload } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
+import { isStitchArtifact, stitchArtifactUrl } from '../stitch/StitchArtifactStore';
 
 export interface PreviewExecutorOptions {
   adapter?: GoogleFlowAdapter;
@@ -50,17 +51,25 @@ export class PreviewExecutor implements NodeExecutor {
     }
 
     let transientPreviewUrl = mediaRef.previewUrl;
+    if (isStitchArtifact(mediaRef.mediaId)) transientPreviewUrl = await stitchArtifactUrl(mediaRef.mediaId, projectId);
     // Transient resolution: if previewUrl is missing from upstream MediaRef (e.g. from ImageInput/VideoInput),
     // resolve it dynamically via adapter without persisting it into config.
-    // STRICT FAIL-CLOSED: if adapter cannot resolve previewUrl, throw PREVIEW_FAILED instead of empty fake success!
     if (!transientPreviewUrl && this.adapter) {
       try {
         transientPreviewUrl = await this.adapter.resolvePreviewUrl(mediaRef.mediaId, projectId);
       } catch (err) {
-        throw new RuntimeError('PREVIEW_FAILED', `Failed to resolve transient preview URL for media ${mediaRef.mediaId}: ${err instanceof Error ? err.message : String(err)}`, { nodeId: context.nodeId });
+        throw new RuntimeError(
+          'PREVIEW_FAILED',
+          `Failed to resolve preview for media ${mediaRef.mediaId}: ${err instanceof Error ? err.message : String(err)}`,
+          { nodeId: context.nodeId },
+        );
       }
       if (!transientPreviewUrl) {
-        throw new RuntimeError('PREVIEW_FAILED', `No preview URL could be resolved for media ${mediaRef.mediaId}.`, { nodeId: context.nodeId });
+        throw new RuntimeError(
+          'PREVIEW_FAILED',
+          `Failed to resolve preview URL for media ${mediaRef.mediaId}.`,
+          { nodeId: context.nodeId },
+        );
       }
     }
 

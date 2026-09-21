@@ -21,16 +21,15 @@ Dự án giúp xây dựng, quản lý và tự động hóa các chuỗi xử l
 ```text
 flowgraph-extension/
 ├── src/                      # Mã nguồn chính (React, TypeScript, Vite)
-│   ├── background/           # Service Worker & Extension Background Listener
-│   ├── components/           # UI Components (Node Editor, Canvas, Controls)
-│   ├── content/              # Content Script nhúng vào Google Flow
-│   ├── hooks/                # Custom React Hooks
-│   ├── studio/               # Giao diện Studio Fullscreen
-│   └── sidepanel/            # Giao diện SidePanel Manifest V3
-├── manifest.json             # Extension Manifest V3 Specification
-├── packages/                 # Core Packages & Workflow Engine
-├── scripts/                  # Build & Automation Scripts
-└── vite.config.ts            # Vite Build Configuration
+│   ├── adapters/             # Google Flow / Gemini adapters (typed RPC tới Service Worker)
+│   ├── background/           # Service Worker: automation CDP, session, download
+│   ├── runtime/              # Workflow runtime: DAG planner, executors, cache, polling
+│   ├── shared/               # Typed bridge, sync contracts, timeouts
+│   └── ui/                   # Studio fullscreen + Sidepanel (React Flow canvas)
+├── public/                   # Static assets, content script & manifest.json (nguồn build)
+├── scripts/                  # Build bridge & automation scripts
+├── tests/unit/               # Unit tests (Vitest)
+└── vite.config.ts            # Vite Build Configuration (studio.html, sidepanel.html)
 ```
 
 ---

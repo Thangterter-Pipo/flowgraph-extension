@@ -190,7 +190,7 @@ describe('ExtendVideoExecutor (Task 3)', () => {
       context: ctx,
     });
 
-    expect(generateFn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(generateFn.mock.calls[0][0]).toEqual(expect.objectContaining({
       kind: 'extend',
       projectId: 'proj-1',
       prompt: 'FG-EXT-RUN1: Extend the supplied video forward with coherent motion',
@@ -233,7 +233,7 @@ describe('ExtendVideoExecutor (Task 3)', () => {
       context: ctx,
     });
 
-    expect(generateFn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(generateFn.mock.calls[0][0]).toEqual(expect.objectContaining({
       kind: 'extend',
       projectId: 'proj-1',
       prompt: 'FG-EDIT-RUN2: Edit the supplied video while preserving the main subject',

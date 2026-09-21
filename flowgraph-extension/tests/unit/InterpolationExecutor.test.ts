@@ -198,7 +198,7 @@ describe('InterpolationExecutor', () => {
       context: ctx,
     });
 
-    expect(generateFn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(generateFn.mock.calls[0][0]).toEqual(expect.objectContaining({
       kind: 'interpolation',
       projectId: 'proj-1',
       prompt: 'Morph from flower to butterfly',
@@ -255,5 +255,38 @@ describe('InterpolationExecutor', () => {
     expect((output.outputs.video.value as any).type).toBe('VIDEO');
     expect(output.result?.mediaId).toBe('vid-interp-poll');
     expect(output.result?.previewUrl).toBe('https://cdn.example.com/polled.mp4');
+  });
+
+  it('cancel during pending generate rejects without returning success', async () => {
+    const abort = new AbortController();
+    const generateFn = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 4000));
+      return { mediaId: 'vid-late', type: 'VIDEO', projectId: 'proj-1', previewUrl: 'https://cdn.example.com/late.mp4' };
+    });
+    const adapter: GoogleFlowAdapter = { generate: generateFn } as any;
+    const exec = new InterpolationExecutor({ adapter });
+    const ctx = new ExecutionContext({
+      runId: 'run-1',
+      workflowId: 'wf-test',
+      activeProject: { projectId: 'proj-1', projectName: 'Test Project', selectedAt: '2026-09-01T00:00:00Z' },
+      account: { state: 'CONNECTED', email: 'test@example.com' },
+      flow: { state: 'READY', projectId: 'proj-1' },
+      abortSignal: abort.signal,
+    });
+    const started = Date.now();
+    const run = exec.execute({
+      runId: 'run-1',
+      nodeId: 'node-interp',
+      inputs: {
+        startImage: mediaRefFromPayload({ mediaId: 'img-start', type: 'IMAGE', projectId: 'proj-1' }),
+        endImage: mediaRefFromPayload({ mediaId: 'img-end', type: 'IMAGE', projectId: 'proj-1' }),
+      },
+      config: { prompt: 'Morph scene' },
+      context: ctx,
+    }, abort.signal);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    abort.abort();
+    await expect(run).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(Date.now() - started).toBeLessThan(1500);
   });
 });

@@ -1,7 +1,7 @@
 // Runtime value model — normalized values flowing between node outputs and inputs (FG-0302).
 import type { RuntimeInputValue } from '../engine/execution/NodeExecutor';
 
-export type RuntimeValueType = 'text' | 'image' | 'video' | 'media' | 'number' | 'boolean' | 'json';
+export type RuntimeValueType = 'text' | 'image' | 'video' | 'media' | 'file' | 'character' | 'number' | 'boolean' | 'json';
 
 export interface RuntimeMediaRef {
   provider: 'GOOGLE_FLOW';
@@ -113,4 +113,33 @@ export function runtimeValueToResult(value: RuntimeValue): {
     mimeType: media.mimeType,
     fileName: media.fileName,
   };
+}
+
+export interface CharacterDnaRecord {
+  characterId?: string;
+  displayName?: string;
+  dnaText: string;
+}
+
+export function extractCharacterDna(input: RuntimeInputValue | undefined): string[] {
+  if (!input) return [];
+  const items = Array.isArray(input) ? input : [input];
+  const dnaBlocks: string[] = [];
+  for (const item of items) {
+    const raw = (item && typeof item === 'object' && 'value' in item) ? item.value : item;
+    if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      if (typeof obj.dnaText === 'string' && obj.dnaText.trim()) {
+        const label = String(obj.characterId || obj.displayName || 'CHARACTER');
+        dnaBlocks.push(`[CHARACTER DNA: ${label}]\n${obj.dnaText}`);
+      }
+    }
+  }
+  return dnaBlocks;
+}
+
+export function mergeCharacterDna(prompt: string, characterInput: RuntimeInputValue | undefined, executionHeader = 'SCENE EXECUTION'): string {
+  const dnaBlocks = extractCharacterDna(characterInput);
+  if (!dnaBlocks.length) return prompt;
+  return `${dnaBlocks.join('\n\n')}\n\n[${executionHeader}]\n${prompt}`;
 }

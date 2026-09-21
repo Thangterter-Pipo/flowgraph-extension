@@ -36,22 +36,22 @@ export const SYNC_NODE_CAPABILITIES: Readonly<Record<string, SyncNodeCapability>
   i2v: {
     kind: 'i2v',
     mode: 'VIDEO',
-    fields: ['prompt', 'model', 'aspectRatio', 'batchCount', 'durationSeconds', 'seed', 'startImage', 'endImage'],
+    fields: ['prompt', 'model', 'aspectRatio', 'batchCount', 'durationSeconds', 'seed', 'targetResolution', 'startImage'],
   },
   reference: {
     kind: 'reference',
     mode: 'VIDEO',
-    fields: ['prompt', 'model', 'aspectRatio', 'durationSeconds', 'referenceMedia'],
+    fields: ['prompt', 'model', 'aspectRatio', 'durationSeconds', 'targetResolution', 'referenceMedia'],
   },
   extend: {
     kind: 'extend',
     mode: 'VIDEO',
-    fields: ['prompt', 'model', 'durationSeconds', 'seed'],
+    fields: ['prompt', 'model', 'durationSeconds', 'seed', 'targetResolution'],
   },
   interpolation: {
     kind: 'interpolation',
     mode: 'VIDEO',
-    fields: ['prompt', 'model', 'aspectRatio', 'startImage', 'endImage'],
+    fields: ['prompt', 'model', 'aspectRatio', 'durationSeconds', 'targetResolution', 'startImage', 'endImage'],
   },
   upscale: {
     kind: 'upscale',
@@ -62,10 +62,24 @@ export const SYNC_NODE_CAPABILITIES: Readonly<Record<string, SyncNodeCapability>
 
 export const NON_SYNC_NODE_KINDS: readonly string[] = ['prompt', 'download', 'note', 'local'];
 
-/** Convert Studio registry display labels to the exact labels shown by Flow UI. */
+/** Convert Studio registry display labels to the canonical labels shown by Flow UI. */
 export function normalizeFlowUiModelLabel(value: string): string {
-  const label = value.replace(/^[^A-Za-z0-9]+/u, '').replace('–', '-').trim();
-  return label === 'Omni Flash' ? 'Omni 1.1 Flash' : label;
+  const label = value
+    .replace(/^[^A-Za-z0-9]+/u, '')
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/^Omni(?: 1\.1)? Flash$/i.test(label)) return 'Omni 1.1 Flash';
+  const veo = label.match(/^Veo(?:\s*3\.1)?\s*-?\s*(Lite|Fast|Quality)(\s*\[Lower Priority\])?$/i);
+  if (veo) {
+    const variant = `${veo[1][0].toUpperCase()}${veo[1].slice(1).toLowerCase()}`;
+    return `Veo 3.1 - ${variant}${veo[2] ? ' [Lower Priority]' : ''}`;
+  }
+  return label;
+}
+
+export function flowUiModelLabelsEquivalent(a: string, b: string): boolean {
+  return normalizeFlowUiModelLabel(a).toLowerCase() === normalizeFlowUiModelLabel(b).toLowerCase();
 }
 
 export function isSyncGenerationNode(nodeKind: string): boolean {

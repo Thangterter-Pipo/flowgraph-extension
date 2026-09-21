@@ -20,8 +20,26 @@ import {
 import type { FlowSyncEvent } from '../../shared/sync/FlowSyncTypes';
 import type { SyncStateData } from '../../shared/bridge';
 import { DOWNLOAD_BRIDGE_CEILING_MS, GENERATE_BRIDGE_CEILING_MS } from '../../shared/timeouts';
+import { raceWithSignal } from '../../runtime/ExecutionContext';
+import { ABORT_GENERATE_TYPE, applyGenerateProgress } from '../../shared/generationAbort';
 
 export type { AccountStatus, CreditsData, FlowStatus, GeneratePayload, NormalizedMediaRef, ProjectCreateData, ProjectListData };
+
+export interface GenerateCallOptions {
+  abortSignal?: AbortSignal;
+  /** Early real provider media/job id. Never pass a graph nodeId here. */
+  onMediaId?: (mediaId: string) => void;
+}
+
+export type GenerateAbort = AbortSignal | GenerateCallOptions;
+
+export function resolveGenerateCall(abortOrOptions?: GenerateAbort): GenerateCallOptions {
+  if (!abortOrOptions) return {};
+  if (typeof AbortSignal !== 'undefined' && abortOrOptions instanceof AbortSignal) {
+    return { abortSignal: abortOrOptions };
+  }
+  return abortOrOptions as GenerateCallOptions;
+}
 
 export interface GoogleFlowAdapter {
   /** Account + Flow + active project health check. */
@@ -30,7 +48,7 @@ export interface GoogleFlowAdapter {
   createProject(title: string): Promise<ProjectCreateData>;
   selectProject(projectId: string): Promise<{ projectId: string; selectedAt: string }>;
   uploadImage(payload: { projectId: string; imageBytesBase64: string; mimeType: string; fileName: string }): Promise<NormalizedMediaRef>;
-  generate(payload: GeneratePayload): Promise<NormalizedMediaRef>;
+  generate(payload: GeneratePayload, abortOrOptions?: GenerateAbort): Promise<NormalizedMediaRef>;
   waitForMedia(payload: MediaStatusPayload): Promise<MediaStatusData>;
   resolvePreviewUrl(mediaId: string, projectId: string): Promise<string | undefined>;
   downloadMedia(payload: { mediaId: string; projectId: string; fileName?: string; mediaType?: 'IMAGE' | 'VIDEO'; url?: string }): Promise<{ ok: boolean; downloadId?: number; filename?: string; error?: string }>;
@@ -39,7 +57,7 @@ export interface GoogleFlowAdapter {
 
 // The UI never sends secrets. The service worker holds them in memory.
 export interface BridgeTransport {
-  request<T = unknown>(type: RequestType, payload?: unknown): Promise<BridgeResponse<T>>;
+  request<T = unknown>(type: RequestType, payload?: unknown, requestId?: string): Promise<BridgeResponse<T>>;
 }
 
 function timeout(source: () => Promise<unknown>, maxMs: number): Promise<unknown> {
@@ -61,7 +79,7 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
   private readonly transport: BridgeTransport;
   // ordinary bridge calls (status, credits, sync writes) should fail fast.
   private readonly requestTimeoutMs = 120_000;
-  private readonly syncRequestTimeoutMs = 6_000;
+  private readonly syncRequestTimeoutMs = 20_000;
   // A real UI generation is bounded by the worker's own submit-verify loop, media
   // wait, and video-tile editor recovery. Live run 54058dc8 proved a 300s ceiling
   // could fire *while the worker was still working*, which surfaced a healthy
@@ -78,12 +96,12 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
   constructor(transport?: BridgeTransport) {
     const inExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.sendMessage);
     this.transport = transport ?? {
-      request: <T>(type: RequestType, payload?: unknown) => new Promise<BridgeResponse<T>>((resolve) => {
+      request: <T>(type: RequestType, payload?: unknown, givenId?: string) => new Promise<BridgeResponse<T>>((resolve) => {
         if (!inExtension) {
           resolve(makeError(makeRequest<T>(type, payload).requestId, 'BRIDGE_UNAVAILABLE', 'FlowGraph must run inside Chrome with the extension loaded.'));
           return;
         }
-        const requestId = crypto.randomUUID();
+        const requestId = givenId ?? crypto.randomUUID();
         const message = makeRequest(type, payload, requestId);
         try {
           chrome.runtime.sendMessage(message, (response: BridgeResponse<T>) => {
@@ -100,8 +118,9 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
     };
   }
 
-  private async call<T>(type: RequestType, payload?: unknown, maxMs = this.requestTimeoutMs): Promise<T> {
-    const response = (await timeout(() => this.transport.request<T>(type, payload), maxMs)) as BridgeResponse<T>;
+  private async call<T>(type: RequestType, payload?: unknown, maxMs = this.requestTimeoutMs, abortSignal?: AbortSignal): Promise<T> {
+    const work = timeout(() => this.transport.request<T>(type, payload), maxMs);
+    const response = (await raceWithSignal(work, abortSignal)) as BridgeResponse<T>;
     if (!response) throw makeBridgeError('BRIDGE_UNAVAILABLE', 'No response from service worker.', true);
     if (!response.ok) throw makeBridgeError(response.error?.code ?? 'PROVIDER_ERROR', response.error?.message ?? 'Provider error', response.error?.retryable ?? false);
     return response.data as T;
@@ -132,8 +151,29 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
     return this.call<NormalizedMediaRef>('FLOWGRAPH_MEDIA_UPLOAD', payload);
   }
 
-  generate(payload: GeneratePayload) {
-    return this.call<NormalizedMediaRef>('FLOWGRAPH_GENERATE', payload, this.generateTimeoutMs);
+  async generate(payload: GeneratePayload, abortOrOptions?: GenerateAbort) {
+    const { abortSignal, onMediaId } = resolveGenerateCall(abortOrOptions);
+    const requestId = crypto.randomUUID();
+    const onProgress = (message: unknown) => applyGenerateProgress(message, requestId, onMediaId);
+    const runtime = typeof chrome !== 'undefined' ? chrome.runtime : undefined;
+    if (runtime?.onMessage) runtime.onMessage.addListener(onProgress);
+    const sendAbort = () => {
+      void this.transport.request(ABORT_GENERATE_TYPE, { requestId });
+    };
+    if (abortSignal?.aborted) sendAbort();
+    else abortSignal?.addEventListener('abort', sendAbort, { once: true });
+    try {
+      const work = timeout(() => this.transport.request('FLOWGRAPH_GENERATE', payload, requestId), this.generateTimeoutMs);
+      const response = (await raceWithSignal(work, abortSignal)) as BridgeResponse<NormalizedMediaRef>;
+      if (!response) throw makeBridgeError('BRIDGE_UNAVAILABLE', 'No response from service worker.', true);
+      if (!response.ok) throw makeBridgeError(response.error?.code ?? 'PROVIDER_ERROR', response.error?.message ?? 'Provider error', response.error?.retryable ?? false);
+      const ref = response.data as NormalizedMediaRef;
+      if (ref?.mediaId) onMediaId?.(ref.mediaId);
+      return ref;
+    } finally {
+      abortSignal?.removeEventListener('abort', sendAbort);
+      runtime?.onMessage?.removeListener(onProgress);
+    }
   }
 
   waitForMedia(payload: MediaStatusPayload) {

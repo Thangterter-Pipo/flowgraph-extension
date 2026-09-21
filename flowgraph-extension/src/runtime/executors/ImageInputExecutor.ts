@@ -1,20 +1,35 @@
-// ImageInputExecutor — injects existing project IMAGE MediaRef into workflow.
+// ImageInputExecutor — Flow IMAGE bind, or local PNG/JPEG upload on Run.
 import type { NodeExecutor, NodeExecutorOutput, NodeExecutionContext, ValidationResult } from '../../engine/execution/NodeExecutor';
+import type { GoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
 import { mediaRefFromPayload } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
+import { trustedProjectIdForProviderMedia, isLocalMediaKey } from '../mediaProvenance';
+import { UploadImageExecutor } from './UploadImageExecutor';
 
 export class ImageInputExecutor implements NodeExecutor {
   readonly kind = 'imageInput';
+  private readonly upload?: UploadImageExecutor;
+
+  constructor(options?: { adapter?: GoogleFlowAdapter }) {
+    this.upload = options?.adapter ? new UploadImageExecutor({ adapter: options.adapter }) : undefined;
+  }
 
   validate(context: NodeExecutionContext): ValidationResult {
     const mediaId = String(context.config.mediaId ?? '').trim();
+    if (mediaId && isLocalMediaKey(mediaId)) {
+      if (!this.upload) {
+        return { valid: false, errors: ['Local image upload requires the Flow adapter.'] };
+      }
+      return this.upload.validate(context);
+    }
+
     const configProjectId = String(context.config.projectId ?? '').trim();
     const rawMediaType = context.config.mediaType ?? context.config.type;
     const mediaType = rawMediaType ? String(rawMediaType).trim().toUpperCase() : '';
     const errors: string[] = [];
 
     if (!mediaId) {
-      errors.push('Image Input requires a configured mediaId from the active project.');
+      errors.push('Image Input needs a local PNG/JPEG or a Flow image.');
     }
 
     if (!mediaType) {
@@ -30,8 +45,15 @@ export class ImageInputExecutor implements NodeExecutor {
     const activeProject = context.context.activeProject.projectId;
     if (!activeProject) {
       errors.push('Image Input requires an active project.');
-    } else if (configProjectId && configProjectId !== activeProject) {
-      errors.push(`Configured image projectId ${configProjectId} does not match active project ${activeProject}.`);
+    } else if (configProjectId) {
+      const provenance = trustedProjectIdForProviderMedia({
+        configProjectId,
+        activeProjectId: activeProject,
+        mediaId,
+      });
+      if (!provenance.ok) {
+        errors.push(provenance.message);
+      }
     }
 
     return { valid: errors.length === 0, errors };
@@ -43,6 +65,12 @@ export class ImageInputExecutor implements NodeExecutor {
     if (!mediaId) {
       throw new RuntimeError('INVALID_INPUT', 'Image Input has no configured mediaId.', { nodeId: context.nodeId });
     }
+    if (isLocalMediaKey(mediaId)) {
+      if (!this.upload) {
+        throw new RuntimeError('INVALID_INPUT', 'Local image upload requires the Flow adapter.', { nodeId: context.nodeId });
+      }
+      return this.upload.execute(context);
+    }
 
     const rawMediaType = context.config.mediaType ?? context.config.type;
     const mediaType = rawMediaType ? String(rawMediaType).trim().toUpperCase() : '';
@@ -53,24 +81,18 @@ export class ImageInputExecutor implements NodeExecutor {
       throw new RuntimeError('INVALID_INPUT', `Image Input received mediaType "${mediaType}", expected IMAGE.`, { nodeId: context.nodeId });
     }
 
-    const activeProject = context.context.activeProject.projectId;
-    const configProjectId = String(context.config.projectId ?? '').trim();
-    if (!configProjectId) {
-      throw new RuntimeError('INVALID_INPUT', 'Image Input missing explicit projectId provenance.', { nodeId: context.nodeId });
+    const provenance = trustedProjectIdForProviderMedia({
+      configProjectId: String(context.config.projectId ?? '').trim(),
+      activeProjectId: context.context.activeProject.projectId,
+      mediaId,
+    });
+    if (!provenance.ok) {
+      throw new RuntimeError(provenance.code, provenance.message, { nodeId: context.nodeId });
     }
 
-    if (configProjectId !== activeProject) {
-      throw new RuntimeError(
-        'PROJECT_ISOLATION',
-        `Configured image belongs to project ${configProjectId}, not the active project ${activeProject}.`,
-        { nodeId: context.nodeId },
-      );
-    }
-
-    // Do NOT store signed URLs in config — only transient runtime reference
     const ref = {
       mediaId,
-      projectId: activeProject,
+      projectId: provenance.projectId,
       type: 'IMAGE' as const,
       previewUrl: undefined,
     };
@@ -84,6 +106,7 @@ export class ImageInputExecutor implements NodeExecutor {
         type: 'image',
         mediaId,
         previewUrl: '',
+        projectId: provenance.projectId,
       },
     };
   }

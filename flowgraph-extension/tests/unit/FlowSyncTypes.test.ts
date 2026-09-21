@@ -3,6 +3,7 @@ import {
   isAuthoritativeFlowToStudioEvent,
   type FlowSyncEvent,
 } from '../../src/shared/sync/FlowSyncTypes';
+import { isSyncFieldSupported } from '../../src/shared/sync/SyncCapabilityRegistry';
 
 function event(overrides: Partial<FlowSyncEvent> = {}): FlowSyncEvent {
   return {
@@ -35,5 +36,12 @@ describe('isAuthoritativeFlowToStudioEvent', () => {
 
   it('rejects events that do not originate from Google Flow', () => {
     expect(isAuthoritativeFlowToStudioEvent(event({ source: 'FLOWGRAPH', userInitiated: true }))).toBe(false);
+  });
+
+  it('syncs every scalar control exposed by the live video generation nodes', () => {
+    for (const kind of ['i2v', 'reference', 'extend', 'interpolation']) {
+      expect(isSyncFieldSupported(kind, 'targetResolution'), `${kind} resolution`).toBe(true);
+    }
+    expect(isSyncFieldSupported('interpolation', 'durationSeconds')).toBe(true);
   });
 });

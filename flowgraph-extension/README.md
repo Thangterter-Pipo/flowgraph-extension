@@ -343,8 +343,7 @@ flowgraph-extension/
 ├─ tests/unit/                # automated regression/unit tests
 ├─ evidence/                  # sanitized verification evidence
 ├─ docs/                      # proposal, architecture and technical documentation
-├─ public/                    # extension static assets / bridge output
-├─ manifest.json
+├─ public/                    # extension static assets, content script & shipped manifest
 ├─ package.json
 └─ README.md
 ```
@@ -356,7 +355,22 @@ Useful project documents include:
 - `docs/FLOWGRAPH_EXTENSION_PROPOSAL.md`
 - `docs/FLOWGRAPH_EXTENSION_ARCHITECTURE_DRIVER.md`
 - `docs/PROJECT_STRUCTURE.md`
-- `FLOWGRAPH_V1_RELEASE_REPORT.md`
+## 8. Trạng thái Runtime & Live Verification Matrix (V1 Milestone)
+
+| Node Kind | Runtime Status | Executor | Adapter | Verification Evidence |
+| :--- | :---: | :---: | :---: | :--- |
+| `t2i` (Text to Image) | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Live runs on Flow, fifeUrl extraction, realtime sync. |
+| `t2v` (Text to Video) | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Flow UI VIDEO mode + Veo generation verified. |
+| `i2v` (Image to Video) | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Start image binding + Veo Omni generation verified. |
+| `interpolation` (Start-End) | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Dual-frame binding + Veo interpolation verified. |
+| `reference` (Reference Video) | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Multi-image & Character reference video verified. |
+| `extend` (Extend Video) | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Video clip extension verified live. |
+| `imageUpscale` (2K/4K) | 🟡 **RUNTIME_PARTIAL** | Yes | Yes | Flow upscale wired; live security boundary (reCAPTCHA). |
+| `videoUpscale` (1080p) | 🟡 **RUNTIME_PARTIAL** | Yes | Yes | Flow video upscale wired; live security boundary (reCAPTCHA). |
+| `gemini` (AI Enhance) | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Gateway proxy local :20128 (`cx/gpt-5.6-luna`) verified. |
+| `characterCreate` (DNA) | 🟡 **RUNTIME_LOCAL** | Yes | No | Local 3-tier Character DNA lock (Local abstraction). |
+| `uploadImage` | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Local file upload to Flow verified. |
+| `preview` / `download` | ✅ **RUNTIME_VERIFIED** | Yes | Yes | Pure fail-closed preview + master export verified. |
 
 Some repository-level release/capability reports may also be maintained alongside the extension during Capstone development.
 
