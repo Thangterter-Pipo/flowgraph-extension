@@ -66,3 +66,13 @@ flowgraph-extension/sketches/
 flowgraph-extension/tests/*.py
 flowgraph-extension/tests/__pycache__/
 docs/context_snapshots/
+
+# Chỉ theo dõi extension chuẩn và tài liệu/CI ở root; giữ đồ local ngoài Git.
+/*
+!/.gitignore
+!/.github/
+!/flowgraph-extension/
+!/docs/
+!/README.md
+!/CHANGELOG.md
+!/CONTRIBUTING.md
