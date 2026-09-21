@@ -76,3 +76,26 @@ docs/context_snapshots/
 !/README.md
 !/CHANGELOG.md
 !/CONTRIBUTING.md
+
+# Không đưa dữ liệu tài khoản, phiên trình duyệt hay bằng chứng chạy thật lên Git.
+**/evidence/
+**/renders/
+**/snapshots/
+**/chrome-profile*/
+**/.tmp-*/
+**/packages/*.zip
+**/*.docx
+**/.env
+**/.env.*
+!**/.env.example
+**/Cookies
+**/Cookies-journal
+**/Login Data*
+**/Web Data*
+**/Local State
+**/*.sqlite
+**/*.sqlite3
+**/*.har
+**/storage-state*.json
+**/storageState*.json
+**/auth-state*.json
