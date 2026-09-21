@@ -15,9 +15,32 @@ export interface PlanEdge {
 }
 
 export interface CompiledGraph {
-  order: string[];          // topological order (empty when a cycle exists)
+  order: string[];          // topological order of the execution scope (empty when a cycle exists)
   cycles: string[][];       // detected cycles (each = list of node ids)
-  disconnected: string[];   // nodes with no path from any root
+  disconnected: string[];   // nodes excluded from execution scope
+}
+
+const OUTPUT_SINK_KINDS = new Set(['download', 'preview']);
+
+export function executionScope(nodes: PlanNode[], edges: PlanEdge[]): Set<string> {
+  const sinks = nodes.filter((node) => OUTPUT_SINK_KINDS.has(node.kind)).map((node) => node.id);
+  if (!sinks.length) return new Set(nodes.map((node) => node.id));
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const incoming = new Map<string, string[]>();
+  for (const id of nodeIds) incoming.set(id, []);
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
+    incoming.get(edge.target)?.push(edge.source);
+  }
+  const scope = new Set<string>();
+  const stack = [...sinks];
+  while (stack.length) {
+    const id = stack.pop()!;
+    if (scope.has(id)) continue;
+    scope.add(id);
+    for (const source of incoming.get(id) ?? []) stack.push(source);
+  }
+  return scope;
 }
 
 export function planGraph(nodes: PlanNode[], edges: PlanEdge[]): CompiledGraph {
@@ -48,29 +71,15 @@ export function planGraph(nodes: PlanNode[], edges: PlanEdge[]): CompiledGraph {
   }
 
   if (order.length === nodes.length) {
-    return { order, cycles: [], disconnected: findDisconnected(nodes, edges, order) };
+    const scope = executionScope(nodes, edges);
+    const disconnected = nodes.map((node) => node.id).filter((id) => !scope.has(id));
+    const scopedOrder = disconnected.length ? order.filter((id) => scope.has(id)) : order;
+    return { order: scopedOrder, cycles: [], disconnected };
   }
 
   // Kahn's algorithm terminates early when a cycle remains — compute cycle membership.
   const leftover = [...nodeIds].filter((id) => (remaining.get(id) ?? 0) > 0);
   return { order, cycles: leftover.length ? [leftover] : [], disconnected: [] };
-}
-
-function findDisconnected(nodes: PlanNode[], edges: PlanEdge[], order: string[]): string[] {
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const incoming = new Map<string, string[]>();
-  for (const id of nodeIds) incoming.set(id, []);
-  for (const edge of edges) {
-    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) continue;
-    incoming.get(edge.target)?.push(edge.source);
-  }
-  // A node is "rooted" if reachable from a node with indegree 0 or it IS a root.
-  const rooted = new Set<string>();
-  for (const id of order) {
-    const sources = incoming.get(id) ?? [];
-    if (sources.length === 0 || sources.some((source) => rooted.has(source))) rooted.add(id);
-  }
-  return order.filter((id) => !rooted.has(id));
 }
 
 /** Nodes whose required inputs are all satisfied and that haven't run yet. */

@@ -30,10 +30,10 @@ export function parseConfigFromPrompt(text: string): ParsedPromptConfig {
     res.aspectRatio = '3:4';
   }
 
-  // 2. Duration: 5s, 8s, 10s, 5 giây, 8 giây...
-  const durMatch = t.match(/\b(5|8|10)\s*(s|sec|seconds|giây)\b/);
+  // 2. Duration: normalize to the same labels used by the model registry/UI.
+  const durMatch = t.match(/\b(4|6|8|10)\s*(s|sec|seconds|giây)\b/);
   if (durMatch) {
-    res.duration = `${durMatch[1]}s`;
+    res.duration = `${durMatch[1]} seconds`;
   }
 
   // 3. Resolution: 720p, 1080p, 4K, 2K
@@ -45,11 +45,11 @@ export function parseConfigFromPrompt(text: string): ParsedPromptConfig {
     res.resolution = '720p';
   }
 
-  // 4. Batch Count: x1, x2, x3, x4 hoặc "tạo 2 ảnh", "2 video"
+  // 4. Batch Count: config stores the canonical numeric string; the UI adds "x" only for display.
   const batchMatch = t.match(/\bx([1-4])\b|tạo\s*([1-4])\s*(ảnh|video|bản)/);
   if (batchMatch) {
     const num = batchMatch[1] || batchMatch[2];
-    res.batchCount = `x${num}`;
+    res.batchCount = num;
   }
 
   // 5. Model Keywords

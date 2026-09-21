@@ -34,6 +34,17 @@ export interface FlowModelVariant {
 
 const registry = registryJson as Record<string, RawModel>;
 
+function canonicalFamilyName(value: string): string {
+  const normalized = value
+    .replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/^Omni(?: 1\.1)? Flash$/i.test(normalized)) return 'Omni 1.1 Flash';
+  const veo = normalized.match(/^Veo\s*3\.1\s*-?\s*(Lite|Fast|Quality)$/i);
+  if (veo) return `Veo 3.1 - ${veo[1][0].toUpperCase()}${veo[1].slice(1).toLowerCase()}`;
+  return normalized;
+}
+
 function classifyModel(model: RawModel): FlowModelMode {
   const req = new Set(model.requirements.flat());
   if ([...req].some((item) => item.includes('UPSAMPLE'))) return 'upsample';
@@ -51,7 +62,7 @@ const registryVariants: FlowModelVariant[] = Object.values(registry)
   .map((model) => ({
     usageKey: model.usageKey,
     familyId: model.family,
-    familyName: model.familyName,
+    familyName: canonicalFamilyName(model.familyName),
     kind: model.kind,
     mode: classifyModel(model),
     durationSeconds: model.durationSeconds,
@@ -72,7 +83,71 @@ const runtimeOverlays: FlowModelVariant[] = [
     kind: 'video',
     mode: 't2v',
     durationSeconds: 10,
-    aspectRatios: ['LANDSCAPE', 'PORTRAIT', 'SQUARE'],
+    aspectRatios: ['LANDSCAPE', 'PORTRAIT'],
+    creditMapping: {
+      SERVICE_TIER_ENTRY: 15,
+      SERVICE_TIER_INTERMEDIATE: 15,
+      SERVICE_TIER_ADVANCED: 15,
+    },
+    outputsAudio: true,
+    source: 'runtime-overlay-2026-08-30',
+  },
+  {
+    usageKey: 'abra_i2v_4s',
+    familyId: 'omni_1_1_flash',
+    familyName: 'Omni 1.1 Flash',
+    kind: 'video',
+    mode: 'interpolation',
+    durationSeconds: 4,
+    aspectRatios: ['LANDSCAPE', 'PORTRAIT'],
+    creditMapping: {
+      SERVICE_TIER_ENTRY: 7,
+      SERVICE_TIER_INTERMEDIATE: 7,
+      SERVICE_TIER_ADVANCED: 7,
+    },
+    outputsAudio: true,
+    source: 'runtime-overlay-2026-08-30',
+  },
+  {
+    usageKey: 'abra_i2v_6s',
+    familyId: 'omni_1_1_flash',
+    familyName: 'Omni 1.1 Flash',
+    kind: 'video',
+    mode: 'interpolation',
+    durationSeconds: 6,
+    aspectRatios: ['LANDSCAPE', 'PORTRAIT'],
+    creditMapping: {
+      SERVICE_TIER_ENTRY: 10,
+      SERVICE_TIER_INTERMEDIATE: 10,
+      SERVICE_TIER_ADVANCED: 10,
+    },
+    outputsAudio: true,
+    source: 'runtime-overlay-2026-08-30',
+  },
+  {
+    usageKey: 'abra_i2v_8s',
+    familyId: 'omni_1_1_flash',
+    familyName: 'Omni 1.1 Flash',
+    kind: 'video',
+    mode: 'interpolation',
+    durationSeconds: 8,
+    aspectRatios: ['LANDSCAPE', 'PORTRAIT'],
+    creditMapping: {
+      SERVICE_TIER_ENTRY: 12,
+      SERVICE_TIER_INTERMEDIATE: 12,
+      SERVICE_TIER_ADVANCED: 12,
+    },
+    outputsAudio: true,
+    source: 'runtime-overlay-2026-08-30',
+  },
+  {
+    usageKey: 'veo_omni_flash_10s',
+    familyId: 'omni_1_1_flash',
+    familyName: 'Omni 1.1 Flash',
+    kind: 'video',
+    mode: 'interpolation',
+    durationSeconds: 10,
+    aspectRatios: ['LANDSCAPE', 'PORTRAIT'],
     creditMapping: {
       SERVICE_TIER_ENTRY: 15,
       SERVICE_TIER_INTERMEDIATE: 15,
@@ -139,7 +214,12 @@ export function variantsForNode(kind: string, config: Record<string, string>): F
 }
 
 export function modelFamilyOptions(kind: string, config: Record<string, string>): string[] {
-  return [...new Set(variantsForNode(kind, config).map((variant) => variant.familyName))];
+  // Entitlement filtering belongs to variantsForNode() via serviceTier. Do not
+  // hide a provider family by label: Ultra/ADVANCED accounts currently expose
+  // "Veo 3.1 - Lite [Lower Priority]" as a real selectable Flow model.
+  return [...new Set(
+    variantsForNode(kind, config).map((variant) => variant.familyName),
+  )];
 }
 
 function secondsFromLabel(value?: string): number | undefined {
@@ -154,6 +234,22 @@ export function durationOptions(kind: string, config: Record<string, string>): s
     .map((variant) => variant.durationSeconds)
     .filter((value): value is number => typeof value === 'number');
   return [...new Set(values)].sort((a, b) => a - b).map((value) => `${value} seconds`);
+}
+
+/**
+ * Resolution policy for generation nodes.
+ *
+ * The provider registry explicitly declares 720p/360p for the Abra/Omni family.
+ * Veo 3.1 leaves supportedResolutions empty in modelConfig; FlowGraph therefore
+ * keeps the existing fail-closed UI policy of 720p for Veo generation and uses
+ * dedicated upsampler nodes for 1080p/4K.
+ */
+export function videoResolutionOptions(kind: string, config: Record<string, string>): string[] {
+  const mode = modeForNode(kind, config);
+  if (!mode || kindForNode(kind) !== 'video' || mode === 'upsample') return [];
+  const family = (config.model ?? '').toLowerCase();
+  if (/veo\s*3\.1/.test(family)) return ['720p'];
+  return ['720p', '360p'];
 }
 
 const aspectLabels: Record<string, string> = {
@@ -215,6 +311,11 @@ export function deriveRegistryConfig(kind: string, config: Record<string, string
   const isMatch = ratios.some((r) => (r.match(/\d+:\d+/)?.[0] ?? r) === currentRatioShort);
   if (ratios.length && !isMatch) {
     next.aspectRatio = ratios[0];
+  }
+
+  const resolutions = videoResolutionOptions(kind, next);
+  if (resolutions.length && !resolutions.includes(next.resolution)) {
+    next.resolution = resolutions[0];
   }
 
   const variant = resolveVariant(kind, next);

@@ -532,7 +532,7 @@ def register_all_tools(mcp) -> None:
     # Command execution
     # ======================================================================
 
-    @mcp.tool(annotations={"readOnlyHint": True})
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False})
     async def exec_command(command: str, cwd: str = ".", shell: bool = False, timeout: int = 0, env: dict | None = None) -> dict:
         """EXECUTE. Run a command (PowerShell/cmd/python/node/git/npm/any CLI on PATH) and capture output.
 
@@ -559,7 +559,7 @@ def register_all_tools(mcp) -> None:
     # Process management
     # ======================================================================
 
-    @mcp.tool(annotations={"readOnlyHint": True})
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False})
     async def start_process(command: str, cwd: str = ".", env: dict | None = None, name: str | None = None) -> dict:
         """EXECUTE. Start a long-running process (dev server, Chrome CDP). Returns process_id for status/output/kill."""
         with Audit("start_process", {"command": command[:200], "cwd": cwd, "name": name}) as a:
@@ -892,3 +892,4 @@ def register_all_tools(mcp) -> None:
             res = _git_run(["commit", "-m", message])
             a.success = res.get("success", False)
             return res
+

@@ -6,6 +6,7 @@ import { asText, mediaRefFromPayload } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
 import { PollManager } from '../PollManager';
 import { normalizeFlowUiModelLabel } from '../../shared/sync/SyncCapabilityRegistry';
+import { generateCancellable } from './generateCancellable';
 
 export interface ExtendVideoExecutorOptions {
   adapter: GoogleFlowAdapter;
@@ -100,7 +101,7 @@ export class ExtendVideoExecutor implements NodeExecutor {
 
     let ref;
     try {
-      ref = await this.adapter.generate({
+      ref = await generateCancellable(this.adapter, {
         kind: 'extend',
         projectId,
         prompt: prompt.trim(),
@@ -112,11 +113,12 @@ export class ExtendVideoExecutor implements NodeExecutor {
         targetResolution: context.config.targetResolution !== undefined || context.config.resolution !== undefined
           ? String(context.config.targetResolution ?? context.config.resolution)
           : undefined,
+        batchCount: context.config.batchCount !== undefined ? Number.parseInt(String(context.config.batchCount).replace(/^x/i, ''), 10) : undefined,
         seed: context.config.seed !== undefined ? Number(context.config.seed) : undefined,
         videoInput: {
           mediaId: refVideo.mediaId,
         },
-      });
+      }, context.context, abortSignal);
     } catch (error) {
       throw toRuntime(error, context.nodeId);
     }
@@ -135,27 +137,32 @@ export class ExtendVideoExecutor implements NodeExecutor {
       };
     }
 
-    const status = await this.poller.untilTerminal(async () => {
-      context.context.throwIfAborted();
-      const poll = await this.adapter.waitForMedia({ projectId, mediaId: ref.mediaId });
-      return { status: poll.status, errorMessage: poll.errorMessage, data: poll.media };
-    }, { abortSignal });
+    context.context.trackMediaJob?.(ref.mediaId);
+    try {
+      const status = await this.poller.untilTerminal(async () => {
+        context.context.throwIfAborted();
+        const poll = await this.adapter.waitForMedia({ projectId, mediaId: ref.mediaId });
+        return { status: poll.status, errorMessage: poll.errorMessage, data: poll.media };
+      }, { abortSignal });
 
-    if (status.status === 'CANCELED') throw new RuntimeError('CANCELLED', 'Generation was cancelled by the provider.', { nodeId: context.nodeId });
-    if (status.status === 'FAILED') throw new RuntimeError('MEDIA_FAILED', status.errorMessage ?? 'Extend/Edit video generation failed.', { nodeId: context.nodeId });
-    if (status.status === 'UNKNOWN') throw new RuntimeError('TIMEOUT', status.errorMessage ?? 'Polling timed out waiting for video.', { nodeId: context.nodeId });
+      if (status.status === 'CANCELED') throw new RuntimeError('CANCELLED', 'Generation was cancelled by the provider.', { nodeId: context.nodeId });
+      if (status.status === 'FAILED') throw new RuntimeError('MEDIA_FAILED', status.errorMessage ?? 'Extend/Edit video generation failed.', { nodeId: context.nodeId });
+      if (status.status === 'UNKNOWN') throw new RuntimeError('TIMEOUT', status.errorMessage ?? 'Polling timed out waiting for video.', { nodeId: context.nodeId });
 
-    const pollMedia = status.data as { previewUrl?: string } | undefined;
-    const media = mediaRefFromPayload({ ...ref, previewUrl: pollMedia?.previewUrl });
-    return {
-      outputs: { video: media },
-      result: {
-        type: 'video',
-        mediaId: ref.mediaId,
-        previewUrl: pollMedia?.previewUrl ?? '',
-        mimeType: 'video/mp4',
-      },
-    };
+      const pollMedia = status.data as { previewUrl?: string } | undefined;
+      const media = mediaRefFromPayload({ ...ref, previewUrl: pollMedia?.previewUrl });
+      return {
+        outputs: { video: media },
+        result: {
+          type: 'video',
+          mediaId: ref.mediaId,
+          previewUrl: pollMedia?.previewUrl ?? '',
+          mimeType: 'video/mp4',
+        },
+      };
+    } finally {
+      context.context.completeMediaJob?.(ref.mediaId);
+    }
   }
 
   retryable(error: { code: string }): boolean {

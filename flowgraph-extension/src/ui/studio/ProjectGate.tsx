@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, ChevronDown, FolderKanban, Plus, RefreshCcw, X } from 'lucide-react';
 import type { ProjectInfo } from '../../shared/bridge';
-import type { ActiveProjectState, StudioConnection } from './useStudioConnection';
+import type { ActiveProjectState, StudioConnection, RunBlockReason } from './useStudioConnection';
 
 export function ConnectionPill({ state, label, onRefresh, icon, title, className }: {
   state: 'checking' | 'online' | 'warn' | 'offline' | 'error';
@@ -14,20 +14,33 @@ export function ConnectionPill({ state, label, onRefresh, icon, title, className
   title?: string;
   className?: string;
 }) {
-  return (
-    <div className={`connection-pill ${state} ${className ?? ''}`} onClick={onRefresh} title={title ?? (onRefresh ? 'Click to refresh' : undefined)} role={onRefresh ? 'button' : 'status'} tabIndex={onRefresh ? 0 : undefined}>
-      <span className={`fg-status-dot ${state}`} />
-      {icon}
-      <span className="connection-label">{label}</span>
-      {onRefresh && <RefreshCcw size={11} className="connection-refresh" />}
-    </div>
-  );
+  const content = <>
+    <span className={`fg-status-dot ${state}`} />
+    {icon}
+    <span className="connection-label">{label}</span>
+    {onRefresh && <RefreshCcw size={11} className="connection-refresh" />}
+  </>;
+
+  if (onRefresh) {
+    return (
+      <button
+        type="button"
+        className={`connection-pill ${state} ${className ?? ''}`}
+        onClick={onRefresh}
+        title={title ?? 'Click to refresh'}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={`connection-pill ${state} ${className ?? ''}`} title={title} role="status">{content}</div>;
 }
 
 function accountPillLabel(state: string, email?: string, credits?: number): string {
   if (state === 'CHECKING') return 'Checking Account…';
   if (state === 'CONNECTED') {
-    const credText = credits !== undefined ? ` · ⚡ ${credits} cr` : ' · ⚡ PRO (Daily)';
+    const credText = credits !== undefined ? ` · ⚡ ${credits} cr` : '';
     return (email ?? 'Google Account') + credText;
   }
   if (state === 'SESSION_EXPIRED') return 'Session Expired';
@@ -46,10 +59,14 @@ function flowPillLabel(state: string, projectId?: string): string {
   return 'Google Flow';
 }
 
-export function ProjectDropdown({ connection }: { connection: StudioConnection }) {
+export function ProjectDropdown({ connection, runLocked = false }: { connection: StudioConnection; runLocked?: boolean }) {
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+
+  useEffect(() => {
+    if (runLocked) setOpen(false);
+  }, [runLocked]);
 
   useEffect(() => {
     if (open && connection.projects.length === 0 && !connection.projectsLoading) {
@@ -58,6 +75,7 @@ export function ProjectDropdown({ connection }: { connection: StudioConnection }
   }, [open, connection.projects.length, connection.projectsLoading, connection]);
 
   async function createAndSelect() {
+    if (runLocked) return;
     const title = newTitle.trim();
     if (!title) return;
     setCreating(true);
@@ -74,17 +92,24 @@ export function ProjectDropdown({ connection }: { connection: StudioConnection }
 
   return (
     <div className="project-dropdown">
-      <button className="fg-btn project-dropdown-trigger" onClick={() => setOpen((value) => !value)}>
+      <button
+        className="fg-btn project-dropdown-trigger"
+        disabled={runLocked}
+        title={runLocked ? 'Stop the run before switching project' : undefined}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => { if (runLocked) return; setOpen((value) => !value); }}
+      >
         <FolderKanban size={13} />
         <span className="project-dropdown-active">{activeId ? connection.activeProject?.projectName ?? 'Flow Project' : 'Select Project'}</span>
         <ChevronDown size={12} />
       </button>
       {open && (
-        <div className="project-dropdown-menu">
+        <div className="project-dropdown-menu" role="menu">
           <div className="project-menu-head">
             <strong>GOOGLE FLOW PROJECTS</strong>
             <button className="fg-icon-btn" onClick={() => void connection.refreshProjects()} title="Refresh projects"><RefreshCcw size={12} /></button>
-            <button className="fg-icon-btn" onClick={() => setOpen(false)}><X size={12} /></button>
+            <button className="fg-icon-btn" onClick={() => setOpen(false)} aria-label="Đóng danh sách project"><X size={12} /></button>
           </div>
           <div className="project-menu-list">
             {connection.projectsLoading && <div className="project-menu-note">Loading projects…</div>}
@@ -94,7 +119,8 @@ export function ProjectDropdown({ connection }: { connection: StudioConnection }
               <button
                 className={`project-menu-item ${project.projectId === activeId ? 'active' : ''}`}
                 key={project.projectId}
-                onClick={() => { void connection.selectProject(project.projectId); setOpen(false); }}
+                onClick={() => { if (runLocked) return; void connection.selectProject(project.projectId); setOpen(false); }}
+                disabled={runLocked}
               >
                 <span className="project-menu-item-name">{project.projectTitle}</span>
                 <span className="project-menu-item-id">{project.projectId.slice(0, 8)}…</span>
@@ -107,10 +133,11 @@ export function ProjectDropdown({ connection }: { connection: StudioConnection }
               className="form-control"
               placeholder="New project title…"
               value={newTitle}
+              disabled={runLocked}
               onChange={(event) => setNewTitle(event.target.value)}
               onKeyDown={(event) => { if (event.key === 'Enter') void createAndSelect(); }}
             />
-            <button className="fg-btn fg-btn-primary" onClick={() => void createAndSelect()} disabled={creating || !newTitle.trim()}>
+            <button className="fg-btn fg-btn-primary" onClick={() => void createAndSelect()} disabled={runLocked || creating || !newTitle.trim()}>
               <Plus size={12} /> {creating ? 'Creating…' : 'Create'}
             </button>
           </div>
@@ -125,21 +152,71 @@ export function ProjectGateOverlay({ connection, children }: {
   children: React.ReactNode;
 }) {
   if (connection.isCanvasUnlocked) return <>{children}</>;
+  const block = connection.runBlockReason;
+
+  const getExplanation = () => {
+    if (connection.account.state === 'CHECKING' || connection.flow.state === 'CHECKING') {
+      return 'Checking connection status with Google Flow. Please wait a moment…';
+    }
+    if (connection.account.state !== 'CONNECTED') {
+      if (connection.account.state === 'SESSION_EXPIRED') {
+        return 'Your Google Flow session has expired. Please refresh the Google Flow tab and sign in again.';
+      }
+      if (connection.account.state === 'ERROR') {
+        return connection.account.error || 'Google Account authentication error. Refresh the Google Flow tab.';
+      }
+      return 'Connect your Google Account and open the FlowGraph tab in Google Flow to unlock the workspace.';
+    }
+    if (connection.flow.state === 'ERROR') {
+      return connection.flow.error || 'Google Flow tab is in an error state. Check the console in Google Flow and refresh.';
+    }
+    if (connection.flow.state === 'DISCONNECTED' || !connection.flow.url) {
+      return 'No active Google Flow tab detected. Open https://flow.google.com/ in another tab to connect.';
+    }
+    if (connection.flow.state === 'PROJECT_REQUIRED' || !connection.flow.projectId) {
+      return 'Google Flow is open, but not inside a project. Please navigate into a project on Google Flow.';
+    }
+    if (block?.code === 'PROJECT_MISMATCH') {
+      return block.message;
+    }
+    if (!connection.activeProject?.projectId) {
+      return 'Select or create a Google Flow project to unlock the workspace.';
+    }
+    return block?.message || 'Select or create a Google Flow project to unlock the workspace.';
+  };
+
+  const getTitle = () => {
+    if (connection.account.state === 'CHECKING' || connection.flow.state === 'CHECKING') {
+      return 'CHECKING CONNECTION…';
+    }
+    if (connection.account.state !== 'CONNECTED') {
+      return 'ACCOUNT REQUIRED';
+    }
+    if (connection.flow.state === 'DISCONNECTED' || !connection.flow.url) {
+      return 'FLOW TAB REQUIRED';
+    }
+    if (connection.flow.state === 'ERROR' || (connection.account as any).state === 'ERROR') {
+      return 'CONNECTION ERROR';
+    }
+    if (block?.code === 'PROJECT_MISMATCH') {
+      return 'PROJECT MISMATCH';
+    }
+    return 'PROJECT REQUIRED';
+  };
+
   return (
     <div className="canvas-gate">
       {children}
       <div className="canvas-gate-overlay">
         <div className="canvas-gate-card">
           <FolderKanban size={30} />
-          <h2>PROJECT REQUIRED</h2>
-          <p>
-            {connection.account.state !== 'CONNECTED'
-              ? 'Connect your Google Account and open the FlowGraph tab in Google Flow to unlock the canvas.'
-              : 'Select or create a Google Flow project to unlock the workspace.'}
-          </p>
+          <h2>{getTitle()}</h2>
+          <p>{getExplanation()}</p>
           <div className="canvas-gate-actions">
             <ProjectDropdown connection={connection} />
-            {connection.activeProject && <button className="fg-btn" onClick={() => void connection.refreshFlow()}>Refresh Flow</button>}
+            <button className="fg-btn" onClick={() => { void connection.refreshFlow(); void connection.refreshAccount(); }}>
+              Refresh Status
+            </button>
           </div>
         </div>
       </div>

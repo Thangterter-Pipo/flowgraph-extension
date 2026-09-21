@@ -18,6 +18,7 @@ import {
   Split,
   StickyNote,
   Upload,
+  User,
   UserCheck,
   UserPlus,
   Users,

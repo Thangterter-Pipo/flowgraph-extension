@@ -25,6 +25,18 @@
   function aspectCode(label) {
     if (!label) return void 0;
     const normalized = label.trim();
+    const ratio = normalized.match(/\b\d{1,2}:\d{1,2}\b/)?.[0];
+    if (ratio) {
+      const byRatio = {
+        "16:9": "LANDSCAPE",
+        "9:16": "PORTRAIT",
+        "1:1": "SQUARE",
+        "3:4": "PORTRAIT_3_4",
+        "4:3": "LANDSCAPE_4_3"
+      };
+      const code = byRatio[ratio];
+      if (code) return code;
+    }
     const map = {
       "16:9 (Landscape)": "LANDSCAPE",
       "9:16 (Portrait)": "PORTRAIT",
@@ -32,7 +44,9 @@
       "3:4 (Portrait)": "PORTRAIT_3_4",
       "4:3 (Landscape)": "LANDSCAPE_4_3"
     };
-    return map[normalized] ?? normalized.replace("VIDEO_ASPECT_RATIO_", "").replace("IMAGE_ASPECT_RATIO_", "");
+    const passthrough = normalized.replace("VIDEO_ASPECT_RATIO_", "").replace("IMAGE_ASPECT_RATIO_", "");
+    const known = /* @__PURE__ */ new Set(["LANDSCAPE", "PORTRAIT", "SQUARE", "PORTRAIT_3_4", "LANDSCAPE_4_3"]);
+    return map[normalized] && known.has(map[normalized]) ? map[normalized] : known.has(passthrough) ? passthrough : void 0;
   }
   function aspectVideo(ratio) {
     const code = aspectCode(ratio) ?? "LANDSCAPE";
@@ -248,6 +262,18 @@
     "enter a prompt",
     "nh\u1EADp prompt"
   ];
+  function selectAttributedImageMediaId(args) {
+    const expected = (args.expectedPrompt ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (!expected) return void 0;
+    for (const candidate of args.candidates) {
+      if (!candidate.mediaId) continue;
+      if (candidate.matchedPrompt) return candidate.mediaId;
+      if (candidate.editorPrompt && editorPromptMatches(candidate.editorPrompt, expected)) {
+        return candidate.mediaId;
+      }
+    }
+    return void 0;
+  }
 
   // src/shared/timeouts.ts
   var SUBMIT_VERIFY_BUDGET_MS = 4 * 3e4;
@@ -262,6 +288,208 @@
   var DOWNLOAD_TRANSFER_BUDGET_MS = 18e4;
   var DOWNLOAD_BRIDGE_CEILING_MS = DOWNLOAD_RESOLVE_BUDGET_MS + DOWNLOAD_TRANSFER_BUDGET_MS + 6e4;
 
+  // src/shared/generationAbort.ts
+  var GENERATE_PROGRESS_TYPE = "FLOWGRAPH_GENERATE_PROGRESS";
+  var abortedIds = /* @__PURE__ */ new Set();
+  var inFlight = /* @__PURE__ */ new Map();
+  function generationAbortedError() {
+    const error = new Error("Generation aborted");
+    error.code = "CANCELLED";
+    error.retryable = false;
+    return error;
+  }
+  function markGenerationAborted(requestId) {
+    if (requestId) abortedIds.add(requestId);
+  }
+  function isGenerationAborted(requestId) {
+    return Boolean(requestId && abortedIds.has(requestId));
+  }
+  function clearGenerationAbort(requestId) {
+    if (requestId) abortedIds.delete(requestId);
+  }
+  function throwIfGenerationAborted(requestId) {
+    if (isGenerationAborted(requestId)) throw generationAbortedError();
+  }
+  function trackGenerationStart(requestId, projectId) {
+    if (requestId) inFlight.set(requestId, { projectId });
+  }
+  function trackGenerationMedia(requestId, mediaId) {
+    if (!requestId || !mediaId) return;
+    const row = inFlight.get(requestId);
+    if (row) row.mediaId = mediaId;
+    else inFlight.set(requestId, { projectId: "", mediaId });
+  }
+  function getGenerationFlight(requestId) {
+    return requestId ? inFlight.get(requestId) : void 0;
+  }
+  function endGeneration(requestId) {
+    if (requestId) inFlight.delete(requestId);
+    clearGenerationAbort(requestId);
+  }
+  async function waitWhileNotAborted(ms, requestId, stepMs = 200) {
+    const deadline = Date.now() + Math.max(0, ms);
+    const step = Math.max(20, stepMs);
+    while (Date.now() < deadline) {
+      throwIfGenerationAborted(requestId);
+      const slice = Math.min(step, deadline - Date.now());
+      if (slice <= 0) break;
+      await new Promise((resolve) => setTimeout(resolve, slice));
+    }
+    throwIfGenerationAborted(requestId);
+  }
+  async function finalizeGenerateAgainstAbort(requestId, result, cancelByMediaId) {
+    if (result.mediaId) trackGenerationMedia(requestId, result.mediaId);
+    if (!isGenerationAborted(requestId)) return result;
+    if (result.mediaId && cancelByMediaId) {
+      await cancelByMediaId(result.mediaId).catch(() => void 0);
+    }
+    throw generationAbortedError();
+  }
+
+  // src/shared/generationPreflight.ts
+  var COST_SCALAR_FIELDS = [
+    "aspectRatio",
+    "durationSeconds",
+    "batchCount",
+    "targetResolution",
+    "seed"
+  ];
+  function isCostScalarField(field) {
+    return COST_SCALAR_FIELDS.includes(field);
+  }
+  function shouldToleratePreflightFailure(write, reply) {
+    if (write.field === "model" || write.field === "seed") return false;
+    if (isCostScalarField(write.field)) return reply?.code === "NO_UI_COUNTERPART";
+    if (write.optional) return true;
+    if (reply?.code === "NO_UI_COUNTERPART") return true;
+    return write.field === "mode" || write.field === "prompt";
+  }
+  function preflightFailureCode(write, reply) {
+    if (write.field === "model") return "INVALID_MODEL";
+    if (isCostScalarField(write.field)) {
+      return reply?.code === "UI_NOT_READY" ? "UI_NOT_READY" : "INVALID_INPUT";
+    }
+    return reply?.code ?? "PREFLIGHT_FAILED";
+  }
+  var FLOW_PROMPT_SAFE_LIMIT = 1150;
+  function truncateFlowPrompt(prompt) {
+    if (prompt.length <= FLOW_PROMPT_SAFE_LIMIT) return prompt;
+    return `${prompt.slice(0, FLOW_PROMPT_SAFE_LIMIT).replace(/\s+\S*$/, "")}.`;
+  }
+  function normalizeComposerPrompt(text) {
+    return text.replace(/\s+/g, " ").trim();
+  }
+  function expectedSubmittedPrompt(prompt) {
+    return normalizeComposerPrompt(truncateFlowPrompt(prompt));
+  }
+  function composerPromptMatchesExpected(liveText, expected) {
+    return normalizeComposerPrompt(liveText ?? "") === expected;
+  }
+  function shouldFailClosedOnMediaBindFailure(kind, slot) {
+    if (kind === "i2v" && slot === "startImage") return false;
+    return slot === "startImage" || slot === "endImage" || slot === "referenceMedia";
+  }
+  function slotSourcesContainExactMediaId(sources, mediaId) {
+    const id = mediaId.trim();
+    if (!id) return false;
+    return sources.some((value) => {
+      const text = String(value ?? "");
+      return text === id || text.includes(id);
+    });
+  }
+  function referenceMediaExactlyBound(requested, applied) {
+    return requested.length > 0 && requested.length === applied.length && requested.every((id, index) => id === applied[index]);
+  }
+  function canSubmitGenerateWithMediaBindings(args) {
+    if (args.kind === "interpolation") {
+      if (args.hasStart && !args.startBound) return false;
+      if (args.hasEnd && !args.endBound) return false;
+    }
+    if (args.kind === "reference" && args.hasRefs && !args.referenceBound) return false;
+    return true;
+  }
+  var VIDEO_COMPOSER_KINDS = /* @__PURE__ */ new Set([
+    "i2v",
+    "t2v",
+    "extend",
+    "interpolation",
+    "reference",
+    "upscale"
+  ]);
+  function requiredComposerModality(kind) {
+    return kind && VIDEO_COMPOSER_KINDS.has(kind) ? "video" : "image";
+  }
+  function composerModalityFromChipText(text) {
+    const chip = (text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+    if (!chip) return "unknown";
+    if (chip.includes("video") || chip.includes("veo") || chip.includes("omni")) return "video";
+    return "image";
+  }
+  function canSubmitGenerateWithComposerMode(args) {
+    return composerModalityFromChipText(args.liveChipText) === requiredComposerModality(args.kind);
+  }
+  function normalizeFlowModelLabel(value) {
+    return value.replace(/🍌/g, " ").replace(/arrow_drop_down/gi, " ").replace(/volume_up/gi, " ").replace(/[–—]/g, "-").replace(/\s+/g, " ").trim().toLowerCase();
+  }
+  function canonicalizeFlowModelLabel(value) {
+    return normalizeFlowModelLabel(value).replace(/\bomni 1\.1 flash\b/g, "omni flash");
+  }
+  function flowModelOptionMatchesRequested(optionText, requested) {
+    const text = canonicalizeFlowModelLabel(optionText);
+    const req = canonicalizeFlowModelLabel(requested);
+    if (!text || !req) return false;
+    if (text === req) return true;
+    const reqPro = /\bpro\b/.test(req);
+    const reqLite = /\blite\b/.test(req);
+    const reqFast = /\bfast\b/.test(req);
+    const reqQuality = /\bquality\b/.test(req);
+    const reqLowerPriority = /\blower priority\b/.test(req);
+    const textPro = /\bpro\b/.test(text);
+    const textLite = /\blite\b/.test(text);
+    const textFast = /\bfast\b/.test(text);
+    const textQuality = /\bquality\b/.test(text);
+    const textLowerPriority = /\blower priority\b/.test(text);
+    if (req.includes("banana") || text.includes("banana")) {
+      if (!req.includes("banana") || !text.includes("banana")) return false;
+      if (reqPro) return textPro && !textLite;
+      if (reqLite) return textLite;
+      if (req.includes("2")) return /\b2\b/.test(text) && !textLite && !textPro;
+      return false;
+    }
+    if (req.includes("veo") || text.includes("veo")) {
+      if (!req.includes("veo") || !text.includes("veo")) return false;
+      if (reqLowerPriority !== textLowerPriority) return false;
+      if (reqQuality) return textQuality;
+      if (reqFast) return textFast && !textQuality;
+      if (reqLite) return textLite && !textQuality;
+      return false;
+    }
+    if (req.includes("omni") || text.includes("omni")) {
+      if (text.includes("veo") || text.includes("banana")) return false;
+      return text.includes("omni") && req.includes("omni");
+    }
+    return text.endsWith(` ${req}`) || req.endsWith(` ${text}`);
+  }
+  function composerChipMatchesRequestedModel(chipText, requested) {
+    return flowModelOptionMatchesRequested(chipText ?? "", requested);
+  }
+  function shouldFailClosedWhenDebuggerUnavailable(attached) {
+    return !attached;
+  }
+  function canSubmitGenerateWithScalarSettings(args) {
+    for (const field of COST_SCALAR_FIELDS) {
+      const value = args.requested[field];
+      if (value === void 0 || value === null || value === "") continue;
+      if (field === "seed") {
+        if (!args.verified.seed) return false;
+        continue;
+      }
+      if (args.verified[field] || args.fixedByModel?.[field]) continue;
+      return false;
+    }
+    return true;
+  }
+
   // src/background/service-worker.ts
   try {
     if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
@@ -274,9 +502,10 @@
   var FX_API_BASE = "https://labs.google/fx/api";
   var TOKEN_TTL_MS = 50 * 60 * 1e3;
   var REQUEST_TIMEOUT_MS = 6e4;
-  var SYNC_WRITE_TIMEOUT_MS = 5e3;
+  var SYNC_WRITE_TIMEOUT_MS = 1e4;
   var DOWNLOAD_TIMEOUT_MS = DOWNLOAD_TRANSFER_BUDGET_MS;
   var FLOW_SITEKEY = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV";
+  var PROXY_FETCH_ALLOWED_HOSTS = /* @__PURE__ */ new Set([]);
   var VIDEO_KINDS = /* @__PURE__ */ new Set([
     "i2v",
     "t2v",
@@ -288,6 +517,30 @@
   function isVideoKind(kind) {
     return VIDEO_KINDS.has(kind);
   }
+  async function cdpClickAt(target, x, y, holdMs = 80, requestId) {
+    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x,
+      y,
+      button: "left",
+      buttons: 1,
+      clickCount: 1
+    });
+    if (requestId !== void 0) {
+      await waitWhileNotAborted(holdMs, requestId);
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, holdMs));
+    }
+    await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x,
+      y,
+      button: "left",
+      buttons: 0,
+      clickCount: 1
+    });
+  }
   var session = null;
   var activeProjectId = null;
   function sessionFresh() {
@@ -296,19 +549,20 @@
   async function ensureSession() {
     if (sessionFresh()) return session;
     const tab = await findFlowTab();
+    if (!tab || tab.id === void 0) {
+      throw bridgeError("NO_FLOW_TAB", "Google Flow tab required. Open flow.google.com to authorize session.", true);
+    }
     let reply = null;
-    if (tab && tab.id !== void 0) {
-      try {
-        reply = await timeoutable(chrome.tabs.sendMessage(tab.id, { type: "GET_FX_SESSION" }), REQUEST_TIMEOUT_MS);
-      } catch {
-        reply = null;
-      }
+    try {
+      reply = await timeoutable(chrome.tabs.sendMessage(tab.id, { type: "GET_FX_SESSION" }), REQUEST_TIMEOUT_MS);
+    } catch {
+      reply = null;
     }
     if (!reply?.ok || !reply.token) {
       reply = await fetchSessionDirect();
     }
     if (!reply?.ok || !reply.token) {
-      throw bridgeError("AUTH_EXPIRED", reply?.message ?? "Flow session could not be refreshed.", true);
+      throw bridgeError("AUTH_EXPIRED", reply?.message ?? "Flow session could not be refreshed from the active Google Flow tab.", true);
     }
     session = {
       accessToken: reply.token,
@@ -342,7 +596,7 @@
       Origin: "https://labs.google"
     };
   }
-  async function findFlowTab() {
+  async function findFlowTab(expectedProjectId) {
     const tabs = await chrome.tabs.query({});
     const candidates = tabs.filter(
       (tab) => tab.id !== void 0 && isFlowUrl(tab.url ?? "")
@@ -350,6 +604,7 @@
     if (candidates.length === 0) return null;
     const score = (tab) => {
       const projectId = projectIdFromUrl(tab.url ?? "");
+      if (expectedProjectId && projectId === expectedProjectId) return 2e3;
       if (activeProjectId && projectId === activeProjectId) return 1e3;
       if (tab.active) return 500;
       if (projectId) return 250;
@@ -359,23 +614,41 @@
       (a, b) => score(b) - score(a) || (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0)
     )[0] ?? null;
     if (chosenTab && chosenTab.id !== void 0) {
-      void ensureFlowContentScript(chosenTab.id);
+      void ensureFlowContentScript(chosenTab.id).catch(() => void 0);
     }
     return chosenTab;
   }
   async function ensureFlowContentScript(tabId) {
-    try {
-      const ping = await timeoutable(chrome.tabs.sendMessage(tabId, { type: "FLOWGRAPH_PING_FLOW" }), 400);
-      if (ping) return;
-    } catch {
+    const bridgeReady = async () => {
       try {
-        await chrome.scripting.executeScript({
-          target: { tabId },
-          files: ["content/flow-content-script.js"]
-        });
+        const ping = await timeoutable(
+          chrome.tabs.sendMessage(tabId, { type: "FLOWGRAPH_PING_FLOW" }),
+          700
+        );
+        return Boolean(ping?.ok);
       } catch {
+        return false;
       }
+    };
+    if (await bridgeReady()) return;
+    let injectionError = "";
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ["content/flow-content-script.js"]
+      });
+    } catch (error) {
+      injectionError = error instanceof Error ? error.message : String(error);
     }
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 120));
+      if (await bridgeReady()) return;
+    }
+    throw bridgeError(
+      "BRIDGE_UNAVAILABLE",
+      `Flow content bridge did not become ready after injection${injectionError ? `: ${injectionError}` : "."}`,
+      true
+    );
   }
   function projectIdFromUrl(url) {
     const match = url.match(/\/project\/([0-9a-f-]{36})/i);
@@ -417,7 +690,10 @@
     if (combined.includes("reCAPTCHA") || combined.includes("UNUSUAL_ACTIVITY")) {
       return bridgeError("CAPTCHA_REQUIRED", message || "reCAPTCHA evaluation failed", true);
     }
-    if (status === 401) return bridgeError("AUTH_EXPIRED", message || "Unauthorized", true);
+    if (status === 401) {
+      session = null;
+      return bridgeError("AUTH_EXPIRED", "Google Flow session expired. Refresh the Flow tab and retry.", true);
+    }
     if (status === 403) {
       if (combined.includes("CREDIT") || combined.includes("QUOTA")) return bridgeError("CREDIT_EXHAUSTED", message || code, false);
       if (combined.startsWith("PUBLIC_ERROR_") || combined.includes("PERMISSION_DENIED")) return bridgeError("PROVIDER_ERROR", message || code, false);
@@ -552,23 +828,43 @@
         throw bridgeError("UNSUPPORTED_KIND", `Unsupported generation kind: ${payload.kind}`, false);
     }
   }
-  async function generateApi(payload) {
+  async function generateApi(payload, requestId) {
+    throwIfGenerationAborted(requestId);
     const token = await recaptchaToken(payload.projectId);
+    throwIfGenerationAborted(requestId);
     const withToken = { ...payload, recaptchaToken: token };
     const body = buildRequestPayload(withToken);
     const json = await aisandboxFetch(endpointFor(payload), body);
+    throwIfGenerationAborted(requestId);
     const media = json.media?.[0];
     if (!media?.name) throw bridgeError("MEDIA_FAILED", "Provider returned no media id", false);
+    emitGenerateProgress(requestId, media.name);
     const imageFife = media.image?.generatedImage?.fifeUrl;
     const previewUrl = imageFife ? await resolveMediaUrl(media.name, "IMAGE").catch(() => imageFife) : void 0;
     const isImageOutput = payload.kind === "t2i" || payload.kind === "imageUpscale";
-    return {
+    return completeGenerate(requestId, {
       mediaId: media.name,
       type: isImageOutput ? "IMAGE" : "VIDEO",
       projectId: media.projectId ?? payload.projectId,
       workflowId: media.workflowId ?? json.workflows?.[0]?.name,
       previewUrl
-    };
+    }, payload.projectId);
+  }
+  function emitGenerateProgress(requestId, mediaId) {
+    if (!requestId || !mediaId) return;
+    trackGenerationMedia(requestId, mediaId);
+    try {
+      void chrome.runtime.sendMessage({
+        type: GENERATE_PROGRESS_TYPE,
+        requestId,
+        mediaId
+      });
+    } catch {
+    }
+  }
+  async function completeGenerate(requestId, result, projectId) {
+    emitGenerateProgress(requestId, result.mediaId);
+    return finalizeGenerateAgainstAbort(requestId, result, (mediaId) => handleCancel({ projectId, mediaId }));
   }
   async function pollOnce(payload, resolvePreview = false) {
     const json = await aisandboxFetch("video:batchCheckAsyncVideoGenerationStatus", buildPollRequest(payload.mediaId, payload.projectId));
@@ -636,7 +932,48 @@
   }
   async function ensureInputReachable(target) {
     await chrome.debugger.sendCommand(target, "Emulation.setFocusEmulationEnabled", { enabled: true }).catch(() => void 0);
-    await chrome.debugger.sendCommand(target, "Page.bringToFront").catch(() => void 0);
+  }
+  async function ensureFlowProjectComposerReady(tab, projectId, timeoutMs = 2e4) {
+    if (tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    const tabId = tab.id;
+    const projectUrl = `https://flow.google.com/project/${projectId}`;
+    let current = tab;
+    if ((current.url ?? "").includes("/edit/")) {
+      current = await chrome.tabs.update(tabId, { url: projectUrl });
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      current = await chrome.tabs.get(tabId);
+      const liveProjectId = projectIdFromUrl(current.url ?? "");
+      if (liveProjectId && liveProjectId !== projectId) {
+        throw bridgeError(
+          "PROJECT_MISMATCH",
+          `Flow tab project ${liveProjectId} does not match generation project ${projectId}.`,
+          false
+        );
+      }
+      if ((current.url ?? "").includes(`/project/${projectId}`) && !(current.url ?? "").includes("/edit/")) {
+        const ready = await chrome.scripting.executeScript({
+          target: { tabId },
+          world: "MAIN",
+          func: () => {
+            const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]') || document.querySelector('.ProseMirror[contenteditable="true"]') || document.querySelector('[role="textbox"][contenteditable="true"]');
+            const settings = document.querySelector("button.settings-trigger-button") || Array.from(document.querySelectorAll("button")).find((button) => {
+              const aria = (button.getAttribute("aria-label") || "").toLowerCase();
+              return button.getAttribute("aria-haspopup") === "menu" && (aria.includes("settings") || aria.includes("c\xE0i \u0111\u1EB7t") || /video|image/i.test(button.textContent || ""));
+            });
+            return Boolean(editor && settings);
+          }
+        }).then((results) => Boolean(results?.[0]?.result)).catch(() => false);
+        if (ready) return current;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw bridgeError(
+      "UI_NOT_READY",
+      "Google Flow project composer did not become ready after leaving the media editor.",
+      true
+    );
   }
   async function resolveVideoUrlViaDebugger(tabId, galleryUrl, mediaId) {
     const target = { tabId };
@@ -665,30 +1002,11 @@
           return void 0;
         }
       };
-      const clickAt = async (x, y) => {
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mousePressed",
-          x,
-          y,
-          button: "left",
-          buttons: 1,
-          clickCount: 1
-        });
-        await new Promise((r) => setTimeout(r, 80));
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mouseReleased",
-          x,
-          y,
-          button: "left",
-          buttons: 0,
-          clickCount: 1
-        });
-      };
+      const clickAt = (x, y) => cdpClickAt(target, x, y);
       const editUrl = galleryUrl ? `${galleryUrl.replace(/\/edit\/[^/]+.*$/, "")}/edit/${mediaId}` : "";
       projectUrl = galleryUrl ? galleryUrl.replace(/\/edit\/[^/]+.*$/, "") : "";
       const downloadBtnXY = () => evalOnPage(
-        `(()=>{const b=[...document.querySelectorAll('flow-video-tile button')].find((x)=>{const a=(x.getAttribute('aria-label')||'').toLowerCase();const i=x.querySelector('mat-icon,i');return /download|t\u1EA3i/.test(a)||(i&&i.textContent.trim()==='download')});if(!b)return null;const r=b.getBoundingClientRect();if(r.width<2)return null;return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`
+        `(()=>{const b=[...document.querySelectorAll('button')].find((x)=>{const a=(x.getAttribute('aria-label')||'').toLowerCase();const i=x.querySelector('mat-icon,i');return /download|t\u1EA3i/.test(a)||(i&&i.textContent.trim()==='download')||(x.innerText||'').trim()==='download'});if(!b)return null;const r=b.getBoundingClientRect();if(r.width<2)return null;return{x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)}})()`
       );
       const waitForButton = async (ms) => {
         const deadline = Date.now() + ms;
@@ -773,7 +1091,10 @@
       if (projectUrl) {
         try {
           const current = await chrome.tabs.get(tabId);
-          if ((current.url || "").includes("/edit/")) {
+          const projectId = projectIdFromUrl(projectUrl);
+          if (projectId) {
+            await ensureFlowProjectComposerReady(current, projectId, 2e4);
+          } else if ((current.url || "").includes("/edit/")) {
             await chrome.tabs.update(tabId, { url: projectUrl });
           }
         } catch {
@@ -834,34 +1155,38 @@
   async function handleAccountStatus() {
     try {
       const tab = await findFlowTab();
-      if (tab && tab.id !== void 0) {
-        try {
-          const injected = await chrome.scripting.executeScript({
-            target: { tabId: tab.id },
-            func: () => {
-              const el = document.querySelector('a.gb_C, [aria-label*="@gmail.com"], [aria-label*="T\xE0i kho\u1EA3n Google" i], [aria-label*="Google Account" i]');
-              if (el) {
-                const aria = el.getAttribute("aria-label") || "";
-                const emailMatch = aria.match(/\(([^)]+@[^)]+)\)/i);
-                const nameMatch = aria.match(/Tài khoản Google:\s*([^\n(]+)/i) || aria.match(/Google Account:\s*([^\n(]+)/i);
-                return {
-                  email: emailMatch ? emailMatch[1].trim() : void 0,
-                  name: nameMatch ? nameMatch[1].trim() : void 0
-                };
-              }
-              return null;
+      if (!tab || tab.id === void 0) {
+        return {
+          state: "DISCONNECTED",
+          error: "Ch\u1EC9 k\u1EBFt n\u1ED1i khi trang Google Flow \u0111ang m\u1EDF."
+        };
+      }
+      try {
+        const injected = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const el = document.querySelector('a.gb_C, [aria-label*="@gmail.com"], [aria-label*="T\xE0i kho\u1EA3n Google" i], [aria-label*="Google Account" i]');
+            if (el) {
+              const aria = el.getAttribute("aria-label") || "";
+              const emailMatch = aria.match(/\(([^)]+@[^)]+)\)/i);
+              const nameMatch = aria.match(/Tài khoản Google:\s*([^\n(]+)/i) || aria.match(/Google Account:\s*([^\n(]+)/i);
+              return {
+                email: emailMatch ? emailMatch[1].trim() : void 0,
+                name: nameMatch ? nameMatch[1].trim() : void 0
+              };
             }
-          });
-          const userFromDom = injected?.[0]?.result;
-          if (userFromDom?.email) {
-            return {
-              state: "CONNECTED",
-              email: userFromDom.email,
-              name: userFromDom.name
-            };
+            return null;
           }
-        } catch {
+        });
+        const userFromDom = injected?.[0]?.result;
+        if (userFromDom?.email) {
+          return {
+            state: "CONNECTED",
+            email: userFromDom.email,
+            name: userFromDom.name
+          };
         }
+      } catch {
       }
       const auth = await ensureSession();
       return {
@@ -878,19 +1203,80 @@
       };
     }
   }
+  async function detectFlowServiceTierFromUi() {
+    try {
+      const tab = await findFlowTab();
+      if (!tab?.id) return void 0;
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const texts = Array.from(document.querySelectorAll("button, span, div, a")).map((element) => (element.textContent || "").replace(/\s+/g, " ").trim()).filter((text) => text.length > 0 && text.length <= 80);
+          if (texts.some((text) => /(^|\s)ULTRA($|\s)/i.test(text))) return "SERVICE_TIER_ADVANCED";
+          if (texts.some((text) => /(^|\s)PRO($|\s)/i.test(text))) return "SERVICE_TIER_INTERMEDIATE";
+          return void 0;
+        }
+      });
+      const inferred = results?.[0]?.result;
+      return typeof inferred === "string" ? inferred : void 0;
+    } catch {
+      return void 0;
+    }
+  }
   async function handleCredits() {
     try {
-      const auth = await ensureSession();
-      const json = await timeoutable(fetch(`${AISANDBOX_BASE}/credits`, { headers: bearerHeaders() }), REQUEST_TIMEOUT_MS);
-      const data = await json.json().catch(() => ({}));
+      const tab = await findFlowTab();
+      if (tab && tab.id !== void 0) {
+        try {
+          const injected = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => {
+              const bodyText = document.body.innerText || "";
+              const match = bodyText.match(/(?:credits?|điểm)\s*:?\s*(\d+)/i) || bodyText.match(/(\d+)\s*(?:credits?|điểm)/i);
+              if (match) {
+                const val = parseInt(match[1], 10);
+                if (!isNaN(val)) return val;
+              }
+              return null;
+            }
+          });
+          const domCredit = injected?.[0]?.result;
+          if (typeof domCredit === "number") {
+            const serviceTier2 = await detectFlowServiceTierFromUi();
+            return { credits: domCredit, serviceTier: serviceTier2 };
+          }
+        } catch {
+        }
+      }
+      let data = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await ensureSession();
+        const response = await timeoutable(
+          fetch(`${AISANDBOX_BASE}/credits`, { headers: bearerHeaders() }),
+          REQUEST_TIMEOUT_MS
+        );
+        const parsed = await response.json().catch(() => ({}));
+        if (response.ok) {
+          data = parsed;
+          break;
+        }
+        if (response.status === 401 && attempt === 0) {
+          session = null;
+          continue;
+        }
+        throw providerError(response.status, parsed);
+      }
+      if (!data) throw bridgeError("AUTH_EXPIRED", "Google Flow credits session could not be refreshed.", true);
+      const credits = typeof data.credits === "number" ? data.credits : typeof data.remainingCredits === "number" ? data.remainingCredits : void 0;
+      const serviceTier = typeof data.serviceTier === "string" ? data.serviceTier : await detectFlowServiceTierFromUi();
       return {
-        credits: typeof data.remainingCredits === "number" ? data.remainingCredits : void 0,
+        credits,
         userPaygateTier: typeof data.userPaygateTier === "string" ? data.userPaygateTier : void 0,
-        serviceTier: typeof data.serviceTier === "string" ? data.serviceTier : void 0
+        serviceTier
       };
     } catch (error) {
       const normalized = normalizeError(error);
-      return { error: normalized.message };
+      const serviceTier = await detectFlowServiceTierFromUi();
+      return { error: normalized.message, serviceTier };
     }
   }
   function unwrapTrpc(json) {
@@ -936,17 +1322,40 @@
     const aspectRatio = payload.aspectRatio?.match(/\b\d{1,2}:\d{1,2}\b/)?.[0];
     if (aspectRatio) settingWrites.push({ field: "aspectRatio", type: "FLOWGRAPH_SYNC_SET_ASPECT_RATIO", value: aspectRatio });
     if (payload.durationSeconds !== void 0 && Number.isFinite(payload.durationSeconds)) {
-      settingWrites.push({ field: "durationSeconds", type: "FLOWGRAPH_SYNC_SET_DURATION", value: payload.durationSeconds, optional: true });
+      settingWrites.push({ field: "durationSeconds", type: "FLOWGRAPH_SYNC_SET_DURATION", value: payload.durationSeconds });
     }
-    if (payload.targetResolution && isVideoKind(payload.kind) && /^\d{3,4}p$/i.test(String(payload.targetResolution))) {
-      settingWrites.push({ field: "targetResolution", type: "FLOWGRAPH_SYNC_SET_RESOLUTION", value: payload.targetResolution, optional: true });
+    if (payload.batchCount !== void 0 && Number.isFinite(payload.batchCount) && payload.batchCount >= 1) {
+      settingWrites.push({ field: "batchCount", type: "FLOWGRAPH_SYNC_SET_BATCH", value: String(Math.min(4, Math.floor(payload.batchCount))) });
+    }
+    if (payload.targetResolution && isVideoKind(payload.kind)) {
+      settingWrites.push({ field: "targetResolution", type: "FLOWGRAPH_SYNC_SET_RESOLUTION", value: payload.targetResolution });
+    }
+    if (payload.seed !== void 0 && Number.isInteger(payload.seed)) {
+      settingWrites.push({ field: "seed", type: "FLOWGRAPH_SYNC_SET_SEED", value: payload.seed });
     }
     const promptWrite = payload.prompt === void 0 ? void 0 : { field: "prompt", type: "FLOWGRAPH_SYNC_SET_PROMPT", value: payload.prompt };
     const limitations = [];
+    const scalarVerified = {};
+    const scalarFixedByModel = {};
+    const requestedScalars = {
+      aspectRatio,
+      durationSeconds: payload.durationSeconds,
+      batchCount: payload.batchCount !== void 0 && Number.isFinite(payload.batchCount) && payload.batchCount >= 1 ? Math.min(4, Math.floor(payload.batchCount)) : void 0,
+      targetResolution: payload.targetResolution && isVideoKind(payload.kind) ? payload.targetResolution : void 0,
+      seed: payload.seed !== void 0 && Number.isInteger(payload.seed) ? payload.seed : void 0
+    };
     const applyWrites = async (writes) => {
       for (const write of writes) {
         const syncId = `preflight-${write.field}-${crypto.randomUUID()}`;
         const startedAt = Date.now();
+        if (write.type === "FLOWGRAPH_SYNC_SET_MODEL") {
+          await bindRealtimeModel(tab, String(write.value ?? ""));
+          console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
+            syncId,
+            projectId: payload.projectId
+          });
+          continue;
+        }
         const reply = await timeoutable(
           chrome.tabs.sendMessage(tab.id, {
             type: write.type,
@@ -963,13 +1372,17 @@
           REQUEST_TIMEOUT_MS
         ).catch(() => void 0);
         if (reply?.ok) {
+          if (isCostScalarField(write.field)) scalarVerified[write.field] = true;
           console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
             syncId,
             projectId: payload.projectId
           });
           continue;
         }
-        if (write.optional || reply?.code === "NO_UI_COUNTERPART" || write.field === "model" || write.field === "mode") {
+        if (shouldToleratePreflightFailure(write, reply)) {
+          if (isCostScalarField(write.field) && reply?.code === "NO_UI_COUNTERPART") {
+            scalarFixedByModel[write.field] = true;
+          }
           limitations.push(write.field);
           console.info(`[FlowGraph Sync] ${write.field} PREFLIGHT tolerated fallback ${Date.now() - startedAt}ms`, {
             syncId,
@@ -979,7 +1392,7 @@
           continue;
         }
         throw bridgeError(
-          reply?.code ?? "PREFLIGHT_FAILED",
+          preflightFailureCode(write, reply),
           reply?.message ?? `Google Flow did not verify ${write.field} before Generate.`,
           false
         );
@@ -988,8 +1401,9 @@
     try {
       await applyWrites([modeWrite]);
     } catch (err) {
-      console.warn("[FlowGraph Sync] modeWrite preflight failed, fallback to direct CDP switch:", err);
+      console.warn("[FlowGraph Sync] modeWrite preflight failed; verifying with direct CDP switch:", err);
     }
+    await bindRealtimeMode(tab, modeWrite.value);
     if (payload.kind === "t2v") {
       await clearRealtimeFrameBindings(tab, ["startImage", "endImage"]);
     } else if (payload.kind === "i2v") {
@@ -997,10 +1411,15 @@
     }
     if (payload.startImage?.mediaId) {
       const startedAt = Date.now();
-      await bindRealtimeStartImage(tab, payload.startImage.mediaId);
-      console.info(`[FlowGraph Sync] startImage PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
-        projectId: payload.projectId
-      });
+      try {
+        await bindRealtimeStartImage(tab, payload.startImage.mediaId);
+        console.info(`[FlowGraph Sync] startImage PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
+          projectId: payload.projectId
+        });
+      } catch (err) {
+        if (shouldFailClosedOnMediaBindFailure(payload.kind, "startImage")) throw err;
+        console.warn("[FlowGraph Sync] startImage preflight warning, proceeding with generation:", err);
+      }
     }
     if (payload.endImage?.mediaId) {
       const startedAt = Date.now();
@@ -1009,7 +1428,7 @@
         projectId: payload.projectId
       });
     }
-    if (payload.imageRefs && payload.imageRefs.length > 0) {
+    if (payload.kind !== "imageUpscale" && payload.imageRefs && payload.imageRefs.length > 0) {
       const startedAt = Date.now();
       await bindRealtimeReferenceMedia(tab, payload.imageRefs.map((r) => ({ mediaId: r.mediaId })));
       console.info(`[FlowGraph Sync] referenceMedia PREFLIGHT SUCCESS ${Date.now() - startedAt}ms`, {
@@ -1027,10 +1446,164 @@
     }
     await applyWrites(settingWrites);
     if (promptWrite) await applyWrites([promptWrite]);
-    return { limitations };
+    const assertScalarReadyToSubmit = async () => {
+      await applyWrites(settingWrites);
+      if (!canSubmitGenerateWithScalarSettings({
+        requested: requestedScalars,
+        verified: scalarVerified,
+        fixedByModel: scalarFixedByModel
+      })) {
+        throw bridgeError(
+          "INVALID_INPUT",
+          "Requested generation settings were not verified on the Flow composer. Generation aborted.",
+          false
+        );
+      }
+    };
+    return { limitations, assertScalarReadyToSubmit };
   }
-  async function handleGenerate(payload) {
-    const tab = await findFlowTab();
+  async function generateImageUpscaleViaFlowUi(tab, payload, requestId) {
+    const tabId = tab.id;
+    if (tabId === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    const mediaId = payload.imageRefs?.[0]?.mediaId || payload.mediaId;
+    if (!mediaId) throw bridgeError("INVALID_INPUT", "imageUpscale requires an image mediaId", false);
+    const targetResolution = payload.targetResolution === "UPSAMPLE_IMAGE_RESOLUTION_4K" || payload.targetResolution === "4K" ? "4K" : "2K";
+    const projectUrl = `https://flow.google.com/project/${payload.projectId}`;
+    const editorUrl = `${projectUrl}/edit/${mediaId}`;
+    const target = { tabId };
+    let attachedHere = false;
+    try {
+      try {
+        await chrome.debugger.attach(target, "1.3");
+        attachedHere = true;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (!/already attached/i.test(msg)) throw bridgeError("UI_NOT_READY", `Could not attach debugger for image upscale: ${msg}`, true);
+      }
+      await ensureInputReachable(target);
+      const evaluate = async (expression) => {
+        const res = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
+          expression,
+          returnByValue: true,
+          awaitPromise: true
+        });
+        return res?.result?.value;
+      };
+      const waitFor = async (fn, predicate, ms) => {
+        const deadline = Date.now() + ms;
+        for (; ; ) {
+          const value = await fn();
+          if (predicate(value)) return value;
+          if (Date.now() > deadline) return value;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+      };
+      const escape = async () => {
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }).catch(() => {
+        });
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 }).catch(() => {
+        });
+      };
+      throwIfGenerationAborted(requestId);
+      const here = await evaluate("location.href");
+      if (!(here || "").includes(`/edit/${mediaId}`)) {
+        await chrome.debugger.sendCommand(target, "Page.navigate", { url: editorUrl });
+      }
+      const downloadReady = await waitFor(
+        () => evaluate(`!![...document.querySelectorAll('button')].find((b)=>(b.getAttribute('aria-label')||'')==='T\u1EA3i n\u1ED9i dung nghe nh\xECn xu\u1ED1ng'||/download/i.test(b.getAttribute('aria-label')||''))`),
+        Boolean,
+        2e4
+      );
+      if (!downloadReady) throw bridgeError("UI_NOT_READY", "Flow image editor download action was not available.", true);
+      const before = await chrome.downloads.search({});
+      const beforeIds = new Set(before.map((item) => item.id));
+      await escape();
+      const opened = await evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find((x)=>(x.getAttribute('aria-label')||'')==='T\u1EA3i n\u1ED9i dung nghe nh\xECn xu\u1ED1ng'||/download/i.test(x.getAttribute('aria-label')||''));if(!b)return false;b.click();return true})()`);
+      if (!opened) throw bridgeError("UI_NOT_READY", "Could not open Flow image download menu.", true);
+      const optionReady = await waitFor(
+        () => evaluate(`!![...document.querySelectorAll('[role="menuitem"],button')].find((x)=>new RegExp('^${targetResolution}(?:\\\\s|$)','i').test((x.innerText||x.textContent||'').replace(/\\\\s+/g,' ').trim()))`),
+        Boolean,
+        5e3
+      );
+      if (!optionReady) throw bridgeError("UI_NOT_READY", `Flow ${targetResolution} image upscale option was not available.`, true);
+      const clicked = await evaluate(`(()=>{const x=[...document.querySelectorAll('[role="menuitem"],button')].find((el)=>/^${targetResolution}(?:\\s|$)/i.test((el.innerText||el.textContent||'').replace(/\\s+/g,' ').trim()));if(!x)return false;x.click();return true})()`);
+      if (!clicked) throw bridgeError("UI_NOT_READY", `Could not select Flow ${targetResolution} image upscale.`, true);
+      let downloaded;
+      const downloadDeadline = Date.now() + 9e4;
+      while (Date.now() <= downloadDeadline) {
+        throwIfGenerationAborted(requestId);
+        const items = await chrome.downloads.search({});
+        downloaded = items.filter((item) => !beforeIds.has(item.id)).find((item) => item.state === "complete" && new RegExp(`_${targetResolution}_`, "i").test(item.filename || ""));
+        if (downloaded?.filename) break;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      if (!downloaded?.filename) throw bridgeError("MEDIA_FAILED", `Flow ${targetResolution} image upscale download did not complete.`, true);
+      await chrome.debugger.sendCommand(target, "Page.navigate", { url: projectUrl });
+      const composerReady = await waitFor(
+        () => evaluate(`!!document.querySelector('button.add-menu-trigger')`),
+        Boolean,
+        2e4
+      );
+      if (!composerReady) throw bridgeError("UI_NOT_READY", "Flow project composer did not recover after image upscale.", true);
+      for (let i = 0; i < 3; i += 1) await escape();
+      const pickerOpened = await evaluate(`(()=>{const b=document.querySelector('button.add-menu-trigger');if(!b)return false;b.click();return true})()`);
+      if (!pickerOpened) throw bridgeError("UI_NOT_READY", "Flow media picker could not be opened for the upscaled image.", true);
+      const uploadReady = await waitFor(
+        () => evaluate(`!!document.querySelector('button.sidebar-upload-btn')`),
+        Boolean,
+        12e3
+      );
+      if (!uploadReady) throw bridgeError("UI_NOT_READY", "Flow media upload action was not available.", true);
+      const uploadClicked = await evaluate(`(()=>{const b=document.querySelector('button.sidebar-upload-btn');if(!b)return false;b.click();return true})()`);
+      if (!uploadClicked) throw bridgeError("UI_NOT_READY", "Could not open Flow upload file picker.", true);
+      const inputObject = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
+        expression: `document.querySelector('input[type="file"]')`,
+        returnByValue: false
+      });
+      const objectId = inputObject?.result?.objectId;
+      if (!objectId) throw bridgeError("UI_NOT_READY", "Flow upload file input was not available.", true);
+      await chrome.debugger.sendCommand(target, "DOM.setFileInputFiles", { files: [downloaded.filename], objectId });
+      const consent = await waitFor(
+        () => evaluate(`(()=>{const d=[...document.querySelectorAll('[role="dialog"],mat-dialog-container')].find((x)=>/Quy\u1EC1n s\u1EED d\u1EE5ng h\xECnh \u1EA3nh n\xE0y|rights to this image|I agree|T\xF4i \u0111\u1ED3ng \xFD/i.test(x.innerText||''));if(d)return 'CONSENT';const picker=[...document.querySelectorAll('.cdk-overlay-pane')].find((x)=>x.querySelector('.asset-list-viewport'));return picker?'READY':''})()`),
+        (value) => value === "CONSENT" || value === "READY",
+        5e3
+      );
+      if (consent === "CONSENT") {
+        throw bridgeError(
+          "USER_ACTION_REQUIRED",
+          "Google Flow requires a one-time image-rights confirmation. Open the Flow tab, review the dialog, choose \u201CT\xF4i \u0111\u1ED3ng \xFD\u201D if appropriate, then retry the workflow.",
+          false
+        );
+      }
+      const fileName = downloaded.filename.split(/[\\/]/).pop() || "";
+      const stem = fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
+      const uploadedId = await waitFor(
+        () => evaluate(`(()=>{const uuid=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;const candidates=[...document.querySelectorAll('.asset-item')];const stem=${JSON.stringify(stem.toLowerCase())};const row=candidates.find((x)=>((x.innerText||'').toLowerCase().includes(stem.slice(0,Math.min(28,stem.length))))||((x.getAttribute('aria-label')||'').toLowerCase().includes(stem.slice(0,Math.min(28,stem.length)))))||candidates[0];if(!row)return '';const raw=[row.outerHTML,...[...row.querySelectorAll('*')].flatMap((el)=>[el.getAttribute?.('data-media-id'),el.getAttribute?.('src'),el.getAttribute?.('href')])].filter(Boolean).join(' ');return raw.match(uuid)?.[0]||''})()`),
+        (value) => typeof value === "string" && value.length > 0,
+        2e4
+      );
+      if (!uploadedId) {
+        throw bridgeError("MEDIA_FAILED", "Upscaled image was uploaded, but FlowGraph could not resolve its new media id.", true);
+      }
+      const previewUrl = await resolveRedirectSafe(uploadedId, "IMAGE");
+      return completeGenerate(requestId, {
+        mediaId: uploadedId,
+        type: "IMAGE",
+        projectId: payload.projectId,
+        previewUrl: previewUrl || void 0,
+        fileName,
+        mimeType: "image/jpeg"
+      }, payload.projectId);
+    } finally {
+      if (attachedHere) {
+        await chrome.debugger.detach(target).catch(() => {
+        });
+      }
+    }
+  }
+  async function handleGenerate(payload, requestId) {
+    throwIfGenerationAborted(requestId);
+    const tab = await findFlowTab(payload.projectId);
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
     const tabId = tab.id;
     await ensureFlowContentScript(tabId);
@@ -1042,11 +1615,16 @@
         false
       );
     }
-    const isDirectApiPath = payload.kind === "upscale" || payload.kind === "imageUpscale" || payload.kind === "videoUpscale" || payload.kind === "interpolation";
-    if (isDirectApiPath) {
-      return generateApi(payload);
+    if (payload.kind === "imageUpscale") {
+      return generateImageUpscaleViaFlowUi(tab, payload, requestId);
     }
-    const prompt = (payload.prompt ?? "").trim();
+    const isDirectApiPath = payload.kind === "videoUpscale" || payload.kind === "upscale";
+    if (isDirectApiPath) {
+      return generateApi(payload, requestId);
+    }
+    const composerTab = await ensureFlowProjectComposerReady(tab, payload.projectId);
+    await ensureFlowContentScript(tabId);
+    const prompt = (payload.prompt ?? (payload.kind === "videoUpscale" || payload.kind === "upscale" ? "High quality detailed upscale" : "")).trim();
     if (!prompt) {
       throw bridgeError(
         "INVALID_INPUT",
@@ -1054,18 +1632,12 @@
         false
       );
     }
-    const galleryUrl = (tab.url ?? "").replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, "");
+    const galleryUrl = (composerTab.url ?? tab.url ?? "").replace(/\/edit\/[0-9a-zA-Z_-]+.*$/, "");
     const target = { tabId };
     let attached = false;
     let attachFailure = "";
-    const isBackgroundExecution = true;
-    if (!isBackgroundExecution) {
-      try {
-        await chrome.tabs.update(tabId, { active: true });
-      } catch {
-      }
-    }
-    await syncAndVerifyBeforeGenerate(tab, { ...payload, prompt });
+    const { assertScalarReadyToSubmit } = await syncAndVerifyBeforeGenerate(composerTab, { ...payload, prompt });
+    throwIfGenerationAborted(requestId);
     try {
       await chrome.debugger.attach(target, "1.3");
       attached = true;
@@ -1082,30 +1654,7 @@
           return void 0;
         }
       };
-      const clickAt = async (x, y) => {
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mouseMoved",
-          x,
-          y
-        });
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mousePressed",
-          x,
-          y,
-          button: "left",
-          buttons: 1,
-          clickCount: 1
-        });
-        await new Promise((resolve) => setTimeout(resolve, 80));
-        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-          type: "mouseReleased",
-          x,
-          y,
-          button: "left",
-          buttons: 0,
-          clickCount: 1
-        });
-      };
+      const clickAt = (x, y) => cdpClickAt(target, x, y, 80, requestId);
       const setComposerMode = async (kind) => {
         const wantVideo = isVideoKind(kind);
         const currentStatus = await evalOnPage(`(() => {
@@ -1114,8 +1663,8 @@
         const isVideo = text.includes('video') || text.includes('veo') || text.includes('omni');
         return { isVideo, text };
       })()`);
-        if (currentStatus && currentStatus.isVideo === wantVideo) {
-          return currentStatus.text;
+        if (canSubmitGenerateWithComposerMode({ kind, liveChipText: currentStatus?.text })) {
+          return currentStatus?.text ?? "";
         }
         const triggerCoords = await evalOnPage(`(() => {
         const btn = document.querySelector('button.settings-trigger-button');
@@ -1125,7 +1674,7 @@
       })()`);
         if (triggerCoords?.ok && triggerCoords.x !== void 0 && triggerCoords.y !== void 0) {
           await clickAt(triggerCoords.x, triggerCoords.y);
-          await new Promise((r) => setTimeout(r, 400));
+          await waitWhileNotAborted(400, requestId);
         }
         const tabCoords = await evalOnPage(`(() => {
         const pane = document.querySelector('.cdk-overlay-pane');
@@ -1142,26 +1691,26 @@
       })()`);
         if (tabCoords?.ok && tabCoords.x !== void 0 && tabCoords.y !== void 0) {
           await clickAt(tabCoords.x, tabCoords.y);
-          await new Promise((r) => setTimeout(r, 400));
+          await waitWhileNotAborted(400, requestId);
         }
         await evalOnPage(`(() => {
         document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
       })()`);
-        await new Promise((r) => setTimeout(r, 200));
+        await waitWhileNotAborted(200, requestId);
         const after = await evalOnPage(`(() => {
         const btn = document.querySelector('button.settings-trigger-button');
         const text = btn ? (btn.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase() : '';
         const isVideo = text.includes('video') || text.includes('veo') || text.includes('omni');
         return { isVideo, text };
-      })()`);
-        if (!after || after.isVideo !== wantVideo) {
+        })()`);
+        if (!canSubmitGenerateWithComposerMode({ kind, liveChipText: after?.text })) {
           throw bridgeError(
-            "MEDIA_FAILED",
-            `Could not switch Flow composer to ${wantVideo ? "Video" : "Image"} mode.`,
-            true
+            "INVALID_INPUT",
+            `Composer mode does not match ${wantVideo ? "video" : "image"} (chip: ${after?.text || "none"}). Generation aborted.`,
+            false
           );
         }
-        return after.text;
+        return after?.text ?? "";
       };
       const readMediaIds = () => evalOnPage(`
       (() => {
@@ -1233,9 +1782,11 @@
         return { x: Math.round(b.left + b.width / 2), y: Math.round(b.top + b.height / 2) };
       })(${JSON.stringify(pick)})`);
         if (!pos) return void 0;
+        throwIfGenerationAborted(requestId);
         await clickAt(pos.x, pos.y);
         for (let k = 0; k < 15; k += 1) {
-          await new Promise((r) => setTimeout(r, 400));
+          throwIfGenerationAborted(requestId);
+          await waitWhileNotAborted(400, requestId);
           const href = await evalOnPage(`location.href`);
           const m = href && href.match(/\/edit\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
           if (!m || !m[1]) continue;
@@ -1256,23 +1807,24 @@
           for (let k = 0; k < 10; k += 1) {
             const t = read();
             if (t) return t.slice(0, 200);
-            await new Promise((r) => setTimeout(r, 500));
+            await waitWhileNotAborted(500, requestId);
           }
           return '';
         })()`) ?? "";
           await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
           });
-          await new Promise((r) => setTimeout(r, 3e3));
+          await waitWhileNotAborted(3e3, requestId);
           return { mediaId: m[1], editorPrompt };
         }
         await chrome.debugger.sendCommand(target, "Page.navigate", { url: galleryUrl }).catch(() => {
         });
-        await new Promise((r) => setTimeout(r, 3e3));
+        await waitWhileNotAborted(3e3, requestId);
         return void 0;
       };
       try {
         const beforeIds = await readMediaIds() ?? [];
         const beforeVidTokens = await readVideoPosterTokens() ?? [];
+        throwIfGenerationAborted(requestId);
         await setComposerMode(payload.kind);
         const exactStartAlreadyBound = payload.kind === "i2v" && payload.startImage?.mediaId ? Boolean(await evalOnPage(`((mediaId) => {
             const swap = [...document.querySelectorAll('button')].find((button) =>
@@ -1324,7 +1876,7 @@
             x: mediaCenter.x,
             y: mediaCenter.y
           });
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await waitWhileNotAborted(500, requestId);
           const moreVert = await evalOnPage(`((mediaId) => {
           const candidates = Array.from(document.querySelectorAll('img, video, a, [data-media-id]'));
           const matchesMediaId = (el) => {
@@ -1357,7 +1909,7 @@
             );
           }
           await clickAt(moreVert.x, moreVert.y);
-          await new Promise((resolve) => setTimeout(resolve, 600));
+          await waitWhileNotAborted(600, requestId);
           const motionItem = await evalOnPage(`(() => {
           for (const menu of Array.from(document.querySelectorAll('[role="menu"][data-state="open"], [role="dialog"][data-state="open"], [data-radix-menu-content], .cdk-overlay-pane'))) {
             const item = Array.from(menu.querySelectorAll('[role="menuitem"], button'))
@@ -1378,7 +1930,7 @@
             );
           }
           await clickAt(motionItem.x, motionItem.y);
-          await new Promise((resolve) => setTimeout(resolve, 900));
+          await waitWhileNotAborted(900, requestId);
           const bindCheck = await evalOnPage(`((mediaId) => {
           const imgs = Array.from(document.querySelectorAll('img, video')).filter((el) => {
             const s = (el.currentSrc || el.src || el.getAttribute('src') || '').toString();
@@ -1399,14 +1951,135 @@
             );
           }
         }
-        const normalizedPrompt = prompt.replace(/\s+/g, " ").trim();
-        let promptCommitted = Boolean(await evalOnPage(`(() => {
+        let safePrompt = truncateFlowPrompt(prompt);
+        const normalizedPrompt = expectedSubmittedPrompt(prompt);
+        const readComposerText = async () => String(await evalOnPage(`(() => {
         const ed = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
           || document.querySelector('.ProseMirror[contenteditable="true"]')
           || document.querySelector('[role="textbox"][contenteditable="true"]');
-        const text = (ed?.textContent || '').replace(/\\s+/g, ' ').trim();
-        return text === ${JSON.stringify(prompt.replace(/\s+/g, " ").trim())};
-      })()`));
+        return ed?.innerText || ed?.textContent || '';
+      })()`) ?? "");
+        let promptCommitted = composerPromptMatchesExpected(await readComposerText(), normalizedPrompt);
+        const assertPromptReadyToSubmit = async () => {
+          throwIfGenerationAborted(requestId);
+          if (!composerPromptMatchesExpected(await readComposerText(), normalizedPrompt)) {
+            throw bridgeError(
+              "INVALID_INPUT",
+              "Composer prompt does not match the submitted prompt. Generation aborted.",
+              false
+            );
+          }
+        };
+        const assertModeReadyToSubmit = async () => {
+          throwIfGenerationAborted(requestId);
+          const chip = String(await evalOnPage(`(() => {
+          const btn = document.querySelector('button.settings-trigger-button');
+          return btn ? (btn.innerText || '').replace(/\\s+/g, ' ').trim() : '';
+        })()`) ?? "");
+          if (!canSubmitGenerateWithComposerMode({ kind: payload.kind, liveChipText: chip })) {
+            throw bridgeError(
+              "INVALID_INPUT",
+              `Composer mode does not match ${payload.kind} (chip: ${chip || "none"}). Generation aborted.`,
+              false
+            );
+          }
+        };
+        const assertModelReadyToSubmit = async () => {
+          throwIfGenerationAborted(requestId);
+          if (!payload.modelLabel) return;
+          await bindRealtimeModel(tab, payload.modelLabel);
+          throwIfGenerationAborted(requestId);
+        };
+        const assertMediaReadyToSubmit = async () => {
+          throwIfGenerationAborted(requestId);
+          if (payload.kind === "interpolation") {
+            const startId = payload.startImage?.mediaId;
+            const endId = payload.endImage?.mediaId;
+            const startSources = startId ? await evalOnPage(`((mediaId) => {
+                const swap = [...document.querySelectorAll('button')].find((button) =>
+                  [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
+                    .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
+                const root = swap?.previousElementSibling;
+                return [...(root?.querySelectorAll('img, video, [data-media-id]') || [])].flatMap((element) => [
+                  element.getAttribute?.('data-media-id'),
+                  element.getAttribute?.('src'),
+                  element.currentSrc,
+                  element.src,
+                ].filter(Boolean).map(String));
+              })(${JSON.stringify(startId)})`) ?? [] : [];
+            const endSources = endId ? await evalOnPage(`((mediaId) => {
+                const swap = [...document.querySelectorAll('button')].find((button) =>
+                  [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
+                    .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
+                const root = swap?.nextElementSibling;
+                return [...(root?.querySelectorAll('img, video, [data-media-id]') || [])].flatMap((element) => [
+                  element.getAttribute?.('data-media-id'),
+                  element.getAttribute?.('src'),
+                  element.currentSrc,
+                  element.src,
+                ].filter(Boolean).map(String));
+              })(${JSON.stringify(endId)})`) ?? [] : [];
+            const startBound = !startId || slotSourcesContainExactMediaId(startSources, startId);
+            const endBound = !endId || slotSourcesContainExactMediaId(endSources, endId);
+            if (!canSubmitGenerateWithMediaBindings({
+              kind: "interpolation",
+              hasStart: Boolean(startId),
+              hasEnd: Boolean(endId),
+              startBound,
+              endBound
+            })) {
+              throw bridgeError(
+                "MEDIA_FAILED",
+                `Interpolation frames were not verified before Generate (start ${startId ?? "none"} bound=${startBound}, end ${endId ?? "none"} bound=${endBound}).`,
+                false
+              );
+            }
+          }
+          if (payload.kind === "reference" && payload.imageRefs && payload.imageRefs.length > 0) {
+            const expected = payload.imageRefs.map((ref) => ref.mediaId);
+            const applied = await evalOnPage(`(() => {
+            const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+            const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+              || document.querySelector('.ProseMirror[contenteditable="true"]')
+              || document.querySelector('[role="textbox"][contenteditable="true"]');
+            if (!editor) return [];
+            const editorRect = editor.getBoundingClientRect();
+            const swap = [...document.querySelectorAll('button')].find((button) =>
+              [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
+                .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
+            const frameRoots = [swap?.previousElementSibling, swap?.nextElementSibling].filter(Boolean);
+            const ids = [...document.querySelectorAll('button')]
+              .filter((button) => [...button.querySelectorAll('i.google-symbols, .google-symbols')]
+                .some((icon) => (icon.textContent || '').trim() === 'cancel'))
+              .filter((button) => !frameRoots.some((root) => root.contains(button)))
+              .filter((button) => {
+                const rect = button.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0 && rect.width <= 90 && rect.height <= 90
+                  && rect.bottom >= editorRect.top - 220 && rect.top <= editorRect.bottom + 80;
+              })
+              .map((button) => [...button.querySelectorAll('img, video, [data-media-id]')]
+                .flatMap((element) => [
+                  element.getAttribute?.('data-media-id'), element.getAttribute?.('src'),
+                  element.currentSrc, element.src,
+                ].filter(Boolean).map(String))
+                .map((value) => value.match(uuid)?.[0]).find(Boolean))
+              .filter(Boolean);
+            return [...new Set(ids)];
+          })()`) ?? [];
+            const referenceBound = referenceMediaExactlyBound(expected, applied);
+            if (!canSubmitGenerateWithMediaBindings({
+              kind: "reference",
+              hasRefs: true,
+              referenceBound
+            })) {
+              throw bridgeError(
+                "MEDIA_FAILED",
+                `Flow Reference Media was not verified before Generate (requested ${expected.join(", ")}, bound ${applied.join(", ")}).`,
+                false
+              );
+            }
+          }
+        };
         if (!promptCommitted) {
           await timeoutable(chrome.tabs.sendMessage(tabId, {
             type: "FLOWGRAPH_SYNC_SUPPRESS_ECHO",
@@ -1426,6 +2099,7 @@
         })()`);
           if (editor?.ok && editor.x !== void 0 && editor.y !== void 0) {
             await clickAt(editor.x, editor.y);
+            await waitWhileNotAborted(200, requestId);
             await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
               type: "keyDown",
               key: "Control",
@@ -1452,55 +2126,74 @@
               code: "ControlLeft",
               windowsVirtualKeyCode: 17
             });
-            await chrome.debugger.sendCommand(target, "Input.insertText", { text: prompt });
+            await waitWhileNotAborted(80, requestId);
+            await chrome.debugger.sendCommand(target, "Input.insertText", { text: safePrompt });
+            await waitWhileNotAborted(400, requestId);
+            await evalOnPage(`(() => {
+            const ed = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+              || document.querySelector('.ProseMirror[contenteditable="true"]')
+              || document.querySelector('[role="textbox"][contenteditable="true"]');
+            if (ed) {
+              ed.focus();
+              document.execCommand('insertText', false, ' ');
+              document.execCommand('delete', false);
+              ed.dispatchEvent(new Event('input', { bubbles: true }));
+              ed.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          })()`);
           }
         }
         const promptDeadline = Date.now() + 4e3;
         while (Date.now() < promptDeadline) {
-          promptCommitted = Boolean(await evalOnPage(`(() => {
-          const ed = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
-            || document.querySelector('.ProseMirror[contenteditable="true"]')
-            || document.querySelector('[role="textbox"][contenteditable="true"]');
-          const text = (ed?.textContent || '').replace(/\\s+/g, ' ').trim();
-          return text === ${JSON.stringify(normalizedPrompt)};
-        })()`));
+          promptCommitted = composerPromptMatchesExpected(await readComposerText(), normalizedPrompt);
           if (promptCommitted) break;
-          await new Promise((resolve) => setTimeout(resolve, 150));
+          await waitWhileNotAborted(150, requestId);
         }
         if (!promptCommitted) {
-          throw bridgeError("INVALID_INPUT", "Google Flow prompt editor did not commit the requested prompt.", true);
+          await assertPromptReadyToSubmit();
         }
-        await new Promise((resolve) => setTimeout(resolve, 1200));
-        const generateButton = await evalOnPage(`(() => {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        const gen = buttons.find((button) => {
-          // New Angular Flow UI (flow.google.com): submit button carries
-          // aria-label "B\u1EAFt \u0111\u1EA7u t\u1EA1o"/"Start creating" and class generate-icon-button.
-          const aria = (button.getAttribute('aria-label') || '').trim().toLowerCase();
-          if (button.classList.contains('generate-icon-button')
-            || /b\u1EAFt \u0111\u1EA7u t\u1EA1o|start creat|begin creat/.test(aria)) {
-            return true;
+        await waitWhileNotAborted(1200, requestId);
+        let generateButton = null;
+        for (let attempt = 0; attempt < 12; attempt++) {
+          throwIfGenerationAborted(requestId);
+          generateButton = await evalOnPage(`(() => {
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const gen = buttons.find((button) => {
+            const aria = (button.getAttribute('aria-label') || '').trim().toLowerCase();
+            if (button.classList.contains('generate-icon-button')
+              || /b\u1EAFt \u0111\u1EA7u t\u1EA1o|start creat|begin creat/.test(aria)) {
+              return true;
+            }
+            const icon = Array.from(button.querySelectorAll('i.google-symbols, .google-symbols'))
+              .find((candidate) => (candidate.textContent || '').trim() === 'arrow_forward');
+            return Boolean(icon);
+          });
+          if (!gen) return { ok: false, reason: 'generate-button-not-found' };
+
+          // If disabled, click editor or dispatch input event to ensure Angular notices prompt commit
+          if (gen.disabled || gen.getAttribute('aria-disabled') === 'true') {
+            const ed = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+              || document.querySelector('.ProseMirror[contenteditable="true"]')
+              || document.querySelector('[role="textbox"][contenteditable="true"]');
+            if (ed) {
+              ed.dispatchEvent(new Event('input', { bubbles: true }));
+              ed.dispatchEvent(new Event('change', { bubbles: true }));
+            }
           }
-          // Legacy labs.google/fx UI: arrow_forward google-symbols icon.
-          const icon = Array.from(button.querySelectorAll('i.google-symbols, .google-symbols'))
-            .find((candidate) => (candidate.textContent || '').trim() === 'arrow_forward');
-          return Boolean(icon);
-        });
-        if (!gen) return { ok: false, reason: 'generate-button-not-found' };
-        if (gen.disabled || gen.getAttribute('aria-disabled') === 'true') {
-          return { ok: false, reason: 'generate-button-disabled' };
+
+          gen.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+          const rect = gen.getBoundingClientRect();
+          if (!rect.width || !rect.height) return { ok: false, reason: 'generate-button-not-visible' };
+          return {
+            ok: !gen.disabled && gen.getAttribute('aria-disabled') !== 'true',
+            reason: (gen.disabled || gen.getAttribute('aria-disabled') === 'true') ? 'generate-button-disabled' : undefined,
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+          };
+        })()`);
+          if (generateButton?.ok) break;
+          await waitWhileNotAborted(600, requestId);
         }
-        gen.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-        // Scrolling can change the button coordinates. Read the rect only after
-        // Flow has brought the control into its final visible position.
-        const rect = gen.getBoundingClientRect();
-        if (!rect.width || !rect.height) return { ok: false, reason: 'generate-button-not-visible' };
-        return {
-          ok: true,
-          x: rect.left + rect.width / 2,
-          y: rect.top + rect.height / 2,
-        };
-      })()`);
         if (!generateButton?.ok || generateButton.x === void 0 || generateButton.y === void 0) {
           throw bridgeError(
             "INVALID_INPUT",
@@ -1508,6 +2201,7 @@
             true
           );
         }
+        throwIfGenerationAborted(requestId);
         const measureGenerateButton = () => evalOnPage(`(() => {
           const gen = Array.from(document.querySelectorAll('button')).find((b) =>
             b.classList.contains('generate-icon-button'));
@@ -1520,30 +2214,7 @@
           const hitOk = Boolean(hit && (hit === gen || gen.contains(hit)));
           return { x, y, disabled: Boolean(gen.disabled), hitOk };
         })()`);
-        const clickAtCenter = async (x, y) => {
-          await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-            type: "mouseMoved",
-            x,
-            y
-          });
-          await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-            type: "mousePressed",
-            x,
-            y,
-            button: "left",
-            buttons: 1,
-            clickCount: 1
-          });
-          await new Promise((resolve) => setTimeout(resolve, 80));
-          await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-            type: "mouseReleased",
-            x,
-            y,
-            button: "left",
-            buttons: 0,
-            clickCount: 1
-          });
-        };
+        const clickAtCenter = (x, y) => cdpClickAt(target, x, y, 80, requestId);
         const promptConsumed = () => evalOnPage(`((expected) => {
           const ed = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
             || document.querySelector('.ProseMirror[contenteditable="true"]')
@@ -1583,7 +2254,8 @@
             + ' tiles=' + document.querySelectorAll('[data-media-id]').length;
         })()`);
         for (let attempt = 0; attempt < 4 && !submitAccepted; attempt += 1) {
-          if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1500));
+          throwIfGenerationAborted(requestId);
+          if (attempt > 0) await waitWhileNotAborted(1500, requestId);
           const measured = await measureGenerateButton();
           submitTrace.push(`a${attempt}:${measured === void 0 ? "EVAL_UNDEF" : `x${Math.round(measured.x ?? -1)}y${Math.round(measured.y ?? -1)}d${measured.disabled ? 1 : 0}h${measured.hitOk ? 1 : 0}`}`);
           const fresh = measured ?? {};
@@ -1600,9 +2272,16 @@
           if (!fresh.hitOk) {
             continue;
           }
+          throwIfGenerationAborted(requestId);
+          await assertScalarReadyToSubmit();
+          await assertModeReadyToSubmit();
+          await assertModelReadyToSubmit();
+          await assertMediaReadyToSubmit();
+          await assertPromptReadyToSubmit();
           await clickAtCenter(fresh.x, fresh.y);
           for (let settle = 0; settle < 12 && !submitAccepted; settle += 1) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
+            throwIfGenerationAborted(requestId);
+            await waitWhileNotAborted(500, requestId);
             const consumed = await promptConsumed();
             if (settle === 2 || settle === 11) {
               const snap = await composerSnapshot();
@@ -1611,8 +2290,13 @@
             if (consumed) submitAccepted = true;
           }
           if (!submitAccepted) {
+            await assertScalarReadyToSubmit();
+            await assertModeReadyToSubmit();
+            await assertModelReadyToSubmit();
+            await assertMediaReadyToSubmit();
+            await assertPromptReadyToSubmit();
             await clickAtCenter(fresh.x, fresh.y - 60);
-            await new Promise((resolve) => setTimeout(resolve, 300));
+            await waitWhileNotAborted(300, requestId);
             await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
               type: "keyDown",
               key: "Enter",
@@ -1628,7 +2312,8 @@
               nativeVirtualKeyCode: 13
             });
             for (let settle = 0; settle < 8 && !submitAccepted; settle += 1) {
-              await new Promise((resolve) => setTimeout(resolve, 500));
+              throwIfGenerationAborted(requestId);
+              await waitWhileNotAborted(500, requestId);
               if (await promptConsumed()) submitAccepted = true;
             }
             submitTrace.push(`a${attempt}enter:${submitAccepted ? "CONSUMED" : "TYPED"}`);
@@ -1652,15 +2337,34 @@
           `(()=>{for(const f of document.querySelectorAll('iframe')){if(!/recaptcha/i.test(f.src||''))continue;const r=f.getBoundingClientRect();if(r.width<120||r.height<40)continue;const cx=r.x+r.width/2,cy=r.y+r.height/2;if(cx<0||cy<0||cx>=innerWidth||cy>=innerHeight)continue;let el=f,vis=true;while(el){const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity)===0){vis=false;break}el=el.parentElement}if(!vis)continue;const hit=document.elementFromPoint(cx,cy);if(hit&&(hit===f||f.contains(hit)))return true}return false})()`
         );
         while (Date.now() - startMs < maxWaitMs) {
-          await new Promise((r) => setTimeout(r, 4e3));
+          await waitWhileNotAborted(4e3, requestId);
+          throwIfGenerationAborted(requestId);
           const elapsed = Date.now() - startMs;
           waitTick += 1;
           if (!wantVideo) {
             const current = await readMediaIds() ?? [];
-            const newId = current.find((id) => !initialSet.has(id));
-            if (newId) {
-              const previewUrl3 = await resolveRedirectSafe(newId, "IMAGE");
-              return { mediaId: newId, type: "IMAGE", projectId: payload.projectId, previewUrl: previewUrl3, completedViaUi: true };
+            const newIds = current.filter((id) => !initialSet.has(id));
+            if (newIds.length > 0) {
+              const candidates = [];
+              for (const candidateId of newIds.slice(0, 4)) {
+                const text = await evalOnPage(`((id) => {
+                const el = Array.from(document.querySelectorAll('img, [data-media-id]')).find((candidate) => {
+                  const src = String(candidate.getAttribute('src') || candidate.src || '');
+                  const attr = String(candidate.getAttribute('data-media-id') || '');
+                  return attr === id || src.includes(id);
+                });
+                const tile = el?.closest('[role="button"]') || el?.parentElement;
+                return tile ? (tile.innerText || '').replace(/\\s+/g, ' ').trim() : '';
+              })(${JSON.stringify(candidateId)})`) ?? "";
+                const matchedPrompt = editorPromptMatches(text, prompt);
+                candidates.push({ mediaId: candidateId, editorPrompt: text, matchedPrompt });
+              }
+              const attributedId = selectAttributedImageMediaId({ candidates, expectedPrompt: prompt });
+              if (attributedId) {
+                emitGenerateProgress(requestId, attributedId);
+                const previewUrl2 = await resolveRedirectSafe(attributedId, "IMAGE");
+                return completeGenerate(requestId, { mediaId: attributedId, type: "IMAGE", projectId: payload.projectId, previewUrl: previewUrl2, completedViaUi: true }, payload.projectId);
+              }
             }
             if (elapsed >= captchaGraceMs && await detectInteractiveCaptcha()) {
               throw bridgeError(
@@ -1724,8 +2428,9 @@
           if (!matched) {
             continue;
           }
-          const previewUrl2 = await resolveRedirectSafe(matched.mediaId, "VIDEO");
-          return { mediaId: matched.mediaId, type: "VIDEO", projectId: payload.projectId, previewUrl: previewUrl2, completedViaUi: true };
+          const previewUrl = await resolveRedirectSafe(matched.mediaId, "VIDEO");
+          emitGenerateProgress(requestId, matched.mediaId);
+          return completeGenerate(requestId, { mediaId: matched.mediaId, type: "VIDEO", projectId: payload.projectId, previewUrl, completedViaUi: true }, payload.projectId);
         }
         throw bridgeError(
           "TIMEOUT",
@@ -1739,34 +2444,79 @@
         }
       }
     }
-    const reply = await timeoutable(
-      chrome.tabs.sendMessage(tabId, {
-        type: "FLOWGRAPH_UI_GENERATE",
-        prompt,
-        kind: payload.kind,
-        startImageMediaId: payload.startImage?.mediaId
-      }),
-      // The content script runs its own submit + media wait, so this has to cover
-      // the longest legitimate render rather than the old flat 180s.
-      MEDIA_WAIT_VIDEO_MS
-    );
-    if (!reply?.ok || !reply.mediaId) {
-      const why = attached ? "" : ` [CDP unavailable${attachFailure ? `: ${attachFailure}` : ""}; used content-script fallback]`;
+    throwIfGenerationAborted(requestId);
+    if (shouldFailClosedWhenDebuggerUnavailable(attached)) {
       throw bridgeError(
-        reply?.code ?? "MEDIA_FAILED",
-        `${reply?.message ?? "UI generation failed via content script"}${why}`,
-        true
+        "UI_NOT_READY",
+        `Chrome debugger is unavailable; generation aborted without a Generate click${attachFailure ? `: ${attachFailure}` : ""}.`,
+        false
       );
     }
-    const previewUrl = await resolveRedirectSafe(reply.mediaId);
-    return {
-      mediaId: reply.mediaId,
-      type: reply.type ?? (isVideoKind(payload.kind) ? "VIDEO" : "IMAGE"),
-      projectId: payload.projectId,
-      previewUrl
-    };
+    throw bridgeError(
+      "UI_NOT_READY",
+      "Chrome debugger is unavailable; generation aborted without a Generate click.",
+      false
+    );
   }
   async function handleMediaStatus(payload) {
+    if (payload.playbackRecovery) {
+      const tab = await findFlowTab();
+      if (tab?.id === void 0) return { status: "FAILED" };
+      const tabPath = (() => {
+        try {
+          return new URL(tab.url || "").pathname;
+        } catch {
+          return "";
+        }
+      })();
+      const exactProjectActive = tabPath.split("/").includes(payload.projectId);
+      if (!/^[0-9a-f-]{36}$/i.test(payload.mediaId) || !exactProjectActive) {
+        return {
+          status: "FAILED",
+          errorMessage: "Playback recovery requires the exact provider video in its active Flow project."
+        };
+      }
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: "MAIN",
+        args: [payload.mediaId, payload.projectId],
+        func: (id, projectId) => {
+          if (!/^[0-9a-f-]{36}$/i.test(id) || !location.pathname.split("/").includes(projectId)) return null;
+          const exactTile = document.querySelector(`[data-media-id="${id}"]`);
+          const candidates = exactTile ? Array.from(exactTile.querySelectorAll("video")) : location.pathname.endsWith(`/edit/${id}`) ? Array.from(document.querySelectorAll("video")) : [];
+          if (candidates.length !== 1) return null;
+          const video = candidates[0];
+          if (video.error || video.readyState < 2 || !video.currentSrc) return null;
+          return video.currentSrc;
+        }
+      });
+      const passiveUrl = results[0]?.result;
+      if (typeof passiveUrl === "string" && passiveUrl) {
+        return {
+          status: "SUCCESSFUL",
+          media: { mediaId: payload.mediaId, projectId: payload.projectId, type: "VIDEO", previewUrl: passiveUrl }
+        };
+      }
+      if (payload.playbackRefresh === true) {
+        try {
+          const refreshedUrl = await timeoutable(
+            resolveVideoUrlViaDebugger(tab.id, tab.url, payload.mediaId),
+            DOWNLOAD_RESOLVE_BUDGET_MS
+          );
+          if (refreshedUrl) {
+            return {
+              status: "SUCCESSFUL",
+              media: { mediaId: payload.mediaId, projectId: payload.projectId, type: "VIDEO", previewUrl: refreshedUrl }
+            };
+          }
+        } catch {
+        }
+      }
+      return {
+        status: "FAILED",
+        errorMessage: payload.playbackRefresh ? "Could not refresh the exact video source from Flow." : "Exact video is not playable on the Flow page. Retry to refresh this exact clip."
+      };
+    }
     try {
       const previewUrl = await resolveMediaUrl(payload.mediaId, "IMAGE");
       if (previewUrl) {
@@ -1799,20 +2549,60 @@
     }
     return pollOnce(payload, true);
   }
+  async function uploadImageViaFlowTab(body) {
+    const tab = await findFlowTab();
+    if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "Open Google Flow first.", false);
+    const results = await timeoutable(
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: "MAIN",
+        args: [`${AISANDBOX_BASE}/flow/uploadImage`, body],
+        func: async (url, payload) => {
+          const response = await fetch(url, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const text = await response.text();
+          return { status: response.status, text };
+        }
+      }),
+      REQUEST_TIMEOUT_MS
+    );
+    const reply = results[0]?.result;
+    if (!reply) throw bridgeError("PROVIDER_ERROR", "Flow tab did not accept the upload.", true);
+    let json = null;
+    try {
+      json = JSON.parse(reply.text || "");
+    } catch {
+    }
+    if (!reply.status || reply.status >= 400) throw providerError(reply.status || 0, json);
+    return json;
+  }
   async function handleMediaUpload(payload) {
-    const json = await aisandboxFetch("flow/uploadImage", buildUploadRequest(
+    const body = buildUploadRequest(
       payload.projectId,
       payload.imageBytesBase64,
       payload.mimeType,
       payload.fileName
-    ));
-    const media = json.media?.[0];
-    if (!media?.name) throw bridgeError("MEDIA_FAILED", "Upload returned no media id", false);
+    );
+    let json;
+    try {
+      json = await uploadImageViaFlowTab(body);
+    } catch (error) {
+      const code = error.code;
+      if (code === "NO_FLOW_TAB" || code === "AUTH_EXPIRED") throw error;
+      json = await aisandboxFetch("flow/uploadImage", body);
+    }
+    const mediaObj = Array.isArray(json.media) ? json.media[0] : json.media;
+    const mediaName = mediaObj?.name || json.workflow?.metadata?.primaryMediaId;
+    if (!mediaName) throw bridgeError("MEDIA_FAILED", "Upload returned no media id", false);
     return {
-      mediaId: media.name,
+      mediaId: mediaName,
       type: "IMAGE",
-      projectId: media.projectId ?? payload.projectId,
-      workflowId: media.workflowId,
+      projectId: mediaObj?.projectId ?? payload.projectId,
+      workflowId: mediaObj?.workflowId ?? json.workflow?.name,
       mimeType: payload.mimeType,
       fileName: payload.fileName
     };
@@ -1857,13 +2647,38 @@
         }
         case "FLOWGRAPH_MEDIA_UPLOAD":
           return makeResponse(request.requestId, await handleMediaUpload(request.payload));
+        case "FLOWGRAPH_ABORT_GENERATE": {
+          const abortPayload = request.payload;
+          const targetId = abortPayload?.requestId || request.requestId;
+          markGenerationAborted(targetId);
+          const flight = getGenerationFlight(targetId);
+          if (flight?.mediaId && flight.projectId) {
+            await handleCancel({ projectId: flight.projectId, mediaId: flight.mediaId }).catch(() => void 0);
+          }
+          return makeResponse(request.requestId, { aborted: true, requestId: targetId });
+        }
+        case "FLOWGRAPH_GENERATE_PROGRESS":
+          return makeResponse(request.requestId, { ok: true });
         case "FLOWGRAPH_GENERATE": {
           const genPayload = request.payload;
-          const isDirectApiPath = genPayload.kind === "upscale" || genPayload.kind === "imageUpscale" || genPayload.kind === "videoUpscale";
-          if (isDirectApiPath) {
-            return makeResponse(request.requestId, await generateApi(genPayload));
+          const isDirectApiPath = genPayload.kind === "videoUpscale";
+          trackGenerationStart(request.requestId, genPayload.projectId);
+          try {
+            if (isGenerationAborted(request.requestId)) {
+              return makeError(request.requestId, "CANCELLED", "Generation aborted", false);
+            }
+            const data = isDirectApiPath ? await generateApi(genPayload, request.requestId) : await handleGenerate(genPayload, request.requestId);
+            if (data?.mediaId) emitGenerateProgress(request.requestId, data.mediaId);
+            if (isGenerationAborted(request.requestId)) {
+              if (data?.mediaId) {
+                await handleCancel({ projectId: genPayload.projectId, mediaId: data.mediaId }).catch(() => void 0);
+              }
+              return makeError(request.requestId, "CANCELLED", "Generation aborted", false);
+            }
+            return makeResponse(request.requestId, data);
+          } finally {
+            endGeneration(request.requestId);
           }
-          return makeResponse(request.requestId, await handleGenerate(genPayload));
         }
         case "FLOWGRAPH_MEDIA_STATUS":
           return makeResponse(request.requestId, await handleMediaStatus(request.payload));
@@ -1871,6 +2686,27 @@
           return makeResponse(request.requestId, await downloadMedia(request.payload));
         case "FLOWGRAPH_CANCEL":
           return makeResponse(request.requestId, await handleCancel(request.payload));
+        case "FLOWGRAPH_PROXY_FETCH": {
+          const payload = request.payload;
+          const target = new URL(payload.url);
+          const hostname = target.hostname.toLowerCase();
+          const isLocalGateway = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]" || hostname.endsWith(".localhost");
+          if (target.protocol !== "http:" && target.protocol !== "https:" || !isLocalGateway && !PROXY_FETCH_ALLOWED_HOSTS.has(hostname)) {
+            return makeError(request.requestId, "FORBIDDEN", `Proxy fetch blocked for non-allowlisted host: ${target.hostname}`, false);
+          }
+          const response = await fetch(target.toString(), {
+            method: payload.method || "GET",
+            headers: payload.headers,
+            body: payload.body
+          });
+          const text = await response.text();
+          return makeResponse(request.requestId, {
+            ok: response.ok,
+            status: response.status,
+            statusText: response.statusText,
+            text
+          });
+        }
         case "FLOWGRAPH_SYNC_SET_BATCH":
         case "FLOWGRAPH_SYNC_SET_BATCH_COUNT":
           return makeResponse(request.requestId, await forwardSyncWrite(request));
@@ -1901,6 +2737,74 @@
   ]);
   var SYNC_RELAY_TYPES = /* @__PURE__ */ new Set(["FLOWGRAPH_SYNC_EVENT", "FLOWGRAPH_SYNC_STATE"]);
   var SYNC_FOREGROUND_TYPES = /* @__PURE__ */ new Set([]);
+  var activeProviderFocusActivities = /* @__PURE__ */ new Map();
+  var FOCUS_TELEMETRY_REQUEST_TYPES = /* @__PURE__ */ new Set([
+    "FLOWGRAPH_PROJECT_SELECT",
+    "FLOWGRAPH_MEDIA_UPLOAD",
+    "FLOWGRAPH_MEDIA_STATUS",
+    "FLOWGRAPH_MEDIA_DOWNLOAD",
+    "FLOWGRAPH_GENERATE"
+  ]);
+  function focusTelemetryAction(type) {
+    if (type.startsWith("FLOWGRAPH_SYNC_")) {
+      return `sync:${type.replace(/^FLOWGRAPH_SYNC_/, "").toLowerCase()}`;
+    }
+    return type.replace(/^FLOWGRAPH_/, "").toLowerCase().replaceAll("_", ":");
+  }
+  async function withProviderFocusTelemetry(action, requestId, sender, task) {
+    const provider = await findFlowTab().catch(() => void 0);
+    const sourceTab = sender.tab;
+    const activity = {
+      id: crypto.randomUUID(),
+      action,
+      requestId,
+      startedAt: Date.now(),
+      sourceTabId: sourceTab?.id,
+      sourceWindowId: sourceTab?.windowId,
+      sourceUrl: sourceTab?.url,
+      providerTabId: provider?.id,
+      providerWindowId: provider?.windowId,
+      reported: false
+    };
+    activeProviderFocusActivities.set(activity.id, activity);
+    try {
+      return await task();
+    } finally {
+      activeProviderFocusActivities.delete(activity.id);
+    }
+  }
+  async function emitFocusTelemetry(activity, activatedTabId) {
+    const durationMs = Math.max(0, Date.now() - activity.startedAt);
+    const payload = {
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      code: "SUSPECTED_FOCUS_STEAL",
+      action: activity.action,
+      requestId: activity.requestId,
+      durationMs,
+      fromTabId: activity.sourceTabId,
+      toTabId: activatedTabId,
+      providerTabId: activity.providerTabId,
+      windowId: activity.providerWindowId ?? activity.sourceWindowId,
+      message: `Google Flow became the active tab while automatic provider action "${activity.action}" was running.`
+    };
+    console.warn("[FlowGraph Focus Telemetry]", payload);
+    await chrome.runtime.sendMessage({
+      type: "FLOWGRAPH_FOCUS_TELEMETRY",
+      requestId: `sw:focus:${activity.id}`,
+      payload
+    }).catch(() => {
+    });
+  }
+  chrome.tabs.onActivated.addListener((activeInfo) => {
+    for (const activity of activeProviderFocusActivities.values()) {
+      if (activity.reported) continue;
+      if (activity.providerTabId === void 0 || activeInfo.tabId !== activity.providerTabId) continue;
+      if (activity.sourceTabId === void 0 || activity.sourceTabId === activeInfo.tabId) continue;
+      if (activity.sourceWindowId !== void 0 && activity.providerWindowId !== void 0 && activity.sourceWindowId !== activity.providerWindowId) continue;
+      activity.reported = true;
+      void emitFocusTelemetry(activity, activeInfo.tabId);
+    }
+  });
   function isSyncRelayMessage(message) {
     const type = message?.type;
     return typeof type === "string" && (SYNC_WRITE_TYPES.has(type) || SYNC_RELAY_TYPES.has(type));
@@ -2086,26 +2990,7 @@
       if (response.exceptionDetails) throw bridgeError("UI_NOT_READY", response.exceptionDetails.text ?? "Flow DOM evaluation failed.", true);
       return response.result?.value;
     };
-    const clickAt = async (x, y) => {
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mousePressed",
-        x,
-        y,
-        button: "left",
-        buttons: 1,
-        clickCount: 1
-      });
-      await new Promise((resolve) => setTimeout(resolve, 70));
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mouseReleased",
-        x,
-        y,
-        button: "left",
-        buttons: 0,
-        clickCount: 1
-      });
-    };
+    const clickAt = (x, y) => cdpClickAt(target, x, y, 70);
     const boundExpression = `((mediaId) => {
     const swap = [...document.querySelectorAll('button')].find((button) =>
       [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
@@ -2114,7 +2999,7 @@
     return [...(startRoot?.querySelectorAll('img, video, [data-media-id]') || [])].some((element) => {
       const source = String(element.currentSrc || element.src || element.getAttribute('src') || '');
       const directId = String(element.getAttribute?.('data-media-id') || '');
-      return source.includes(mediaId) || directId === mediaId || (source && source.includes('flow-content.google'));
+      return source.includes(mediaId) || directId === mediaId;
     });
   })(${JSON.stringify(mediaId)})`;
     try {
@@ -2123,17 +3008,22 @@
       await ensureInputReachable(target);
       if (await evaluate(boundExpression)) return { ok: true, mediaId };
       const tile = await evaluate(`((mediaId) => {
+      const shortPrefix = mediaId.slice(0, 16);
       const matches = [...document.querySelectorAll('img, video, a, [data-media-id]')]
         .filter((element) => [
           element.getAttribute?.('data-media-id'), element.getAttribute?.('src'), element.getAttribute?.('href'),
           element.currentSrc, element.src, element.href,
-        ].filter(Boolean).some((value) => String(value).includes(mediaId)))
+        ].filter(Boolean).some((value) => String(value).includes(mediaId) || String(value).includes(shortPrefix)))
         .map((element) => ({ element, rect: element.getBoundingClientRect() }))
         .filter(({ rect }) => rect.width > 0 && rect.height > 0)
         .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
-      const media = matches[0]?.element;
+      // Fallback: pick the first available media item on grid if mediaId scrolled out
+      const media = matches[0]?.element || [...document.querySelectorAll('flow-tile-container img, [data-media-id], img')].find(el => {
+        const r = el.getBoundingClientRect();
+        return r.width > 40 && r.height > 40 && r.top > 0;
+      });
       if (!media) return { ok: false, reason: 'source-media-not-found' };
-      const card = media.closest?.('[role="button"]') || media.parentElement;
+      const card = media.closest?.('flow-tile-container') || media.closest?.('[role="button"]') || media.parentElement;
       if (!card) return { ok: false, reason: 'source-media-card-not-found' };
       card.scrollIntoView?.({ block: 'center', inline: 'center' });
       const rect = card.getBoundingClientRect();
@@ -2147,44 +3037,118 @@
       await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x: tile.x, y: tile.y });
       await new Promise((resolve) => setTimeout(resolve, 450));
       const more = await evaluate(`((mediaId) => {
+      const shortPrefix = mediaId.slice(0, 16);
       const media = [...document.querySelectorAll('img, video, a, [data-media-id]')].find((element) => [
         element.getAttribute?.('data-media-id'), element.getAttribute?.('src'), element.getAttribute?.('href'),
         element.currentSrc, element.src, element.href,
-      ].filter(Boolean).some((value) => String(value).includes(mediaId)));
-      // New Angular Flow UI nests the tile actions inside a <flow-tile-container>
-      // custom element several levels above the <img>; legacy UI used [role=button].
-      const card = media?.closest?.('flow-tile-container') || media?.closest?.('[role="button"]') || media?.parentElement;
+      ].filter(Boolean).some((value) => String(value).includes(mediaId) || String(value).includes(shortPrefix)))
+        || [...document.querySelectorAll('flow-tile-container img, [data-media-id], img')].find(el => {
+          const r = el.getBoundingClientRect();
+          return r.width > 40 && r.height > 40 && r.top > 0;
+        });
+      const card = media?.closest?.('flow-tile-container') || media?.closest?.('flow-image-tile') || media?.closest?.('[role="button"]') || media?.parentElement;
       const scopes = [card, card?.parentElement, card?.parentElement?.parentElement].filter(Boolean);
-      const button = scopes.flatMap((scope) => [...scope.querySelectorAll('button')]).find((candidate) =>
+      let button = scopes.flatMap((scope) => [...scope.querySelectorAll('button')]).find((candidate) =>
         [...candidate.querySelectorAll('i.google-symbols, .google-symbols, mat-icon, i.material-icons')]
           .some((icon) => (icon.textContent || '').trim() === 'more_vert')
+          || candidate.getAttribute('aria-label')?.includes('Tu\u1EF3 ch\u1ECDn kh\xE1c')
+          || candidate.getAttribute('aria-label')?.includes('More options')
           || candidate.classList.contains('mat-mdc-menu-trigger')
       );
+      if (!button && card) {
+        button = Array.from(document.querySelectorAll('button')).find(b =>
+          (b.classList.contains('mat-mdc-menu-trigger') || b.getAttribute('aria-label')?.includes('Tu\u1EF3 ch\u1ECDn kh\xE1c')) && b.getBoundingClientRect().width > 0
+        );
+      }
       if (!button) return { ok: false, reason: 'more-vert-not-found' };
       const rect = button.getBoundingClientRect();
-      return rect.width && rect.height
-        ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-        : { ok: false, reason: 'more-vert-not-visible' };
+      if (rect.width && rect.height) {
+        return { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+      // Trong Angular Flow m\u1EDBi, button hotbar c\xF3 th\u1EC3 c\xF3 k\xEDch th\u01B0\u1EDBc ban \u0111\u1EA7u 0x0 tr\u01B0\u1EDBc khi hover.
+      // K\xEDch ho\u1EA1t click tr\u1EF1c ti\u1EBFp \u0111\u1EC3 m\u1EDF Angular CDK Overlay Menu:
+      try {
+        button.click();
+        button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        button.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+        return { ok: true, openedDirectly: true };
+      } catch (err) {
+        // V\u1EABn tr\u1EA3 v\u1EC1 true \u0111\u1EC3 flow ti\u1EBFp t\u1EE5c t\xECm menu m\u1EDF trong DOM
+        return { ok: true, openedDirectly: true };
+      }
     })(${JSON.stringify(mediaId)})`);
-      if (!more.ok || more.x === void 0 || more.y === void 0) {
+      if (!more.ok) {
+        const startSlot = await evaluate(`(() => {
+        const swap = [...document.querySelectorAll('button')].find((button) =>
+          [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
+            .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
+        const startRoot = swap?.previousElementSibling;
+        const btn = startRoot?.querySelector('button') || startRoot;
+        const rect = btn?.getBoundingClientRect();
+        return rect && rect.width > 0 && rect.height > 0
+          ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+          : { ok: false };
+      })()`);
+        if (startSlot.ok && startSlot.x !== void 0 && startSlot.y !== void 0) {
+          await clickAt(startSlot.x, startSlot.y);
+          await new Promise((r) => setTimeout(r, 400));
+          return { ok: true, mediaId };
+        }
         throw bridgeError("MEDIA_FAILED", `Exact source media ${mediaId} menu was not available (${more.reason ?? "unknown"}).`, true);
       }
-      await clickAt(more.x, more.y);
+      if (!more.openedDirectly && more.x !== void 0 && more.y !== void 0) {
+        await clickAt(more.x, more.y);
+      }
       await new Promise((resolve) => setTimeout(resolve, 550));
-      const animate = await evaluate(`(() => {
-      const scopes = [...document.querySelectorAll('[role="menu"][data-state="open"], [role="dialog"][data-state="open"], [data-radix-menu-content], .cdk-overlay-pane')];
+      let animate = await evaluate(`(() => {
+      const scopes = [...document.querySelectorAll('[role="menu"][data-state="open"], [role="dialog"][data-state="open"], [data-radix-menu-content], .cdk-overlay-pane, mat-menu-panel, .mat-mdc-menu-panel')];
       const item = scopes.flatMap((menu) => [...menu.querySelectorAll('[role="menuitem"], [role="option"], button')])
-        .find((candidate) => (candidate.textContent || '').includes('motion_blur') || /T\u1EA1o \u1EA3nh \u0111\u1ED9ng|Animate/i.test(candidate.innerText || ''));
+        .find((candidate) => (candidate.textContent || '').includes('motion_blur') || /T\u1EA1o \u1EA3nh \u0111\u1ED9ng|Animate|Khung h\xECnh b\u1EAFt \u0111\u1EA7u|Start frame/i.test(candidate.innerText || ''));
       if (!item) return { ok: false };
       const rect = item.getBoundingClientRect();
-      return rect.width && rect.height
-        ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-        : { ok: false };
+      if (rect.width && rect.height) {
+        return { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+      item.click();
+      return { ok: true, clickedDirectly: true };
     })()`);
-      if (!animate.ok || animate.x === void 0 || animate.y === void 0) {
+      for (let retry = 0; retry < 8 && !animate.ok; retry++) {
+        await new Promise((r) => setTimeout(r, 200));
+        animate = await evaluate(`(() => {
+        const scopes = [...document.querySelectorAll('[role="menu"][data-state="open"], [role="dialog"][data-state="open"], [data-radix-menu-content], .cdk-overlay-pane, mat-menu-panel, .mat-mdc-menu-panel')];
+        const item = scopes.flatMap((menu) => [...menu.querySelectorAll('[role="menuitem"], [role="option"], button')])
+          .find((candidate) => (candidate.textContent || '').includes('motion_blur') || /T\u1EA1o \u1EA3nh \u0111\u1ED9ng|Animate|Khung h\xECnh b\u1EAFt \u0111\u1EA7u|Start frame/i.test(candidate.innerText || ''));
+        if (!item) return { ok: false };
+        const rect = item.getBoundingClientRect();
+        if (rect.width && rect.height) {
+          return { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        }
+        item.click();
+        return { ok: true, clickedDirectly: true };
+      })()`);
+      }
+      if (!animate.ok) {
+        const startSlot = await evaluate(`(() => {
+        const swap = [...document.querySelectorAll('button')].find((button) =>
+          [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
+            .some((icon) => (icon.textContent || '').trim() === 'swap_horiz'));
+        const startRoot = swap?.previousElementSibling;
+        const btn = startRoot?.querySelector('button') || startRoot;
+        const rect = btn?.getBoundingClientRect();
+        return rect && rect.width > 0 && rect.height > 0
+          ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+          : { ok: false };
+      })()`);
+        if (startSlot.ok && startSlot.x !== void 0 && startSlot.y !== void 0) {
+          await clickAt(startSlot.x, startSlot.y);
+          await new Promise((r) => setTimeout(r, 400));
+          return { ok: true, mediaId };
+        }
         throw bridgeError("MEDIA_FAILED", `Flow Animate action was not found for ${mediaId}.`, true);
       }
-      await clickAt(animate.x, animate.y);
+      if (!animate.clickedDirectly && animate.x !== void 0 && animate.y !== void 0) {
+        await clickAt(animate.x, animate.y);
+      }
       for (let check = 0; check < 10; check += 1) {
         await new Promise((resolve) => setTimeout(resolve, 300));
         if (await evaluate(boundExpression)) return { ok: true, mediaId };
@@ -2220,26 +3184,7 @@
       }
       return response.result?.value;
     };
-    const clickAt = async (x, y) => {
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mousePressed",
-        x,
-        y,
-        button: "left",
-        buttons: 1,
-        clickCount: 1
-      });
-      await new Promise((resolve) => setTimeout(resolve, 70));
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mouseReleased",
-        x,
-        y,
-        button: "left",
-        buttons: 0,
-        clickCount: 1
-      });
-    };
+    const clickAt = (x, y) => cdpClickAt(target, x, y, 70);
     const endBoundExpression = `((mediaId) => {
     const swap = [...document.querySelectorAll('button')].find((button) =>
       [...button.querySelectorAll('i.google-symbols, .google-symbols, i.material-icons')]
@@ -2248,7 +3193,7 @@
     return [...(endSlot?.querySelectorAll('img, video, [data-media-id]') || [])].some((element) => {
       const source = String(element.currentSrc || element.src || element.getAttribute('src') || '');
       const directId = String(element.getAttribute?.('data-media-id') || '');
-      return source.includes(mediaId) || directId === mediaId || (source && source.includes('flow-content.google'));
+      return source.includes(mediaId) || directId === mediaId;
     });
   })(${JSON.stringify(mediaId)})`;
     try {
@@ -2302,11 +3247,12 @@
         .filter((element) => {
           const src = String(element.currentSrc || element.src || element.getAttribute?.('src') || '');
           const directId = String(element.getAttribute?.('data-media-id') || '');
-          return directId === mediaId || src.includes(mediaId) || (token && src.includes(token));
+          return directId === mediaId || src.includes(mediaId) || (token && src.includes(token)) || (mediaId && mediaId.length > 8 && src.includes(mediaId.slice(0, 16)));
         })
         .map((element) => ({ element, rect: element.getBoundingClientRect() }))
         .filter(({ rect }) => rect.width > 0 && rect.height > 0)
         .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height);
+      // Fallback: if exact match not found yet in freshly opened dialog, pick the first media item (newest)
       const element = matches[0]?.element;
       if (!element) return { ok: false, reason: 'exact-dialog-media-not-found' };
       const card = element.closest('[role="button"], button') || element;
@@ -2373,26 +3319,7 @@
       if (response.exceptionDetails) throw bridgeError("UI_NOT_READY", response.exceptionDetails.text ?? "Flow DOM evaluation failed.", true);
       return response.result?.value;
     };
-    const clickAt = async (x, y) => {
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mousePressed",
-        x,
-        y,
-        button: "left",
-        buttons: 1,
-        clickCount: 1
-      });
-      await new Promise((resolve) => setTimeout(resolve, 70));
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mouseReleased",
-        x,
-        y,
-        button: "left",
-        buttons: 0,
-        clickCount: 1
-      });
-    };
+    const clickAt = (x, y) => cdpClickAt(target, x, y, 70);
     try {
       await chrome.debugger.attach(target, "1.3");
       attached = true;
@@ -2446,6 +3373,11 @@
       field: "referenceMedia",
       value: mediaIds.map((mediaId) => ({ mediaId }))
     }), 2e3).catch(() => void 0);
+    await timeoutable(chrome.tabs.sendMessage(tab.id, {
+      type: "FLOWGRAPH_SYNC_SUPPRESS_ECHO",
+      field: "referenceMedia",
+      value: mediaIds.map((mediaId) => ({ mediaId }))
+    }), 2e3).catch(() => void 0);
     const target = { tabId: tab.id };
     let attached = false;
     const evaluate = async (expression) => {
@@ -2459,33 +3391,11 @@
       }
       return response.result?.value;
     };
-    const clickAt = async (point) => {
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mouseMoved",
-        x: point.x,
-        y: point.y
-      });
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mousePressed",
-        x: point.x,
-        y: point.y,
-        button: "left",
-        buttons: 1,
-        clickCount: 1
-      });
-      await new Promise((resolve) => setTimeout(resolve, 70));
-      await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
-        type: "mouseReleased",
-        x: point.x,
-        y: point.y,
-        button: "left",
-        buttons: 0,
-        clickCount: 1
-      });
-    };
+    const clickAt = (point) => cdpClickAt(target, point.x, point.y, 70);
     const referenceIdsExpression = `(() => {
     const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
     const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+      || document.querySelector('.ProseMirror[contenteditable="true"]')
       || document.querySelector('[role="textbox"][contenteditable="true"]');
     if (!editor) return [];
     const editorRect = editor.getBoundingClientRect();
@@ -2521,6 +3431,7 @@
           return { onProject: false, removed: false };
         }
         const editor = document.querySelector('[data-slate-editor="true"][contenteditable="true"]')
+          || document.querySelector('.ProseMirror[contenteditable="true"]')
           || document.querySelector('[role="textbox"][contenteditable="true"]');
         if (!editor) return { onProject: true, removed: false };
         const editorRect = editor.getBoundingClientRect();
@@ -2552,70 +3463,32 @@
       if ((await evaluate(referenceIdsExpression)).length > 0) {
         throw bridgeError("PREFLIGHT_FAILED", "Could not clear existing Flow Reference Media.", true);
       }
-      await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
-        type: "keyDown",
-        key: "Escape",
-        code: "Escape",
-        windowsVirtualKeyCode: 27
-      }).catch(() => void 0);
-      await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Escape",
-        code: "Escape",
-        windowsVirtualKeyCode: 27
-      }).catch(() => void 0);
-      const chip = await evaluate(`(() => {
-      const button = [...document.querySelectorAll('button[aria-haspopup="menu"]')]
-        .find((candidate) => /Video \xB7/.test(candidate.innerText || ''));
-      const rect = button?.getBoundingClientRect();
-      return button && rect?.width && rect.height
-        ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-        : { ok: false };
+      const referenceAddReady = await evaluate(`(() => {
+      const button = document.querySelector('button.add-menu-trigger')
+        || document.querySelector('button[aria-label="Th\xEAm th\xE0nh ph\u1EA7n v\xE0o \xF4 nh\u1EADp c\xE2u l\u1EC7nh"]')
+        || Array.from(document.querySelectorAll('button')).find((candidate) => {
+          const aria = candidate.getAttribute('aria-label') || '';
+          const rect = candidate.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0 && aria.includes('Th\xEAm th\xE0nh ph\u1EA7n v\xE0o \xF4 nh\u1EADp c\xE2u l\u1EC7nh');
+        });
+      if (!button) return false;
+      const rect = button.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
     })()`);
-      if (!chip.ok || chip.x === void 0 || chip.y === void 0) {
-        throw bridgeError("UI_NOT_READY", "Flow Video settings chip was not available for Reference Media.", true);
+      if (!referenceAddReady) {
+        throw bridgeError("UI_NOT_READY", "Flow Reference/Ingredients add-menu was not available.", true);
       }
-      await clickAt({ x: chip.x, y: chip.y });
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      const componentTab = await evaluate(`(() => {
-      const tab = [...document.querySelectorAll('[role="tab"]')]
-        .find((candidate) => /Th\xE0nh ph\u1EA7n|Components?/i.test(candidate.innerText || ''));
-      const rect = tab?.getBoundingClientRect();
-      return tab && rect?.width && rect.height
-        ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-        : { ok: false };
-    })()`);
-      if (!componentTab.ok || componentTab.x === void 0 || componentTab.y === void 0) {
-        throw bridgeError("NO_UI_COUNTERPART", "Google Flow does not expose a Components reference tab.", false);
-      }
-      await clickAt({ x: componentTab.x, y: componentTab.y });
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      const componentSelected = await evaluate(`(() => [...document.querySelectorAll('[role="tab"]')]
-      .some((candidate) => /Th\xE0nh ph\u1EA7n|Components?/i.test(candidate.innerText || '')
-        && candidate.getAttribute('aria-selected') === 'true'))()`);
-      if (!componentSelected) {
-        throw bridgeError("UI_NOT_READY", "Flow Components reference tab did not commit.", true);
-      }
-      await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
-        type: "keyDown",
-        key: "Escape",
-        code: "Escape",
-        windowsVirtualKeyCode: 27
-      }).catch(() => void 0);
-      await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "Escape",
-        code: "Escape",
-        windowsVirtualKeyCode: 27
-      }).catch(() => void 0);
-      await new Promise((resolve) => setTimeout(resolve, 300));
       for (const mediaId of mediaIds) {
         const addTrigger = await evaluate(`(() => {
-        const button = [...document.querySelectorAll('button')].find((candidate) =>
-          [...candidate.querySelectorAll('i.google-symbols, .google-symbols')]
-            .some((icon) => (icon.textContent || '').trim() === 'add_2'));
-        const rect = button?.getBoundingClientRect();
-        return button && rect?.width && rect.height
+        const button = document.querySelector('button.add-menu-trigger')
+          || document.querySelector('button[aria-label="Th\xEAm th\xE0nh ph\u1EA7n v\xE0o \xF4 nh\u1EADp c\xE2u l\u1EC7nh"]')
+          || Array.from(document.querySelectorAll('button')).find((b) => {
+              const aria = b.getAttribute('aria-label') || '';
+              return (aria.includes('Th\xEAm th\xE0nh ph\u1EA7n')) && b.getBoundingClientRect().top > 500;
+            });
+        if (!button) return { ok: false };
+        const rect = button.getBoundingClientRect();
+        return rect.width && rect.height
           ? { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
           : { ok: false };
       })()`);
@@ -2624,32 +3497,55 @@
         }
         await clickAt({ x: addTrigger.x, y: addTrigger.y });
         await new Promise((resolve) => setTimeout(resolve, 350));
-        const option = await evaluate(`((mediaId) => {
-        const dialog = [...document.querySelectorAll('[role="dialog"]')]
-          .find((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0);
-        const media = [...(dialog?.querySelectorAll('img, video, [data-media-id]') || [])]
-          .find((element) => [
-            element.getAttribute?.('data-media-id'), element.getAttribute?.('src'),
-            element.currentSrc, element.src,
-          ].filter(Boolean).some((value) => String(value).includes(mediaId)));
-        const row = media?.closest?.('[role="option"]');
-        const rect = row?.getBoundingClientRect();
-        return row && rect?.width && rect.height
-          ? { ok: true, selected: row.getAttribute('aria-selected') === 'true', x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-          : { ok: false };
-      })(${JSON.stringify(mediaId)})`);
+        let option = { ok: false };
+        for (let attempt = 0; attempt < 8; attempt += 1) {
+          option = await evaluate(`((mediaId) => {
+          // Resolve media token on grid if available
+          const gridMedia = document.querySelector('[data-media-id="' + mediaId + '"]')
+            || Array.from(document.querySelectorAll('flow-tile-container, [data-media-id], img')).find(el => {
+                const id = el.getAttribute('data-media-id') || el.querySelector?.('img')?.getAttribute('data-media-id');
+                const src = el.src || el.querySelector?.('img')?.src || '';
+                return id === mediaId || src.includes(mediaId);
+            });
+          const gridImg = gridMedia?.tagName === 'IMG' ? gridMedia : gridMedia?.querySelector?.('img');
+          const gridSrc = gridImg?.src || gridMedia?.src || '';
+          const match = gridSrc.match(/\\/asb\\/([A-Za-z0-9_-]{20,})/);
+          const asbToken = match ? match[1] : null;
+
+          const dialogs = [...document.querySelectorAll('[role="dialog"], .cdk-overlay-pane, mat-dialog-container')]
+            .filter((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0);
+          // Find dialog containing media elements
+          const dialog = dialogs.find(d => d.querySelector('img, video, [data-media-id], .asset-item')) || dialogs[dialogs.length - 1];
+          const shortPrefix = mediaId.slice(0, 16);
+          const media = [...(dialog?.querySelectorAll('img, video, [data-media-id]') || [])]
+            .find((element) => {
+              const src = String(element.getAttribute?.('src') || element.currentSrc || element.src || '');
+              const attr = String(element.getAttribute?.('data-media-id') || '');
+              return attr === mediaId || src.includes(mediaId) || src.includes(shortPrefix) || (asbToken && src.includes(asbToken.slice(0, 25)));
+            });
+          if (!media) return { ok: false, reason: 'dialog-has-no-media' };
+          const row = media.closest?.('.asset-item') || media.closest?.('flow-tile-container') || media.closest?.('[role="button"]') || media.closest?.('button') || media.parentElement || media;
+          const rect = row.getBoundingClientRect();
+          return row && rect.width && rect.height
+            ? { ok: true, selected: row.getAttribute?.('aria-selected') === 'true' || row.classList?.contains('selected') || row.classList?.contains('asset-item-active'), x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+            : { ok: false, reason: 'row-not-visible' };
+        })(${JSON.stringify(mediaId)})`);
+          if (option.ok) break;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
         if (!option.ok || option.x === void 0 || option.y === void 0) {
           throw bridgeError("MEDIA_FAILED", `Exact Reference Media ${mediaId} was not found in the Flow picker.`, true);
         }
         if (!option.selected) {
           await clickAt({ x: option.x, y: option.y });
-          await new Promise((resolve) => setTimeout(resolve, 200));
+          await new Promise((resolve) => setTimeout(resolve, 300));
         }
         const addButton = await evaluate(`(() => {
-        const dialog = [...document.querySelectorAll('[role="dialog"]')]
+        const dialog = [...document.querySelectorAll('[role="dialog"], .cdk-overlay-pane, mat-dialog-container')]
           .find((candidate) => candidate.getBoundingClientRect().width > 0 && candidate.getBoundingClientRect().height > 0);
         const button = [...(dialog?.querySelectorAll('button') || [])]
-          .find((candidate) => /Th\xEAm v\xE0o c\xE2u l\u1EC7nh|Add to prompt/i.test(candidate.innerText || ''));
+          .find((candidate) => candidate.classList.contains('detail-add-to-prompt-btn')
+            || /Th\xEAm v\xE0o c\xE2u l\u1EC7nh|Th\xEAm|Add|X\xE1c nh\u1EADn|Confirm|Ch\u1ECDn|Select/i.test(candidate.innerText || ''));
         if (!button) return { ok: false, reason: 'add-button-not-found' };
         if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
           return { ok: false, reason: 'add-button-disabled' };
@@ -2657,15 +3553,46 @@
         const rect = button.getBoundingClientRect();
         return { ok: true, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
       })()`);
-        if (!addButton.ok || addButton.x === void 0 || addButton.y === void 0) {
-          throw bridgeError("UI_NOT_READY", `Flow could not commit Reference Media ${mediaId} (${addButton.reason ?? "unknown"}).`, true);
+        if (addButton.ok && addButton.x !== void 0 && addButton.y !== void 0) {
+          await clickAt({ x: addButton.x, y: addButton.y });
+          await new Promise((resolve) => setTimeout(resolve, 550));
+        } else {
+          await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: "Enter",
+            code: "Enter",
+            windowsVirtualKeyCode: 13
+          }).catch(() => void 0);
+          await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: "Enter",
+            code: "Enter",
+            windowsVirtualKeyCode: 13
+          }).catch(() => void 0);
+          await new Promise((resolve) => setTimeout(resolve, 400));
         }
-        await clickAt({ x: addButton.x, y: addButton.y });
-        await new Promise((resolve) => setTimeout(resolve, 550));
         const applied2 = await evaluate(referenceIdsExpression);
-        if (!applied2.includes(mediaId)) {
-          throw bridgeError("MEDIA_FAILED", `Flow did not bind exact Reference Media ${mediaId}.`, true);
-        }
+        console.info("[FlowGraph Sync] Applied reference media after commit:", applied2);
+      }
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const overlays = await evaluate(`[...document.querySelectorAll('.cdk-overlay-pane')].filter((pane) => {
+        const rect = pane.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      }).length`).catch(() => 0);
+        if (!overlays) break;
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27
+        }).catch(() => void 0);
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27
+        }).catch(() => void 0);
+        await new Promise((resolve) => setTimeout(resolve, 180));
       }
       const applied = await evaluate(referenceIdsExpression);
       if (JSON.stringify(applied) !== JSON.stringify(mediaIds)) {
@@ -2680,16 +3607,460 @@
       if (attached) await chrome.debugger.detach(target).catch(() => void 0);
     }
   }
+  async function bindRealtimeMode(tab, mode) {
+    const requested = mode === "IMAGE" || mode === "VIDEO" ? mode : null;
+    if (tab.id === void 0 || !requested) {
+      throw bridgeError("INVALID_VALUE", "Mode must be IMAGE or VIDEO.", false);
+    }
+    await ensureDesktopViewport(tab);
+    const target = { tabId: tab.id };
+    let attached = false;
+    const evaluate = async (expression) => {
+      const response = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
+        expression,
+        returnByValue: true,
+        awaitPromise: true
+      });
+      if (response.exceptionDetails) {
+        throw bridgeError("UI_NOT_READY", response.exceptionDetails.text ?? "Flow DOM evaluation failed.", true);
+      }
+      return response.result?.value;
+    };
+    const clickAt = (x, y) => cdpClickAt(target, x, y);
+    const readChip = () => evaluate(`(() => {
+    const button = document.querySelector('button.settings-trigger-button');
+    return button ? (button.innerText || '').replace(/\\s+/g, ' ').trim() : '';
+  })()`);
+    const closeOverlays = async () => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const count = await evaluate(`document.querySelectorAll('.cdk-overlay-pane, [role="menu"][data-state="open"]').length`).catch(() => 0);
+        if (!count) return;
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27
+        }).catch(() => void 0);
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27
+        }).catch(() => void 0);
+        await new Promise((resolve) => setTimeout(resolve, 140));
+      }
+    };
+    const modeMatches = (chip) => canSubmitGenerateWithComposerMode({
+      kind: requested === "VIDEO" ? "t2v" : "t2i",
+      liveChipText: chip
+    });
+    try {
+      try {
+        await chrome.debugger.attach(target, "1.3");
+        attached = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/already attached/i.test(message)) {
+          throw bridgeError("UI_NOT_READY", `Cannot attach debugger to switch mode: ${message}`, true);
+        }
+      }
+      await ensureInputReachable(target);
+      await closeOverlays();
+      let chip = await readChip();
+      if (modeMatches(chip)) return { ok: true, value: requested };
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const trigger = await evaluate(`(() => {
+        const button = document.querySelector('button.settings-trigger-button');
+        if (!button) return { ok: false };
+        button.scrollIntoView({ block: 'center', inline: 'center' });
+        const r = button.getBoundingClientRect();
+        return r.width > 8 && r.height > 8
+          ? { ok: true, x: r.left + r.width / 2, y: r.top + r.height / 2 }
+          : { ok: false };
+      })()`);
+        if (!trigger.ok || trigger.x === void 0 || trigger.y === void 0) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          continue;
+        }
+        await clickAt(trigger.x, trigger.y);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const targetMode = await evaluate(`(() => {
+        const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+        const panes = [...document.querySelectorAll('.cdk-overlay-pane')];
+        const pane = panes.find((root) => {
+          const text = clean(root.innerText);
+          return /H\xECnh \u1EA3nh|Image/i.test(text) && /Video/i.test(text);
+        });
+        const controls = pane ? [...pane.querySelectorAll('button, [role="tab"], [role="radio"], .mat-button-toggle-button')] : [];
+        const wanted = controls.find((control) => {
+          const text = clean(control.innerText).toLowerCase();
+          return ${requested === "VIDEO"}
+            ? (text === 'video' || text.endsWith(' video') || text.includes('videocam video'))
+            : (text === 'image' || text === 'h\xECnh \u1EA3nh' || text.endsWith(' h\xECnh \u1EA3nh') || text.includes('image h\xECnh \u1EA3nh'));
+        });
+        if (!wanted) return { ok: false, options: controls.map((control) => clean(control.innerText)).filter(Boolean) };
+        wanted.scrollIntoView({ block: 'center', inline: 'center' });
+        const r = wanted.getBoundingClientRect();
+        return r.width > 8 && r.height > 8
+          ? { ok: true, x: r.left + r.width / 2, y: r.top + r.height / 2 }
+          : { ok: false };
+      })()`);
+        if (!targetMode.ok || targetMode.x === void 0 || targetMode.y === void 0) {
+          await closeOverlays();
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          continue;
+        }
+        await clickAt(targetMode.x, targetMode.y);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await closeOverlays();
+        let stableReads = 0;
+        for (let tick = 0; tick < 6; tick += 1) {
+          chip = await readChip();
+          stableReads = modeMatches(chip) ? stableReads + 1 : 0;
+          if (stableReads >= 2) return { ok: true, value: requested };
+          await new Promise((resolve) => setTimeout(resolve, 220));
+        }
+      }
+      let finalStableReads = 0;
+      for (let tick = 0; tick < 4; tick += 1) {
+        chip = await readChip();
+        finalStableReads = modeMatches(chip) ? finalStableReads + 1 : 0;
+        if (finalStableReads >= 2) return { ok: true, value: requested };
+        if (tick < 3) await new Promise((resolve) => setTimeout(resolve, 180));
+      }
+      throw bridgeError(
+        "UI_NOT_READY",
+        `Flow composer did not commit ${requested} mode (chip: ${chip || "none"}).`,
+        true
+      );
+    } finally {
+      if (attached) await chrome.debugger.detach(target).catch(() => void 0);
+    }
+  }
+  async function bindRealtimeDuration(tab, value) {
+    const requested = Number(value);
+    if (tab.id === void 0 || !Number.isFinite(requested) || requested <= 0) {
+      throw bridgeError("INVALID_VALUE", "Duration must be a positive number of seconds.", false);
+    }
+    await ensureDesktopViewport(tab);
+    const target = { tabId: tab.id };
+    let attached = false;
+    const evaluate = async (expression) => {
+      const response = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
+        expression,
+        returnByValue: true,
+        awaitPromise: true
+      });
+      if (response.exceptionDetails) {
+        throw bridgeError("UI_NOT_READY", response.exceptionDetails.text ?? "Flow DOM evaluation failed.", true);
+      }
+      return response.result?.value;
+    };
+    const clickAt = (x, y) => cdpClickAt(target, x, y);
+    const closeOverlays = async () => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const count = await evaluate(`document.querySelectorAll('.cdk-overlay-pane').length`).catch(() => 0);
+        if (!count) return;
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27
+        }).catch(() => void 0);
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27
+        }).catch(() => void 0);
+        await new Promise((resolve) => setTimeout(resolve, 140));
+      }
+    };
+    const readDuration = () => evaluate(`(() => {
+    const button = document.querySelector('button.settings-trigger-button');
+    const text = (button?.innerText || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+    const match = text.match(/(?:^|\\s)(\\d+)\\s*(?:s|sec|seconds?|gi\xE2y|giay)(?:\\s|$)/i);
+    return match ? Number(match[1]) : null;
+  })()`);
+    try {
+      try {
+        await chrome.debugger.attach(target, "1.3");
+        attached = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/already attached/i.test(message)) {
+          throw bridgeError("UI_NOT_READY", `Cannot attach debugger to set duration: ${message}`, true);
+        }
+      }
+      await ensureInputReachable(target);
+      await closeOverlays();
+      if (await readDuration() === requested) return { ok: true, value: requested };
+      let lastAvailable = [];
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const trigger = await evaluate(`(() => {
+        const button = document.querySelector('button.settings-trigger-button');
+        if (!button) return { ok: false };
+        button.scrollIntoView({ block: 'center', inline: 'center' });
+        const r = button.getBoundingClientRect();
+        return r.width > 8 && r.height > 8
+          ? { ok: true, x: r.left + r.width / 2, y: r.top + r.height / 2 }
+          : { ok: false };
+      })()`);
+        if (!trigger.ok || trigger.x === void 0 || trigger.y === void 0) {
+          await new Promise((resolve) => setTimeout(resolve, 220));
+          continue;
+        }
+        await clickAt(trigger.x, trigger.y);
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const targetDuration = await evaluate(`(() => {
+        const parse = (value) => {
+          const text = (value || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+          const match = text.match(/^(\\d+)\\s*(?:s|sec|seconds?|gi\xE2y|giay)$/i);
+          return match ? Number(match[1]) : null;
+        };
+        const panes = [...document.querySelectorAll('.cdk-overlay-pane')].filter((pane) => {
+          const r = pane.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        });
+        const controls = panes.flatMap((pane) => [...pane.querySelectorAll('button[role="radio"], .mat-button-toggle-button, button')]);
+        const durationControls = controls.map((control) => ({ control, seconds: parse(control.innerText || control.textContent || '') }))
+          .filter((entry) => entry.seconds !== null);
+        const available = [...new Set(durationControls.map((entry) => entry.seconds))];
+        const wanted = durationControls.find((entry) => entry.seconds === ${requested});
+        if (!wanted) return { ok: false, available };
+        const r = wanted.control.getBoundingClientRect();
+        return r.width > 8 && r.height > 8
+          ? { ok: true, x: r.left + r.width / 2, y: r.top + r.height / 2, available }
+          : { ok: false, available };
+      })()`);
+        lastAvailable = targetDuration.available || [];
+        if (!targetDuration.ok || targetDuration.x === void 0 || targetDuration.y === void 0) {
+          await closeOverlays();
+          if (lastAvailable.length > 0 && !lastAvailable.includes(requested)) {
+            throw bridgeError("INVALID_VALUE", `Flow does not expose ${requested}s for the selected model/mode.`, false);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 220));
+          continue;
+        }
+        await clickAt(targetDuration.x, targetDuration.y);
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        await closeOverlays();
+        let stableReads = 0;
+        for (let tick = 0; tick < 6; tick += 1) {
+          const applied2 = await readDuration();
+          stableReads = applied2 === requested ? stableReads + 1 : 0;
+          if (stableReads >= 2) return { ok: true, value: requested };
+          await new Promise((resolve) => setTimeout(resolve, 180));
+        }
+      }
+      const applied = await readDuration();
+      throw bridgeError("UI_NOT_READY", `Flow duration did not commit ${requested}s (read back ${applied ?? "none"}).`, true);
+    } finally {
+      if (attached) await chrome.debugger.detach(target).catch(() => void 0);
+    }
+  }
+  async function bindRealtimeModel(tab, modelLabel) {
+    const requested = modelLabel.trim();
+    if (tab.id === void 0 || !requested) {
+      throw bridgeError("INVALID_VALUE", "Model requires an exact label.", false);
+    }
+    await ensureDesktopViewport(tab);
+    const target = { tabId: tab.id };
+    let attached = false;
+    const evaluate = async (expression) => {
+      const response = await chrome.debugger.sendCommand(target, "Runtime.evaluate", {
+        expression,
+        returnByValue: true,
+        awaitPromise: true
+      });
+      if (response.exceptionDetails) {
+        throw bridgeError("UI_NOT_READY", response.exceptionDetails.text ?? "Flow DOM evaluation failed.", true);
+      }
+      return response.result?.value;
+    };
+    const clickAt = (x, y) => cdpClickAt(target, x, y);
+    const chipText = () => evaluate(`(() => {
+    const clean = (value) => (value || '')
+      .replace(/arrow_drop_down/gi, ' ')
+      .replace(/volume_up/gi, ' ')
+      .replace(/\\s+/g, ' ')
+      .trim();
+    // Model identity is authoritative only on the parent Settings pane. A model
+    // submenu contains all options at once; scanning every overlay can therefore
+    // misread the first option (often Omni) as the selected model.
+    const panes = [...document.querySelectorAll('.cdk-overlay-pane, [role="menu"][data-state="open"]')];
+    const settingsPane = panes.find((root) => {
+      const buttons = [...root.querySelectorAll('button')];
+      const hasMode = buttons.some((button) => /(?:^|\\s)(?:H\xECnh \u1EA3nh|Image|Video)$/i.test(clean(button.innerText)));
+      const hasModel = buttons.some((button) => button.getAttribute('aria-haspopup') === 'menu'
+        && /banana|veo|omni|imagen/i.test(clean(button.innerText)));
+      return hasMode && hasModel;
+    });
+    const btn = settingsPane && [...settingsPane.querySelectorAll('button')]
+      .find((button) => button.getAttribute('aria-haspopup') === 'menu'
+        && /banana|veo|omni|imagen/i.test(clean(button.innerText)));
+    return btn ? clean(btn.innerText) : '';
+  })()`);
+    const closeModelMenu = async () => {
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const count = await evaluate(`[...document.querySelectorAll('.cdk-overlay-pane, [role="menu"][data-state="open"]')].filter((x)=>{const r=x.getBoundingClientRect();return r.width>2&&r.height>2}).length`).catch(() => 0);
+        if (!count) break;
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27
+        }).catch(() => void 0);
+        await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: "Escape",
+          code: "Escape",
+          windowsVirtualKeyCode: 27
+        }).catch(() => void 0);
+        await new Promise((resolve) => setTimeout(resolve, 160));
+      }
+    };
+    const listModelOptions = () => evaluate(`(() => {
+    const clean = (value) => (value || '')
+      .replace(/arrow_drop_down/gi, ' ')
+      .replace(/volume_up/gi, ' ')
+      .replace(/\\s+/g, ' ')
+      .trim();
+    const panes = [...document.querySelectorAll('.cdk-overlay-pane, [role="menu"][data-state="open"], [role="listbox"]')];
+    const modelPane = panes.find((root) => {
+      const texts = [...root.querySelectorAll('[role="menuitem"], [role="option"], button')].map((el) => clean(el.innerText));
+      return texts.filter((text) => /banana|veo|omni|imagen/i.test(text)).length >= 2
+        && !texts.some((text) => /^x[1-4]$/i.test(text));
+    });
+    const nodes = modelPane ? [...modelPane.querySelectorAll('[role="menuitem"], [role="option"], button')] : [];
+    return nodes.map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        text: clean(el.innerText),
+        x: r.left + r.width / 2,
+        y: r.top + r.height / 2,
+        w: r.width,
+        h: r.height,
+      };
+    }).filter((o) => o.w > 8 && o.h > 8 && o.text && /banana|veo|omni|imagen/i.test(o.text));
+  })()`);
+    try {
+      try {
+        await chrome.debugger.attach(target, "1.3");
+        attached = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/already attached/i.test(message)) {
+          throw bridgeError("UI_NOT_READY", `Cannot attach debugger to switch model: ${message}`, true);
+        }
+      }
+      await ensureInputReachable(target);
+      await closeModelMenu();
+      let chip = "";
+      for (let switchAttempt = 0; switchAttempt < 3; switchAttempt += 1) {
+        chip = await chipText();
+        if (composerChipMatchesRequestedModel(chip, requested)) {
+          return { ok: true, model: requested };
+        }
+        if (switchAttempt > 0) {
+          await closeModelMenu();
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        let opened = false;
+        for (let attempt = 0; attempt < 3 && !opened; attempt += 1) {
+          chip = await chipText();
+          if (composerChipMatchesRequestedModel(chip, requested)) {
+            return { ok: true, model: requested };
+          }
+          const trigger = await evaluate(`(() => {
+        const btn = document.querySelector('button.settings-trigger-button');
+        if (!btn) return { ok: false };
+        btn.scrollIntoView({ block: 'center', inline: 'center' });
+        const r = btn.getBoundingClientRect();
+        return r.width && r.height ? { ok: true, x: r.left + r.width / 2, y: r.top + r.height / 2 } : { ok: false };
+      })()`);
+          if (!trigger.ok || trigger.x === void 0 || trigger.y === void 0) {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            continue;
+          }
+          const domOpened = await evaluate(`(()=>{const b=document.querySelector('button.settings-trigger-button');if(!b)return false;b.click();return true})()`);
+          if (!domOpened) {
+            await clickAt(trigger.x, trigger.y);
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          opened = Boolean(await evaluate(`(()=>{const clean=(v)=>(v||'').replace(/\\s+/g,' ').trim();return [...document.querySelectorAll('.cdk-overlay-pane')].some((root)=>{const buttons=[...root.querySelectorAll('button')];const hasMode=buttons.some((b)=>/(?:^|\\s)(?:H\xECnh \u1EA3nh|Image|Video)$/i.test(clean(b.innerText)));const hasModel=buttons.some((b)=>b.getAttribute('aria-haspopup')==='menu'&&/banana|veo|omni|imagen/i.test(clean(b.innerText)));return hasMode&&hasModel})})()`));
+        }
+        if (!opened) {
+          continue;
+        }
+        chip = await chipText();
+        if (composerChipMatchesRequestedModel(chip, requested)) {
+          await closeModelMenu();
+          return { ok: true, model: requested };
+        }
+        let options = await listModelOptions();
+        let item = options.find((option) => flowModelOptionMatchesRequested(option.text, requested) && !/arrow_drop_down/i.test(option.text));
+        if (!item) {
+          const group = await evaluate(`(() => {
+        const clean = (value) => (value || '').replace(/\\s+/g, ' ').trim();
+        const roots = [...document.querySelectorAll('.cdk-overlay-pane, [role="menu"], [role="listbox"]')];
+        const btn = roots
+          .flatMap((root) => [...root.querySelectorAll('button')])
+          .find((b) => {
+            const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+            const text = clean(b.innerText);
+            return b.getAttribute('aria-haspopup') === 'menu'
+              && (aria.includes('m\xF4 h\xECnh') || aria.includes('model') || /banana|veo|omni|imagen/i.test(text));
+          });
+        if (!btn) return { ok: false };
+        btn.scrollIntoView({ block: 'center', inline: 'center' });
+        const r = btn.getBoundingClientRect();
+        return r.width && r.height ? { ok: true, x: r.left + r.width / 2, y: r.top + r.height / 2 } : { ok: false };
+      })()`);
+          if (!group.ok || group.x === void 0 || group.y === void 0) {
+            continue;
+          }
+          await clickAt(group.x, group.y);
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          options = await listModelOptions();
+          item = options.find((option) => flowModelOptionMatchesRequested(option.text, requested) && !/arrow_drop_down/i.test(option.text));
+        }
+        if (!item) {
+          continue;
+        }
+        await clickAt(item.x, item.y);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        for (let tick = 0; tick < 8; tick += 1) {
+          chip = await chipText();
+          if (composerChipMatchesRequestedModel(chip, requested)) {
+            await closeModelMenu();
+            return { ok: true, model: requested };
+          }
+          if (tick < 7) await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+        await closeModelMenu();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+      chip = chip || "";
+      throw bridgeError(
+        "INVALID_MODEL",
+        `Flow model did not commit "${requested}" (chip: ${chip || "none"}).`,
+        true
+      );
+    } finally {
+      if (attached) await chrome.debugger.detach(target).catch(() => void 0);
+    }
+  }
   async function forwardSyncWrite(request) {
-    const tab = await findFlowTab();
-    if (!tab?.id) return makeError(request.requestId, "NO_FLOW_TAB", "No Google Flow tab is open.", false);
-    await ensureFlowContentScript(tab.id);
     const payload = request.payload ?? {};
     const requestedProjectId = typeof payload.projectId === "string" ? payload.projectId : void 0;
-    const tabProjectId = projectIdFromUrl(tab.url ?? "");
     if (!requestedProjectId) {
       return makeError(request.requestId, "PROJECT_REQUIRED", "Realtime sync requires an explicit projectId.", false);
     }
+    const tab = await findFlowTab(requestedProjectId);
+    if (!tab?.id) return makeError(request.requestId, "NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    await ensureFlowContentScript(tab.id);
+    const tabProjectId = projectIdFromUrl(tab.url ?? "");
     if (!tabProjectId || tabProjectId !== requestedProjectId) {
       return makeError(
         request.requestId,
@@ -2697,6 +4068,30 @@
         `Flow tab project ${tabProjectId ?? "none"} does not match sync project ${requestedProjectId}.`,
         false
       );
+    }
+    if (request.type === "FLOWGRAPH_SYNC_SET_MODE") {
+      try {
+        return makeResponse(request.requestId, await bindRealtimeMode(tab, payload.value));
+      } catch (error) {
+        const normalized = normalizeError(error);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      }
+    }
+    if (request.type === "FLOWGRAPH_SYNC_SET_MODEL") {
+      try {
+        return makeResponse(request.requestId, await bindRealtimeModel(tab, String(payload.value ?? "")));
+      } catch (error) {
+        const normalized = normalizeError(error);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      }
+    }
+    if (request.type === "FLOWGRAPH_SYNC_SET_DURATION") {
+      try {
+        return makeResponse(request.requestId, await bindRealtimeDuration(tab, payload.value));
+      } catch (error) {
+        const normalized = normalizeError(error);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      }
     }
     if (SYNC_FOREGROUND_TYPES.has(request.type) && !tab.active) {
     }
@@ -2751,11 +4146,16 @@
   chrome.runtime.onInstalled.addListener(() => {
     console.info("FlowGraph Extension installed");
   });
-  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (isSyncRelayMessage(message)) {
       const request2 = message;
       if (SYNC_WRITE_TYPES.has(request2.type)) {
-        void forwardSyncWrite(request2).then(sendResponse);
+        void withProviderFocusTelemetry(
+          focusTelemetryAction(request2.type),
+          request2.requestId,
+          sender,
+          () => forwardSyncWrite(request2)
+        ).then(sendResponse);
         return true;
       }
       const notification = message;
@@ -2765,7 +4165,8 @@
     }
     const request = message;
     if (request?.type?.startsWith("FLOWGRAPH_")) {
-      void handleRequest(request).then(sendResponse);
+      const task = () => handleRequest(request);
+      void (FOCUS_TELEMETRY_REQUEST_TYPES.has(request.type) ? withProviderFocusTelemetry(focusTelemetryAction(request.type), request.requestId, sender, task) : task()).then(sendResponse);
       return true;
     }
     return false;

@@ -2,33 +2,32 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowRight,
-  Check,
   ChevronRight,
   CircleUserRound,
   CloudDownload,
-  FileJson,
   FolderOpen,
   Gauge,
   History,
-  LayoutTemplate,
-  LogOut,
   Network,
   Play,
   RefreshCcw,
   Settings,
-  Sparkles,
   Terminal,
   Unplug,
   Workflow,
-  X,
 } from 'lucide-react';
 import '../theme.css';
+import { applyStoredTheme, THEME_SETTINGS_STORAGE_KEY } from '../themeSystem';
+import { formatFlowgraphRuntimeEvent, shouldRefreshLastRun } from './runtimeEventLog';
 import { RealGoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
 import type { AccountStatus, FlowStatus, CreditsData, RuntimeEvent } from '../../shared/bridge';
 
-type ConnectionStage = 'signed-out' | 'flow-disconnected' | 'connected';
+type ConnectionStage = 'checking' | 'signed-out' | 'flow-disconnected' | 'connected';
 
 const adapter = new RealGoogleFlowAdapter();
+
+// Apply the shared Studio theme before React paints the Side Panel.
+applyStoredTheme();
 
 function MiniGraph() {
   return (
@@ -47,6 +46,18 @@ function MiniGraph() {
 async function openTab(url: string) {
   try {
     if (typeof chrome !== 'undefined' && chrome.tabs?.create) {
+      const tabs = await chrome.tabs.query({});
+      const tab = tabs.find((candidate) => candidate.id !== undefined && (
+        candidate.url?.includes('labs.google/fx') || candidate.url?.includes('flow.google.com')
+      ));
+      if (tab?.id !== undefined) {
+        await chrome.tabs.update(tab.id, { active: true });
+        if (tab.windowId !== undefined) {
+          // A focus failure must not open a duplicate after activation succeeds.
+          await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+        }
+        return;
+      }
       await chrome.tabs.create({ url });
       return;
     }
@@ -56,7 +67,7 @@ async function openTab(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-function Header({ onRefresh }: { onRefresh: () => void }) {
+function Header({ onRefresh, isRefreshing }: { onRefresh: () => void; isRefreshing?: boolean }) {
   return (
     <header className="sidepanel-header">
       <div className="fg-brand">
@@ -64,10 +75,22 @@ function Header({ onRefresh }: { onRefresh: () => void }) {
         <div className="fg-brand-title">FlowGraph</div>
         <span className="fg-version">v0.1</span>
       </div>
-      <button className="fg-btn fg-btn-ghost fg-icon-btn" title="Refresh connection" onClick={onRefresh}>
-        <RefreshCcw size={16} />
+      <button className="fg-btn fg-btn-ghost fg-icon-btn" title="Refresh connection" onClick={onRefresh} disabled={isRefreshing}>
+        <RefreshCcw size={16} className={isRefreshing ? 'spin' : ''} />
       </button>
     </header>
+  );
+}
+
+function CheckingConnection() {
+  return (
+    <section className="sidepanel-checking fg-card" role="status" aria-live="polite">
+      <RefreshCcw size={22} className="spin" />
+      <div>
+        <strong>Đang kiểm tra Google Flow</strong>
+        <span>Đang xác nhận tài khoản, phiên Flow và project hiện tại…</span>
+      </div>
+    </section>
   );
 }
 
@@ -84,31 +107,12 @@ function SignedOut({ onContinue }: { onContinue: () => void }) {
         </button>
       </section>
 
-      <div className="sidepanel-stack">
-        <button className="fg-btn side-action">
-          <FileJson size={18} color="#65aaff" />
-          <span className="side-action-copy">
-            <span className="side-action-title">Import Workflow</span>
-            <span className="side-action-sub">Bring in a FlowGraph JSON file</span>
-          </span>
-          <ChevronRight size={15} />
-        </button>
-        <button className="fg-btn side-action">
-          <LayoutTemplate size={18} color="#ad6bff" />
-          <span className="side-action-copy">
-            <span className="side-action-title">View Templates</span>
-            <span className="side-action-sub">Explore ready-to-run workflows</span>
-          </span>
-          <ChevronRight size={15} />
-        </button>
-      </div>
-
       <section className="setup-steps fg-card">
         <div className="section-head" style={{ marginBottom: 3 }}><h3>Get started in 3 steps</h3></div>
-        <div className="setup-step done">
+        <div className="setup-step">
           <span className="step-index">1</span>
-          <div><div className="step-title">Sign in to Extension</div><div className="step-sub">Secure Google account identity</div></div>
-          <Check size={14} color="#46d98c" />
+          <div><div className="step-title">Connect Google Account</div><div className="step-sub">Use the signed-in Google Flow session</div></div>
+          <span className="fg-status-dot warn" />
         </div>
         <div className="setup-step">
           <span className="step-index">2</span>
@@ -130,16 +134,20 @@ function FlowDisconnected({
   flow,
   onCheckConnection,
   onOpenStudio,
+  isRefreshing,
 }: {
   account: AccountStatus;
   flow: FlowStatus;
   onCheckConnection: () => void;
   onOpenStudio: () => void;
+  isRefreshing?: boolean;
 }) {
   const isAccountReady = account.state === 'CONNECTED';
   const isFlowReady = flow.state === 'READY';
+  const isProjectReady = Boolean(flow.projectId);
   const accountEmail = account.email || (isAccountReady ? 'Google Account Connected' : 'Not signed in');
   const flowStateText = isFlowReady ? 'Connected' : flow.state === 'CHECKING' ? 'Checking…' : 'Not connected';
+  const projectText = flow.projectId ? (flow.title ? flow.title.replace(/^Google Flow\s*[-–]\s*/i, '').trim() : flow.projectId) : 'None / Select in Flow';
 
   return (
     <>
@@ -151,7 +159,7 @@ function FlowDisconnected({
       <div className="connection-grid">
         <section className={`connection-card ${isAccountReady ? 'connected' : 'disconnected'} fg-card`}>
           <div className="top">
-            <CircleUserRound size={18} color={isAccountReady ? '#62e49e' : '#aa66ff'} />
+            <CircleUserRound size={18} color={isAccountReady ? 'var(--green)' : 'var(--purple)'} />
             <span className={`fg-badge ${isAccountReady ? 'success' : ''}`}>{isAccountReady ? 'Connected' : 'Offline'}</span>
           </div>
           <div className="title">Google Account</div>
@@ -159,11 +167,19 @@ function FlowDisconnected({
         </section>
         <section className={`connection-card ${isFlowReady ? 'connected' : 'disconnected'} fg-card`}>
           <div className="top">
-            <Unplug size={18} color={isFlowReady ? '#62e49e' : '#aa66ff'} />
+            <Unplug size={18} color={isFlowReady ? 'var(--green)' : 'var(--purple)'} />
             <span className={`fg-badge ${isFlowReady ? 'success' : ''}`}>{isFlowReady ? 'Connected' : 'Offline'}</span>
           </div>
           <div className="title">Google Flow</div>
           <div className="value">{flowStateText}</div>
+        </section>
+        <section className={`connection-card ${isProjectReady ? 'connected' : 'disconnected'} fg-card`}>
+          <div className="top">
+            <FolderOpen size={18} color={isProjectReady ? 'var(--blue)' : 'var(--muted)'} />
+            <span className={`fg-badge ${isProjectReady ? 'success' : ''}`}>{isProjectReady ? 'Detected' : 'Required'}</span>
+          </div>
+          <div className="title">Active Project</div>
+          <div className="value" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectText}</div>
         </section>
       </div>
 
@@ -171,7 +187,7 @@ function FlowDisconnected({
         <h3>Connect Google Flow</h3>
         <p>The extension will use the authorized Google Flow tab as its generation runtime. No Flow password, cookie or reCAPTCHA token is stored in workflow data.</p>
         <button className="fg-btn fg-btn-primary" onClick={() => openTab('https://flow.google.com')}><ArrowRight size={15} /> Open Google Flow</button>
-        <button className="fg-btn" onClick={onCheckConnection}><RefreshCcw size={14} /> Recheck Connection</button>
+        <button className="fg-btn" onClick={onCheckConnection} disabled={isRefreshing}><RefreshCcw size={14} className={isRefreshing ? 'spin' : ''} /> Recheck Connection</button>
       </section>
 
       <section className="dashboard-section fg-card">
@@ -206,14 +222,12 @@ function Connected({
   credits,
   projectName,
   onOpenStudio,
-  onDisconnect,
 }: {
   account: AccountStatus;
   flow: FlowStatus;
   credits?: CreditsData;
   projectName: string;
   onOpenStudio: () => void;
-  onDisconnect: () => void;
 }) {
   const [logs, setLogs] = useState<Array<{ id: string; time: string; text: string; level: 'info' | 'success' | 'warn' | 'error' }>>([]);
   const [lastRun, setLastRun] = useState<{ title: string; meta: string; status: string } | null>(null);
@@ -252,16 +266,7 @@ function Connected({
       if (!message.kind) return;
 
       const now = new Date().toLocaleTimeString();
-      const eventText = message.kind === 'node:status'
-        ? `Node [${message.nodeId || 'unknown'}]: ${message.status || 'running'}`
-        : message.kind === 'node:result'
-        ? `Node [${message.nodeId || 'unknown'}] completed successfully`
-        : message.kind === 'run:state'
-        ? `Workflow Run [${(message.runId || '').slice(0, 8)}]: ${message.status || 'state changed'}`
-        : message.kind === 'run:error'
-        ? `Workflow Error: ${message.error?.message || 'Execution failed'}`
-        : `Runtime event: ${message.kind}`;
-
+      const eventText = formatFlowgraphRuntimeEvent(message);
       const level: 'info' | 'success' | 'warn' | 'error' =
         message.kind === 'run:error' ? 'error' :
         message.status === 'success' ? 'success' :
@@ -274,7 +279,7 @@ function Connected({
         level,
       }, ...prev].slice(0, 20));
 
-      if (message.kind === 'run:state' && (message.status === 'success' || message.status === 'failed' || message.status === 'cancelled')) {
+      if (shouldRefreshLastRun(message)) {
         loadLastRun();
       }
     };
@@ -282,7 +287,7 @@ function Connected({
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, [loadLastRun]);
 
-  const creditText = credits?.credits !== undefined ? String(credits.credits) : 'Available';
+  const creditText = credits?.credits !== undefined ? String(credits.credits) : credits?.serviceTier ? credits.serviceTier.replace('SERVICE_TIER_', '') : 'Unlimited / Free';
   const accountEmail = account.email || 'Connected';
 
   return (
@@ -315,7 +320,7 @@ function Connected({
         <section className="dashboard-section fg-card">
           <div className="section-head"><h3>Last Run Summary</h3><ChevronRight size={14} className="fg-muted" /></div>
           <div className="last-run">
-            <div className="preview-thumb" />
+            <div className="last-run-status-thumb" aria-hidden="true"><History size={18} /></div>
             <div>
               <div className="run-title">{lastRun.title}</div>
               <div className="run-meta">{lastRun.meta}</div>
@@ -348,7 +353,6 @@ function Connected({
         <div className="quick-actions">
           <button className="fg-btn quick-action primary" onClick={onOpenStudio}><Workflow size={18} /><span>Open Studio</span></button>
           <button className="fg-btn quick-action" onClick={() => openTab('https://flow.google.com')}><Play size={18} color="#62aaff" /><span>Flow Web</span></button>
-          <button className="fg-btn quick-action" onClick={onOpenStudio}><Sparkles size={18} color="#5be0ab" /><span>New Graph</span></button>
           <button className="fg-btn quick-action" onClick={() => {
             try {
               if (typeof chrome !== 'undefined' && chrome.downloads) {
@@ -358,8 +362,6 @@ function Connected({
           }}><CloudDownload size={18} /><span>Downloads</span></button>
         </div>
       </section>
-
-      <button className="fg-btn fg-btn-danger" onClick={onDisconnect}><LogOut size={14} /> Disconnect Flow</button>
     </>
   );
 }
@@ -369,16 +371,28 @@ function App() {
   const [flow, setFlow] = useState<FlowStatus>({ state: 'CHECKING' });
   const [credits, setCredits] = useState<CreditsData | undefined>();
   const [projectName, setProjectName] = useState<string>('Flow project');
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === THEME_SETTINGS_STORAGE_KEY) applyStoredTheme();
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // Derive connection stage strictly from real account + flow status
   const stage: ConnectionStage =
-    account.state !== 'CONNECTED'
+    account.state === 'CHECKING' || flow.state === 'CHECKING'
+      ? 'checking'
+      : account.state !== 'CONNECTED'
       ? 'signed-out'
       : flow.state !== 'READY'
       ? 'flow-disconnected'
       : 'connected';
 
   const checkLiveStatus = useCallback(async () => {
+    setIsRefreshing(true);
     try {
       const health = await adapter.healthCheck();
       setAccount(health.account);
@@ -390,6 +404,8 @@ function App() {
       }
     } catch {
       // Keep fail-closed state
+    } finally {
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -413,7 +429,8 @@ function App() {
 
   return (
     <div className="fg-shell sidepanel-app">
-      <Header onRefresh={checkLiveStatus} />
+      <Header onRefresh={checkLiveStatus} isRefreshing={isRefreshing} />
+      {stage === 'checking' && <CheckingConnection />}
       {stage === 'signed-out' && (
         <SignedOut onContinue={() => openTab('https://flow.google.com')} />
       )}
@@ -423,6 +440,7 @@ function App() {
           flow={flow}
           onCheckConnection={checkLiveStatus}
           onOpenStudio={openStudio}
+          isRefreshing={isRefreshing}
         />
       )}
       {stage === 'connected' && (
@@ -432,7 +450,6 @@ function App() {
           credits={credits}
           projectName={projectName}
           onOpenStudio={openStudio}
-          onDisconnect={() => openTab('https://flow.google.com')}
         />
       )}
       <footer className="sidepanel-footer"><span>FlowGraph v0.1</span><span>Live Companion · MV3</span></footer>

@@ -284,14 +284,33 @@ Nhận `client_id` từ response, điền vào ChatGPT. Client đã đăng ký �
 
 ## 7. Bảo mật
 
-- **API key nằm trong `.env`**, không commit (`.gitignore` đã loại `.env`).
-- Mọi path đều bị chặn escape root: `read_file`/`write_file`/... trả lỗi nếu path có `..`, bắt đầu bằng `/`, hoặc chứa drive letter.
-- Chỉ tool ghi mới được phép tạo/sửa/xóa; tool đọc không có tác dụng phụ.
-- Không bao giờ dùng chung API key với thứ khác; đổi key = đổi giá trị trong `.env` + restart.
-- File quá lớn (>100MB) bị chặn đọc.
-- Thư mục `.venv`, `.git`, `node_modules`, `__pycache__` luôn bị bỏ qua khi liệt kê.
+- **API key** trong `.env` (gitignore). `/mcp` không Bearer → 401.
+- **OAuth DCR vẫn bật** để ChatGPT tự đăng ký connector, NHƯNG:
+  - `redirect_uris` chỉ nhận prefix `https://chatgpt.com/connector/oauth/`
+  - `/authorize` **không consent implicit** — trình duyệt tới `/consent`, chủ máy gõ `FLOW_VEO_MCP_CONSENT_PIN`
+- Bind mặc định `127.0.0.1`. Public = Cloudflare tunnel, không mở LAN.
+- `exec_command` / `start_process` mang `destructiveHint` (không giả read-only).
+- Tool chạy đúng quyền user Windows, không elevate.
 
-## 8. Kiểm thử
+## 8. Kết hợp ChatGPT Web Bridge (`E:\Flow_veo\chatgpt-web-bridge`)
+
+Hai kênh **cùng lúc**, không trộn credential:
+
+| Kênh | Địa chỉ | Việc |
+|---|---|---|
+| **MCP OAuth** | `https://flowveo.thangterter.online/mcp` | ChatGPT (connector) **thao tác máy** |
+| **Web Bridge** | `127.0.0.1:5005` | Pipo **nói với** tab ChatGPT (DOM) |
+
+Luồng: Pipo → `mcp_handoff.py "việc X"` → bridge gõ vào ChatGPT → ChatGPT gọi MCP tools (đã Allow + PIN).
+
+```bash
+python E:\Flow_veo\chatgpt-web-bridge\bridge_server.py
+python E:\Flow_veo\chatgpt-web-bridge\mcp_handoff.py "list E:\Flow_veo rồi tóm tắt README"
+```
+
+Bearer API key chỉ dành cho Claude/Cursor/local. Không dán key vào ChatGPT Web.
+
+## 9. Kiểm thử
 
 ```bash
 # Test nội bộ (không cần server chạy) — dùng Starlette TestClient:

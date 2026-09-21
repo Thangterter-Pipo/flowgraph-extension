@@ -2,9 +2,10 @@
 // provider adapter, polls to terminal state, returns image MediaRef.
 import type { NodeExecutor, NodeExecutorOutput, NodeExecutionContext, ValidationResult } from '../../engine/execution/NodeExecutor';
 import type { GoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
-import { asText, mediaRefFromPayload } from '../RuntimeValue';
+import { asMediaList, asText, mediaRefFromPayload, mergeCharacterDna } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
 import { normalizeFlowUiModelLabel } from '../../shared/sync/SyncCapabilityRegistry';
+import { generateCancellable } from './generateCancellable';
 
 export interface TextToImageExecutorOptions {
   adapter: GoogleFlowAdapter;
@@ -27,31 +28,45 @@ export class TextToImageExecutor implements NodeExecutor {
     return { valid: true, errors: [] };
   }
 
-  async execute(context: NodeExecutionContext, _abortSignal?: AbortSignal): Promise<NodeExecutorOutput> {
+  async execute(context: NodeExecutionContext, abortSignal?: AbortSignal): Promise<NodeExecutorOutput> {
     context.context.throwIfAborted();
-    const prompt = asText(context.inputs.prompt) ?? String(context.config.promptSource === 'Custom' ? context.config.customPrompt ?? '' : '');
+    const rawPrompt = asText(context.inputs.prompt) ?? String(context.config.promptSource === 'Custom' ? context.config.customPrompt ?? '' : '');
     const projectId = context.context.activeProject.projectId;
     const modelKey = String(context.config.usageKey ?? context.config.model ?? 'NARWHAL');
 
-    // Same reason as Image-to-Video: never let an empty prompt reach the Flow UI,
-    // where it used to be silently replaced by a hard-coded placeholder.
-    if (!prompt.trim()) {
+    // Merge every connected Character DNA block deterministically. Multiple Character
+    // ports must not silently drop all but the first entity.
+    const characterInput = context.inputs.characters || context.inputs.character;
+    const finalPrompt = mergeCharacterDna(rawPrompt.trim(), characterInput, 'SCENE EXECUTION');
+
+    const references = asMediaList(context.inputs.references);
+    for (const reference of references) {
+      if (reference.type !== 'IMAGE') {
+        throw new RuntimeError('INVALID_INPUT', `Text-to-Image reference ${reference.mediaId} must be an IMAGE.`, { nodeId: context.nodeId });
+      }
+      if (reference.projectId !== projectId) {
+        throw new RuntimeError('PROJECT_ISOLATION', `Text-to-Image reference ${reference.mediaId} belongs to project ${reference.projectId}, not ${projectId}.`, { nodeId: context.nodeId });
+      }
+    }
+
+    if (!finalPrompt.trim()) {
       throw new RuntimeError('INVALID_INPUT', 'Text-to-Image received no prompt input. Connect a Prompt node to the Prompt input.', { nodeId: context.nodeId });
     }
 
     let ref;
     try {
-      ref = await this.adapter.generate({
+      ref = await generateCancellable(this.adapter, {
         kind: 't2i',
         projectId,
-        prompt: prompt || undefined,
+        prompt: finalPrompt || undefined,
         modelKey,
         modelLabel: context.config.model ? normalizeFlowUiModelLabel(String(context.config.model)) : undefined,
         aspectRatio: String(context.config.aspectRatio ?? '16:9 (Landscape)'),
-        // T2I không dùng targetResolution (độ phân giải video 360p/720p). Chỉ truyền khi thực sự cần.
+        imageRefs: references.map((reference) => ({ mediaId: reference.mediaId, imageUsageType: 'IMAGE_USAGE_TYPE_ASSET' })),
         targetResolution: undefined,
+        batchCount: context.config.batchCount !== undefined ? Number.parseInt(String(context.config.batchCount).replace(/^x/i, ''), 10) : undefined,
         seed: context.config.seed !== undefined ? Number(context.config.seed) : undefined,
-      });
+      }, context.context, abortSignal);
     } catch (error) {
       throw toRuntime(error, context.nodeId);
     }

@@ -5,6 +5,7 @@ import type { NodeExecutor, NodeExecutorOutput, NodeExecutionContext, Validation
 import type { GoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
 import { asMedia } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
+import { isStitchArtifact, stitchArtifactUrl } from '../stitch/StitchArtifactStore';
 
 export interface DownloadExecutorOptions {
   adapter: GoogleFlowAdapter;
@@ -29,7 +30,21 @@ export class DownloadExecutor implements NodeExecutor {
     const media = asMedia(context.inputs.media);
     if (!media) throw new RuntimeError('INVALID_INPUT', 'Download received no media input.', { nodeId: context.nodeId });
 
+    const activeProject = context.context.activeProject.projectId;
+    if (!media.projectId || media.projectId !== activeProject) {
+      throw new RuntimeError(
+        'PROJECT_ISOLATION',
+        `Download media belongs to project ${media.projectId ?? 'none'}, not the active project ${activeProject}.`,
+        { nodeId: context.nodeId },
+      );
+    }
+
     const fileName = String(context.config.fileName ?? `flowgraph-${media.mediaId.slice(0, 8)}`);
+    if (isStitchArtifact(media.mediaId)) {
+      const previewUrl = await stitchArtifactUrl(media.mediaId, activeProject);
+      return { outputs: { file: { type: 'file', value: media.mediaId } },
+        result: { type: 'video', mediaId: media.mediaId, projectId: activeProject, previewUrl, mimeType: media.mimeType } };
+    }
 
     // Bố yêu cầu: Không tự động tải xuống file về máy khi hoàn thành video
     // Chỉ tải khi autoDownload === 'true', tránh làm phiền và spam popup browser download
@@ -53,7 +68,7 @@ export class DownloadExecutor implements NodeExecutor {
     return {
       outputs: {
         file: {
-          type: 'text' as const,
+          type: 'file' as const,
           value: savedFilename,
         },
       },

@@ -1,1 +1,0 @@
-({url:location.href,title:document.title,ready:document.readyState,grecaptcha:!!window.grecaptcha?.enterprise?.execute,text:(document.body?.innerText||'').slice(0,8000)})

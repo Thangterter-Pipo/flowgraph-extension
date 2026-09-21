@@ -5,11 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "npm run build:bridge && tsc -b && vite build",
-    "build:bridge": "node scripts/build-bridge.mjs",
-    "preview": "vite preview --host 127.0.0.1",
-    "typecheck": "tsc -b --pretty false",
-    "test": "vitest run",
+    "test": "npm --prefix flowgraph-extension run test",
+    "build": "npm --prefix flowgraph-extension run build",
+    "typecheck": "npm --prefix flowgraph-extension run typecheck",
     "test:watch": "vitest"
   },
   "dependencies": {

@@ -14,10 +14,12 @@ export type RuntimeErrorCode =
   | 'MEDIA_FAILED'
   | 'PREVIEW_FAILED'
   | 'CAPTCHA_REQUIRED'
+  | 'USER_ACTION_REQUIRED'
   | 'TIMEOUT'
   | 'CANCELLED'
   | 'NETWORK_ERROR'
-  | 'UNSUPPORTED_KIND';
+  | 'UNSUPPORTED_KIND'
+  | 'UNSUPPORTED_NODE';
 
 const RETRYABLE: ReadonlySet<string> = new Set([
   'AUTH_EXPIRED',
@@ -50,6 +52,7 @@ export class RuntimeError extends Error {
 const CODE_MAP: Record<string, RuntimeErrorCode> = {
   AUTH_EXPIRED: 'AUTH_EXPIRED',
   CAPTCHA_REQUIRED: 'CAPTCHA_REQUIRED',
+  USER_ACTION_REQUIRED: 'USER_ACTION_REQUIRED',
   CREDIT_EXHAUSTED: 'CREDIT_EXHAUSTED',
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
   INVALID_INPUT: 'INVALID_INPUT',
@@ -62,6 +65,8 @@ const CODE_MAP: Record<string, RuntimeErrorCode> = {
   NETWORK_ERROR: 'NETWORK_ERROR',
   PROJECT_REQUIRED: 'PROJECT_REQUIRED',
   CANCELLED: 'CANCELLED',
+  UNSUPPORTED_KIND: 'UNSUPPORTED_KIND',
+  UNSUPPORTED_NODE: 'UNSUPPORTED_NODE',
 };
 
 /** Map a provider/bridge error (normalized already) to a RuntimeError. */

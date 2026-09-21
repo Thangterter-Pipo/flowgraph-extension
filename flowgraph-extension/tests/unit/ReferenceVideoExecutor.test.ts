@@ -227,7 +227,7 @@ describe('ReferenceVideoExecutor', () => {
       context: ctx,
     });
 
-    expect(generateFn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(generateFn.mock.calls[0][0]).toEqual(expect.objectContaining({
       kind: 'reference',
       projectId: 'proj-1',
       prompt: 'Generate stylized video based on reference images',

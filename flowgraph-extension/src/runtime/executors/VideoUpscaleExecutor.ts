@@ -5,6 +5,7 @@ import type { GoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAda
 import { mediaRefFromPayload } from '../RuntimeValue';
 import { RuntimeError } from '../RuntimeError';
 import { PollManager } from '../PollManager';
+import { generateCancellable } from './generateCancellable';
 
 export interface VideoUpscaleExecutorOptions {
   adapter: GoogleFlowAdapter;
@@ -82,18 +83,19 @@ export class VideoUpscaleExecutor implements NodeExecutor {
 
     let initialResult;
     try {
-      initialResult = await this.adapter.generate({
+      initialResult = await generateCancellable(this.adapter, {
         kind: 'upscale',
         projectId,
         modelKey,
         targetResolution: is4k ? '4K' : '1080p',
         videoInput: { mediaId: refVideo.mediaId },
-      });
+      }, context.context, abortSignal);
     } catch (err) {
       throw toRuntimeError(err, context.nodeId);
     }
 
-    if (context.context.throwIfAborted(), initialResult.completedViaUi || initialResult.previewUrl) {
+    context.context.throwIfAborted();
+    if (initialResult.completedViaUi || initialResult.previewUrl) {
       return {
         outputs: { video: mediaRefFromPayload({ ...initialResult, previewUrl: initialResult.previewUrl, type: 'VIDEO' }) },
         result: {
@@ -105,36 +107,41 @@ export class VideoUpscaleExecutor implements NodeExecutor {
       };
     }
 
-    const status = await this.poller.untilTerminal(async () => {
-      context.context.throwIfAborted();
-      const current = await this.adapter.waitForMedia({ projectId, mediaId: initialResult.mediaId });
+    context.context.trackMediaJob?.(initialResult.mediaId);
+    try {
+      const status = await this.poller.untilTerminal(async () => {
+        context.context.throwIfAborted();
+        const current = await this.adapter.waitForMedia({ projectId, mediaId: initialResult.mediaId });
+        return {
+          status: current.status,
+          errorMessage: current.errorMessage,
+          data: current.media,
+        };
+      }, { abortSignal });
+
+      if (status.status === 'CANCELED') {
+        throw new RuntimeError('CANCELLED', 'Generation was cancelled by the provider.', { nodeId: context.nodeId });
+      }
+      if (status.status === 'FAILED') {
+        throw new RuntimeError('MEDIA_FAILED', status.errorMessage ?? 'Video upscale failed.', { nodeId: context.nodeId });
+      }
+      if (status.status === 'UNKNOWN') {
+        throw new RuntimeError('TIMEOUT', status.errorMessage ?? 'Polling timed out waiting for upscaled video.', { nodeId: context.nodeId });
+      }
+
+      const finalMedia = status.data as { previewUrl?: string } | undefined;
       return {
-        status: current.status,
-        errorMessage: current.errorMessage,
-        data: current.media,
+        outputs: { video: mediaRefFromPayload({ ...initialResult, previewUrl: finalMedia?.previewUrl, type: 'VIDEO' }) },
+        result: {
+          type: 'video',
+          mediaId: initialResult.mediaId,
+          previewUrl: finalMedia?.previewUrl ?? '',
+          mimeType: 'video/mp4',
+        },
       };
-    }, { abortSignal });
-
-    if (status.status === 'CANCELED') {
-      throw new RuntimeError('CANCELLED', 'Generation was cancelled by the provider.', { nodeId: context.nodeId });
+    } finally {
+      context.context.completeMediaJob?.(initialResult.mediaId);
     }
-    if (status.status === 'FAILED') {
-      throw new RuntimeError('MEDIA_FAILED', status.errorMessage ?? 'Video upscale failed.', { nodeId: context.nodeId });
-    }
-    if (status.status === 'UNKNOWN') {
-      throw new RuntimeError('TIMEOUT', status.errorMessage ?? 'Polling timed out waiting for upscaled video.', { nodeId: context.nodeId });
-    }
-
-    const finalMedia = status.data as { previewUrl?: string } | undefined;
-    return {
-      outputs: { video: mediaRefFromPayload({ ...initialResult, previewUrl: finalMedia?.previewUrl, type: 'VIDEO' }) },
-      result: {
-        type: 'video',
-        mediaId: initialResult.mediaId,
-        previewUrl: finalMedia?.previewUrl ?? '',
-        mimeType: 'video/mp4',
-      },
-    };
   }
 
   retryable(error: RuntimeError): boolean {

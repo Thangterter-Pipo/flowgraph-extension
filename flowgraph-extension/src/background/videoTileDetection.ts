@@ -139,3 +139,31 @@ export function isEditorPlaceholder(text: string): boolean {
   if (!seen) return true;
   return EDITOR_PLACEHOLDER_PREFIXES.some((prefix) => seen.startsWith(prefix));
 }
+
+/**
+ * Attribution helper for new gallery image mediaIds.
+ *
+ * An image candidate is accepted when its exact requested mediaId matches a candidate
+ * that is proven to carry the submitted prompt, or when no candidate mismatches.
+ */
+export interface ImageCandidateAttribution {
+  mediaId: string;
+  editorPrompt?: string;
+  matchedPrompt?: boolean;
+}
+
+export function selectAttributedImageMediaId(args: {
+  candidates: ImageCandidateAttribution[];
+  expectedPrompt: string;
+}): string | undefined {
+  const expected = (args.expectedPrompt ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!expected) return undefined;
+  for (const candidate of args.candidates) {
+    if (!candidate.mediaId) continue;
+    if (candidate.matchedPrompt) return candidate.mediaId;
+    if (candidate.editorPrompt && editorPromptMatches(candidate.editorPrompt, expected)) {
+      return candidate.mediaId;
+    }
+  }
+  return undefined;
+}

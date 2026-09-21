@@ -4,11 +4,70 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AccountStatus, CreditsData, FlowStatus, ProjectInfo } from '../../shared/bridge';
 import { RealGoogleFlowAdapter } from '../../adapters/google-flow/GoogleFlowAdapter';
 
+
+export interface RunBlockReason {
+  code: string;
+  message: string;
+  detail?: string;
+}
+
 export interface ActiveProjectState {
   projectId: string;
   projectName: string;
   selectedAt: string;
 }
+
+/** Pure helper — no side effects. UI, runWorkflow and tests must use this exact logic for pre-click gate. */
+export function computeRunBlockReason(
+  account: AccountStatus,
+  flow: FlowStatus,
+  activeProject?: ActiveProjectState,
+  runStatus?: string
+): RunBlockReason | null {
+  if (runStatus === 'running') {
+    return { code: 'RUN_IN_PROGRESS', message: 'A workflow is already running. Click Stop to cancel before starting another.' };
+  }
+  if (account.state !== 'CONNECTED') {
+    if (account.state === 'CHECKING') {
+      return { code: 'ACCOUNT_CHECKING', message: 'Account status checking… Refresh or wait for live update.' };
+    }
+    if (account.state === 'ERROR') {
+      return { code: 'ACCOUNT_ERROR', message: account.error || 'Account error detected. Click the account pill to refresh.' };
+    }
+    if (account.state === 'SESSION_EXPIRED') {
+      return { code: 'AUTH_EXPIRED', message: 'Google session expired. Refresh the Google Flow tab and retry.' };
+    }
+    if (account.state === 'DISCONNECTED') {
+      return { code: 'ACCOUNT_DISCONNECTED', message: 'Google Account disconnected. Open a Google Flow tab and sign in.' };
+    }
+    return { code: 'ACCOUNT_NOT_CONNECTED', message: 'Google Account not connected. Open Flow tab to authenticate.' };
+  }
+  if (flow.state === 'CHECKING') {
+    return { code: 'FLOW_CHECKING', message: 'Flow connection checking… Click Flow pill or Run to trigger fresh health check.' };
+  }
+  if (flow.state === 'ERROR') {
+    return { code: 'FLOW_ERROR', message: flow.error || 'Flow tab in error state. Check console in Flow tab and refresh Studio.' };
+  }
+  if (flow.state === 'DISCONNECTED' || !flow.url) {
+    return { code: 'NO_FLOW_TAB', message: 'No Google Flow tab detected. Open https://flow.google.com/ (or labs) in another tab.' };
+  }
+  const liveProjectId = flow.projectId;
+  if (flow.state === 'PROJECT_REQUIRED' || !liveProjectId) {
+    return { code: 'FLOW_PROJECT_REQUIRED', message: 'Google Flow tab is not inside a project page. Navigate inside Flow to a project.' };
+  }
+  if (!activeProject?.projectId) {
+    return { code: 'NO_ACTIVE_PROJECT', message: 'No project selected in Studio. Use the project dropdown or create one.' };
+  }
+  if (liveProjectId && activeProject.projectId !== liveProjectId) {
+    return {
+      code: 'PROJECT_MISMATCH',
+      message: `Studio project ${activeProject.projectId.slice(0, 8)}… does not match live Flow project ${liveProjectId.slice(0, 8)}…. Re-select project or refresh.`,
+      detail: `live=${liveProjectId} studio=${activeProject.projectId}`,
+    };
+  }
+  return null; // unlocked
+}
+
 
 const ACTIVE_PROJECT_KEY = 'flowgraph.activeProject';
 const ACCOUNT_PILL_KEY = 'flowgraph.accountStatus';
@@ -29,6 +88,7 @@ export interface StudioConnection {
   createProject: (title: string) => Promise<ActiveProjectState>;
   selectProject: (projectId: string) => Promise<ActiveProjectState>;
   isCanvasUnlocked: boolean;
+  runBlockReason: RunBlockReason | null;
 }
 
 const CHECKING: AccountStatus = { state: 'CHECKING' };
@@ -306,7 +366,9 @@ export function useStudioConnection(): StudioConnection {
     return () => window.clearInterval(timer);
   }, [refreshAccount, refreshAll]);
 
-  const isCanvasUnlocked = account.state === 'CONNECTED' && (flow.state === 'READY' || flow.state === 'CONNECTED') && Boolean(activeProject?.projectId);
+  const blockReason = computeRunBlockReason(account, flow, activeProject);
+  const isCanvasUnlocked = blockReason === null;
+
 
   return {
     account,
@@ -323,6 +385,7 @@ export function useStudioConnection(): StudioConnection {
     createProject,
     selectProject,
     isCanvasUnlocked,
+    runBlockReason: blockReason,
   };
 }
 

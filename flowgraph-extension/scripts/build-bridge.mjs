@@ -31,6 +31,7 @@ async function main() {
   mkdirSync(resolve(root, 'dist/background'), { recursive: true });
   cpSync(resolve(root, 'public/content/flow-content-script.js'), resolve(root, 'dist/content/flow-content-script.js'));
   cpSync(resolve(root, 'public/background/service-worker.js'), resolve(root, 'dist/background/service-worker.js'));
+  cpSync(resolve(root, 'public/manifest.json'), resolve(root, 'dist/manifest.json'));
 
   console.log('[build:bridge] service-worker.js + flow-content-script.js ready');
 }
