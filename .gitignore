@@ -57,9 +57,6 @@ chatgpt*
 !/tsconfig*.json
 !/vite.config.ts
 !/vitest.config.ts
-!/evidence_manifest.json
-!/batch_a_t2i_60_matrix_evidence.json
-!/t2i_pure_ui_click_matrix_results.json
 
 # Extension test & sketch artifacts
 flowgraph-extension/sketches/
