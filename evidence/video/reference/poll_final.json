@@ -1,8 +1,0 @@
-{
-  "http": 200,
-  "status": "MEDIA_GENERATION_STATUS_SUCCESSFUL",
-  "mediaId": "1d2d1e90-a4be-4b6a-82b3-f691e787632e",
-  "workflowId": "4e14475c-de4e-47d0-9802-97b3027c659d",
-  "workflowStepId": "CAE",
-  "hasVideo": true
-}

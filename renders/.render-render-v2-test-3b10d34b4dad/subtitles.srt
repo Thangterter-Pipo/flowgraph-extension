@@ -1,7 +1,0 @@
-1
-00:00:00,400 --> 00:00:01,600
-FlowGraph Render V2
-
-2
-00:00:02,000 --> 00:00:03,000
-Audio + xfade + subtitle

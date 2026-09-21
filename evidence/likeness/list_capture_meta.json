@@ -1,9 +1,0 @@
-{
-  "evidenceKind": "derived_from_capture_index",
-  "source": "_ctl/schemas_master.json",
-  "endpoint": "GET https://aisandbox-pa.googleapis.com/v1/flow/likeness:listUserLikenesses?<populateImage>",
-  "httpStatus": 200,
-  "contentType": "application/json; charset=UTF-8",
-  "hits": 1,
-  "response": {}
-}
