@@ -56,8 +56,8 @@
     const code = aspectCode(ratio) ?? "LANDSCAPE";
     return `IMAGE_ASPECT_RATIO_${code}`;
   }
-  function buildT2iRequest(payload, context, batchId) {
-    const ctx = context;
+  function buildT2iRequest(payload, context2, batchId) {
+    const ctx = context2;
     return {
       clientContext: ctx,
       mediaGenerationContext: { batchId },
@@ -72,10 +72,10 @@
       }]
     };
   }
-  function buildI2vRequest(payload, context, batchId) {
+  function buildI2vRequest(payload, context2, batchId) {
     return {
       mediaGenerationContext: mediaGenerationContext(batchId),
-      clientContext: context,
+      clientContext: context2,
       useV2ModelConfig: true,
       requests: [{
         aspectRatio: aspectVideo(payload.aspectRatio),
@@ -87,10 +87,10 @@
       }]
     };
   }
-  function buildT2vRequest(payload, context, batchId) {
+  function buildT2vRequest(payload, context2, batchId) {
     return {
       mediaGenerationContext: mediaGenerationContext(batchId),
-      clientContext: context,
+      clientContext: context2,
       useV2ModelConfig: true,
       requests: [{
         aspectRatio: aspectVideo(payload.aspectRatio),
@@ -101,10 +101,10 @@
       }]
     };
   }
-  function buildExtendRequest(payload, context, batchId) {
+  function buildExtendRequest(payload, context2, batchId) {
     return {
       mediaGenerationContext: mediaGenerationContext(batchId),
-      clientContext: context,
+      clientContext: context2,
       useV2ModelConfig: true,
       requests: [{
         aspectRatio: aspectVideo(payload.aspectRatio),
@@ -116,10 +116,10 @@
       }]
     };
   }
-  function buildUpsampleRequest(payload, context, batchId) {
+  function buildUpsampleRequest(payload, context2, batchId) {
     return {
       mediaGenerationContext: mediaGenerationContext(batchId),
-      clientContext: context,
+      clientContext: context2,
       useV2ModelConfig: true,
       requests: [{
         aspectRatio: aspectVideo(payload.aspectRatio),
@@ -129,10 +129,10 @@
       }]
     };
   }
-  function buildInterpolationRequest(payload, context, batchId) {
+  function buildInterpolationRequest(payload, context2, batchId) {
     return {
       mediaGenerationContext: mediaGenerationContext(batchId),
-      clientContext: context,
+      clientContext: context2,
       useV2ModelConfig: true,
       requests: [{
         aspectRatio: aspectVideo(payload.aspectRatio),
@@ -145,10 +145,10 @@
       }]
     };
   }
-  function buildReferenceRequest(payload, context, batchId) {
+  function buildReferenceRequest(payload, context2, batchId) {
     return {
       mediaGenerationContext: mediaGenerationContext(batchId),
-      clientContext: context,
+      clientContext: context2,
       useV2ModelConfig: true,
       requests: [{
         aspectRatio: aspectVideo(payload.aspectRatio),
@@ -490,6 +490,643 @@
     return true;
   }
 
+  // src/adapters/google-flow/batch/FlowBatchProtocol.ts
+  var FLOW_BATCH_PATH = "/_/AiSandboxAngularFrontend/data/batchexecute";
+  var FLOW_BATCH_MEDIA_HOST = "flow-content.google";
+  var FLOW_BATCH_CAPTCHA_SLOT = "__CAPTCHA__";
+  var FLOW_BATCH_RPC = {
+    GENERATE_IMAGE: "ogiZ0b",
+    GENERATE_VIDEO: "eb1hJf",
+    GENERATE_VIDEO_TEXT: "YhhmEf",
+    GENERATE_VIDEO_FIRST_LAST: "nprQif",
+    GENERATE_VIDEO_REFERENCES: "MZZa6b",
+    OPERATION: "jwpduf",
+    PROJECT_MEDIA: "Zzl0ze",
+    MEDIA: "as29s",
+    UPLOAD_IMAGE: "maseQ",
+    UPSCALE_IMAGE: "SPrCad"
+  };
+  var FLOW_BATCH_CAPTCHA_ACTION = {
+    IMAGE: "IMAGE_GENERATION",
+    VIDEO: "VIDEO_GENERATION"
+  };
+  var defaultIdFactory = () => crypto.randomUUID().toUpperCase();
+  var SURFACE_ID = 22;
+  var FULL_FRAME_CROP = [null, 0.0038759689922481244, 1, 0.9961240310077519];
+  var REF_TYPE_IMAGE = 1;
+  var BASE_TYPE_IMAGE = 2;
+  var IMAGE_MODEL_ALIASES = {
+    NANO_BANANA_PRO: "GEM_PIX_2",
+    NANO_BANANA_2: "NARWHAL",
+    NANO_BANANA_2_LITE: "HARBOR_SEAL",
+    NANO_BANANA_LITE: "HARBOR_SEAL"
+  };
+  var IMAGE_MODEL_ID_RE = /^[A-Z][A-Z0-9_]{1,95}$/;
+  var IMAGE_ASPECT_BY_NAME = {
+    IMAGE_ASPECT_RATIO_SQUARE: 1,
+    IMAGE_ASPECT_RATIO_PORTRAIT: 2,
+    IMAGE_ASPECT_RATIO_LANDSCAPE: 3,
+    IMAGE_ASPECT_RATIO_PORTRAIT_THREE_FOUR: 4,
+    IMAGE_ASPECT_RATIO_PORTRAIT_FOUR_THREE: 4,
+    IMAGE_ASPECT_RATIO_LANDSCAPE_FOUR_THREE: 5,
+    "1:1": 1,
+    "9:16": 2,
+    "16:9": 3,
+    "3:4": 4,
+    "4:3": 5
+  };
+  var VIDEO_ASPECT_BY_NAME = {
+    VIDEO_ASPECT_RATIO_PORTRAIT: 1,
+    VIDEO_ASPECT_RATIO_LANDSCAPE: 2,
+    "9:16": 1,
+    "16:9": 2
+  };
+  var FlowBatchProtocolError = class extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "FlowBatchProtocolError";
+    }
+  };
+  var FlowBatchRpcError = class extends Error {
+    constructor(rpcId, detail) {
+      super(`${rpcId} failed: ${JSON.stringify(detail)}`);
+      this.rpcId = rpcId;
+      this.detail = detail;
+      this.name = "FlowBatchRpcError";
+    }
+  };
+  function resolveFlowImageModel(model2) {
+    if (typeof model2 !== "string") return "GEM_PIX_2";
+    const normalized = model2.trim().toUpperCase().replace(/-/g, "_");
+    if (IMAGE_MODEL_ALIASES[normalized]) return IMAGE_MODEL_ALIASES[normalized];
+    if (IMAGE_MODEL_ID_RE.test(normalized)) return normalized;
+    return "GEM_PIX_2";
+  }
+  function resolveFlowImageAspect(aspect) {
+    if (typeof aspect === "number" && Number.isInteger(aspect) && aspect >= 1 && aspect <= 5) {
+      return aspect;
+    }
+    const key = typeof aspect === "string" ? aspect.match(/\b(?:1:1|9:16|16:9|3:4|4:3)\b/)?.[0] ?? aspect.trim() : "";
+    const value = IMAGE_ASPECT_BY_NAME[key];
+    if (value) return value;
+    throw new FlowBatchProtocolError(`Unknown image aspect: ${String(aspect)}`);
+  }
+  function resolveFlowFirstLastModelKey(model2) {
+    const key = String(model2 || "").trim();
+    const match = key.match(/^abra_i2v_(4|6|8|10)s(_360p)?$/i);
+    if (match) {
+      return `omni_flash_i2v_${match[1]}s_first_last${match[2] ?? ""}`;
+    }
+    return key;
+  }
+  function resolveFlowVideoAspect(aspect) {
+    if (aspect === 1 || aspect === 2) return aspect;
+    const key = typeof aspect === "string" ? aspect.match(/\b(?:9:16|16:9)\b/)?.[0] ?? aspect.trim() : "";
+    const value = VIDEO_ASPECT_BY_NAME[key];
+    if (value) return value;
+    throw new FlowBatchProtocolError(`Unknown video aspect: ${String(aspect)}`);
+  }
+  function buildFlowBatchEnvelope(rpcId, inner) {
+    return JSON.stringify([[[rpcId, JSON.stringify(inner), null, "generic"]]]);
+  }
+  function context(projectId) {
+    return [null, SURFACE_ID, null, null, null, projectId, null, null, null, null, [FLOW_BATCH_CAPTCHA_SLOT, 1]];
+  }
+  function imageInput(mediaId, inputType) {
+    return [mediaId, null, null, null, inputType];
+  }
+  function buildFlowImageRequest(options) {
+    const idFactory = options.idFactory ?? defaultIdFactory;
+    const inputs = [];
+    if (options.baseMediaId) inputs.push(imageInput(options.baseMediaId, BASE_TYPE_IMAGE));
+    for (const mediaId of options.referenceMediaIds ?? []) {
+      if (mediaId && mediaId !== options.baseMediaId) inputs.push(imageInput(mediaId, REF_TYPE_IMAGE));
+    }
+    const item = [
+      null,
+      null,
+      inputs.length ? inputs : null,
+      options.seed ?? Math.floor(Math.random() * 1e9) + 1,
+      resolveFlowImageAspect(options.aspect ?? "1:1"),
+      resolveFlowImageModel(options.model),
+      null,
+      context(options.projectId),
+      [[[options.prompt]]],
+      null,
+      null,
+      null,
+      idFactory(),
+      idFactory()
+    ];
+    return buildFlowBatchEnvelope(FLOW_BATCH_RPC.GENERATE_IMAGE, [
+      null,
+      [item],
+      1,
+      context(options.projectId),
+      [idFactory()]
+    ]);
+  }
+  function buildFlowFirstFrameVideoRequest(options) {
+    const idFactory = options.idFactory ?? defaultIdFactory;
+    const request = [
+      [null, null, [[[options.prompt]]]],
+      options.model,
+      resolveFlowVideoAspect(options.aspect ?? "16:9"),
+      null,
+      [null, options.sourceMediaId, null, null, null, options.crop ?? FULL_FRAME_CROP],
+      [null, null, null, null, idFactory(), idFactory()]
+    ];
+    return buildFlowBatchEnvelope(FLOW_BATCH_RPC.GENERATE_VIDEO, [
+      [request],
+      context(options.projectId),
+      [idFactory(), 2]
+    ]);
+  }
+  function buildFlowTextVideoRequest(options) {
+    const idFactory = options.idFactory ?? defaultIdFactory;
+    const request = [
+      [null, null, [[[options.prompt]]]],
+      options.model,
+      resolveFlowVideoAspect(options.aspect ?? "16:9"),
+      null,
+      [null, null, null, null, idFactory(), idFactory()]
+    ];
+    return buildFlowBatchEnvelope(FLOW_BATCH_RPC.GENERATE_VIDEO_TEXT, [
+      [request],
+      context(options.projectId),
+      [idFactory(), 1]
+    ]);
+  }
+  function buildFlowFirstLastVideoRequest(options) {
+    const idFactory = options.idFactory ?? defaultIdFactory;
+    const request = [
+      [null, null, [[[options.prompt]]]],
+      options.model,
+      resolveFlowVideoAspect(options.aspect ?? "16:9"),
+      null,
+      [null, options.startMediaId, null, null, null, options.startCrop ?? FULL_FRAME_CROP],
+      [null, options.endMediaId, null, null, null, options.endCrop ?? FULL_FRAME_CROP],
+      [null, null, null, null, idFactory(), idFactory()]
+    ];
+    return buildFlowBatchEnvelope(FLOW_BATCH_RPC.GENERATE_VIDEO_FIRST_LAST, [
+      [request],
+      context(options.projectId),
+      [idFactory(), 2]
+    ]);
+  }
+  function buildFlowReferenceVideoRequest(options) {
+    const refs = options.referenceMediaIds.filter(Boolean);
+    if (!refs.length) throw new FlowBatchProtocolError("Reference video requires at least one image.");
+    const idFactory = options.idFactory ?? defaultIdFactory;
+    const request = [
+      [null, null, [[[options.prompt]]]],
+      refs.map((mediaId) => [null, mediaId]),
+      options.model,
+      resolveFlowVideoAspect(options.aspect ?? "16:9"),
+      null,
+      [null, null, null, null, idFactory(), idFactory()]
+    ];
+    return buildFlowBatchEnvelope(FLOW_BATCH_RPC.GENERATE_VIDEO_REFERENCES, [
+      [request],
+      context(options.projectId),
+      [idFactory(), 2]
+    ]);
+  }
+  function buildFlowOperationRequest(operationId) {
+    return buildFlowBatchEnvelope(FLOW_BATCH_RPC.OPERATION, [null, null, [[operationId]]]);
+  }
+  function buildFlowProjectMediaRequest(projectId) {
+    return buildFlowBatchEnvelope(FLOW_BATCH_RPC.PROJECT_MEDIA, [`projects/${projectId}`, null, null, null, [1]]);
+  }
+  function buildFlowMediaRequest(mediaId) {
+    return buildFlowBatchEnvelope(FLOW_BATCH_RPC.MEDIA, [mediaId]);
+  }
+  function walkStrings(node) {
+    if (typeof node === "string") return [node];
+    if (!Array.isArray(node)) return [];
+    return node.flatMap((item) => walkStrings(item));
+  }
+  function walkLists(node) {
+    if (!Array.isArray(node)) return [];
+    return [node, ...node.flatMap((item) => walkLists(item))];
+  }
+  function parseFlowBatchEnvelope(text) {
+    if (!text) return [];
+    const body = text.startsWith(")]}'") ? text.slice(text.indexOf("\n") + 1) : text;
+    const results = [];
+    let index = 0;
+    while (index < body.length) {
+      const start = body.indexOf("[", index);
+      if (start < 0) break;
+      let parsed = null;
+      let consumedEnd = -1;
+      let probe = body.indexOf("\n", start);
+      while (probe >= 0) {
+        const candidate = body.slice(start, probe).trim();
+        try {
+          parsed = JSON.parse(candidate);
+          consumedEnd = probe + 1;
+          break;
+        } catch {
+          probe = body.indexOf("\n", probe + 1);
+        }
+      }
+      if (consumedEnd < 0) {
+        const candidate = body.slice(start).trim();
+        try {
+          parsed = JSON.parse(candidate);
+          consumedEnd = body.length;
+        } catch {
+          index = start + 1;
+          continue;
+        }
+      }
+      index = consumedEnd;
+      if (!Array.isArray(parsed)) continue;
+      for (const entry of parsed) {
+        if (!Array.isArray(entry) || entry[0] !== "wrb.fr") continue;
+        const rpcId = typeof entry[1] === "string" ? entry[1] : "?";
+        const payload = entry[2];
+        if (payload == null) {
+          results.push({ rpcId, data: null, error: entry[5] ?? true });
+          continue;
+        }
+        if (typeof payload === "string") {
+          try {
+            results.push({ rpcId, data: JSON.parse(payload) });
+          } catch {
+            results.push({ rpcId, data: payload });
+          }
+        } else {
+          results.push({ rpcId, data: payload });
+        }
+      }
+    }
+    return results;
+  }
+  function firstFlowBatchPayload(text, rpcId) {
+    const result = parseFlowBatchEnvelope(text).find((candidate) => candidate.rpcId === rpcId);
+    if (!result) throw new FlowBatchProtocolError(`No ${rpcId} envelope in response`);
+    if (result.error !== void 0) throw new FlowBatchRpcError(rpcId, result.error);
+    return result.data;
+  }
+  function readFlowGeneratedImages(payload) {
+    const seen = /* @__PURE__ */ new Set();
+    const result = [];
+    for (const value of walkStrings(payload)) {
+      const marker = `${FLOW_BATCH_MEDIA_HOST}/image/`;
+      if (!value.includes(marker)) continue;
+      const mediaId = value.split(marker, 2)[1]?.split("?", 1)[0];
+      if (!mediaId || seen.has(mediaId)) continue;
+      seen.add(mediaId);
+      result.push({ mediaId, url: value });
+    }
+    return result;
+  }
+  function readFlowTextVideoSubmit(payload) {
+    const root = Array.isArray(payload) ? payload : [];
+    const records = Array.isArray(root[3]) ? root[3] : [];
+    const record = Array.isArray(records[0]) ? records[0] : null;
+    if (!record || typeof record[0] !== "string" || !record[0]) {
+      throw new FlowBatchProtocolError("Text-video submit carried no media id.");
+    }
+    return {
+      mediaId: record[0],
+      projectId: typeof record[1] === "string" ? record[1] : void 0,
+      workflowId: typeof record[2] === "string" ? record[2] : record[0],
+      status: typeof record[3] === "string" ? record[3] : void 0
+    };
+  }
+  function readFlowOperation(payload) {
+    const root = Array.isArray(payload) ? payload : [];
+    const records = Array.isArray(root[2]) ? root[2] : [];
+    const record = Array.isArray(records[0]) ? records[0] : null;
+    if (!record || typeof record[0] !== "string") {
+      throw new FlowBatchProtocolError("Operation payload carried no operation id");
+    }
+    let error;
+    const detail = record[5];
+    if (Array.isArray(detail) && Array.isArray(detail[8]) && detail[8][0] === 4) {
+      error = walkStrings(detail[8])[0] ?? "operation complaint";
+    }
+    return {
+      operationId: record[0],
+      projectId: typeof record[1] === "string" ? record[1] : void 0,
+      status: typeof record[3] === "string" ? record[3] : void 0,
+      error
+    };
+  }
+  function findFlowMediaId(payload, operationId) {
+    for (const node of walkLists(payload)) {
+      if (node.length < 4 || node[0] !== operationId || !Array.isArray(node[3])) continue;
+      const detail = node[3];
+      if (typeof detail[4] === "string") return detail[4];
+    }
+    return void 0;
+  }
+  var MEDIA_SLOT_RE = /null,null,\\?"([0-9a-fA-F-]{36})\\?"/;
+  function findFlowMediaIdInText(text, operationId) {
+    const start = text.indexOf(operationId);
+    if (start < 0) return void 0;
+    return MEDIA_SLOT_RE.exec(text.slice(start, start + 800))?.[1];
+  }
+  function readFlowMediaUrls(payload, mediaId) {
+    const result = { mediaId };
+    for (const value of walkStrings(payload)) {
+      if (!value.startsWith("https://")) continue;
+      if (!result.video && value.includes(`${FLOW_BATCH_MEDIA_HOST}/video/`)) result.video = value;
+      else if (!result.image && value.includes(`${FLOW_BATCH_MEDIA_HOST}/image/`)) result.image = value;
+    }
+    return result;
+  }
+
+  // src/adapters/google-flow/batch/FlowBatchPolling.ts
+  var FlowBatchVideoPoller = class {
+    constructor(executor) {
+      this.executor = executor;
+    }
+    operationProjects = /* @__PURE__ */ new Map();
+    operationMedia = /* @__PURE__ */ new Map();
+    operationPolls = /* @__PURE__ */ new Map();
+    rememberOperation(operationId, projectId) {
+      if (!operationId) return;
+      if (this.operationProjects.size > 512) {
+        this.operationProjects.clear();
+        this.operationMedia.clear();
+        this.operationPolls.clear();
+      }
+      this.operationProjects.set(operationId, projectId);
+    }
+    async pollMedia(mediaId, projectId) {
+      const raw = await this.executor.run(
+        FLOW_BATCH_RPC.MEDIA,
+        buildFlowMediaRequest(mediaId)
+      );
+      const payload = firstFlowBatchPayload(raw, FLOW_BATCH_RPC.MEDIA);
+      const urls = readFlowMediaUrls(payload, mediaId);
+      if (!urls.video) {
+        return {
+          status: "PENDING",
+          projectId,
+          mediaId,
+          posterUrl: urls.image
+        };
+      }
+      return {
+        status: "SUCCESSFUL",
+        projectId,
+        mediaId,
+        url: urls.video,
+        posterUrl: urls.image
+      };
+    }
+    async pollOperation(operationId, fallbackProjectId) {
+      const cachedMediaId = this.operationMedia.get(operationId);
+      if (cachedMediaId) {
+        const result2 = await this.pollMedia(
+          cachedMediaId,
+          this.operationProjects.get(operationId) ?? fallbackProjectId
+        );
+        return { ...result2, operationId };
+      }
+      const round = (this.operationPolls.get(operationId) ?? 0) + 1;
+      this.operationPolls.set(operationId, round);
+      let projectId = this.operationProjects.get(operationId) ?? fallbackProjectId;
+      let complaint;
+      let shouldConsultListing = round % 3 === 0;
+      try {
+        const raw = await this.executor.run(
+          FLOW_BATCH_RPC.OPERATION,
+          buildFlowOperationRequest(operationId)
+        );
+        const operation = readFlowOperation(
+          firstFlowBatchPayload(raw, FLOW_BATCH_RPC.OPERATION)
+        );
+        complaint = operation.error;
+        projectId = operation.projectId ?? projectId;
+        if (projectId) this.rememberOperation(operationId, projectId);
+        shouldConsultListing = shouldConsultListing || operation.status === "CAE" || Boolean(operation.error);
+      } catch {
+        shouldConsultListing = true;
+      }
+      if (!shouldConsultListing || !projectId) {
+        return {
+          status: "PENDING",
+          operationId,
+          projectId,
+          complaint
+        };
+      }
+      const mediaId = await this.findMediaId(operationId, projectId);
+      if (!mediaId) {
+        return {
+          status: "PENDING",
+          operationId,
+          projectId,
+          complaint
+        };
+      }
+      this.operationMedia.set(operationId, mediaId);
+      const result = await this.pollMedia(mediaId, projectId);
+      return {
+        ...result,
+        operationId,
+        complaint
+      };
+    }
+    async findMediaId(operationId, projectId) {
+      const raw = await this.executor.run(
+        FLOW_BATCH_RPC.PROJECT_MEDIA,
+        buildFlowProjectMediaRequest(projectId),
+        { match: operationId }
+      );
+      const fromWindow = findFlowMediaIdInText(raw, operationId);
+      if (fromWindow) return fromWindow;
+      try {
+        return findFlowMediaId(
+          firstFlowBatchPayload(raw, FLOW_BATCH_RPC.PROJECT_MEDIA),
+          operationId
+        );
+      } catch {
+        return void 0;
+      }
+    }
+  };
+
+  // src/adapters/google-flow/FlowCapabilityRouter.ts
+  function model(payload) {
+    return String(payload.modelKey || "").trim().toLowerCase();
+  }
+  function resolveFlowCapabilityRoute(payload) {
+    const key = model(payload);
+    switch (payload.kind) {
+      case "t2i":
+        return {
+          primary: "BATCH_RPC",
+          fallback: "FLOW_UI",
+          reason: "Image generation ogiZ0b is captured on the current Flow frontend."
+        };
+      case "t2v":
+        if (key.startsWith("abra_t2v_")) {
+          return {
+            primary: "BATCH_RPC",
+            fallback: "FLOW_UI",
+            reason: "Omni text-to-video YhhmEf is captured; UI remains a compatibility fallback."
+          };
+        }
+        return {
+          primary: "FLOW_UI",
+          reason: "Non-Omni T2V batch payload is not assumed from Omni captures."
+        };
+      case "i2v":
+        if (key.startsWith("abra_i2v_")) {
+          return {
+            primary: "BATCH_RPC",
+            fallback: "FLOW_UI",
+            reason: "Omni first-frame I2V uses captured eb1hJf positional payload."
+          };
+        }
+        return {
+          primary: "FLOW_UI",
+          reason: "Veo I2V remains on FlowGraph's verified UI path until its current batch shape is live-verified locally."
+        };
+      case "interpolation":
+        if (key.startsWith("abra_i2v_") || key.startsWith("omni_flash_i2v_")) {
+          return {
+            primary: "BATCH_RPC",
+            fallback: "FLOW_UI",
+            reason: "Omni First+Last uses captured nprQif."
+          };
+        }
+        return {
+          primary: "FLOW_UI",
+          reason: "Veo start/end is not inferred from the Omni nprQif capture."
+        };
+      case "reference":
+        if (key.startsWith("abra_r2v_")) {
+          return {
+            primary: "BATCH_RPC",
+            fallback: "FLOW_UI",
+            reason: "Omni Ingredients/reference video uses captured MZZa6b."
+          };
+        }
+        return {
+          primary: "FLOW_UI",
+          reason: "Veo reference-video is not inferred from the Omni MZZa6b capture."
+        };
+      case "imageUpscale":
+        return {
+          primary: "BATCH_RPC",
+          fallback: "FLOW_UI",
+          reason: "Image upscale SPrCad is captured; Flow UI remains fallback for entitlement/rollout differences."
+        };
+      case "videoUpscale":
+      case "upscale":
+        return {
+          primary: "LEGACY_REST",
+          reason: "Temporary migration hold: current batch video-upscale RPC is not captured. Remove legacy route after a verified replacement exists."
+        };
+      case "extend":
+        return {
+          primary: "FLOW_UI",
+          reason: "Video extend/edit has no current FlowKit batch capture; keep FlowGraph verified UI path."
+        };
+      default:
+        return {
+          primary: "UNSUPPORTED",
+          reason: `No Google Flow transport route for ${String(payload.kind)}.`
+        };
+    }
+  }
+  function mayFallbackFromBatch(errorCode) {
+    return (/* @__PURE__ */ new Set([
+      "NO_AT_TOKEN",
+      "NO_INJECTION_RESULT",
+      "BATCH_HTTP_ERROR",
+      "BATCH_PROTOCOL_ERROR",
+      "BATCH_RPC_UNAVAILABLE"
+    ])).has(errorCode);
+  }
+
+  // src/background/FlowBatchPageTransport.ts
+  var FlowBatchPageTransportError = class extends Error {
+    constructor(code, message, status) {
+      super(message);
+      this.code = code;
+      this.status = status;
+      this.name = "FlowBatchPageTransportError";
+    }
+  };
+  async function runFlowBatchPageRpc(options) {
+    const maxText = options.maxText ?? 32e6;
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: options.tabId },
+      world: "MAIN",
+      args: [options.rpcId, options.fReq, options.match ?? null, maxText, FLOW_BATCH_PATH],
+      func: async (rpcId, fReq, match, textLimit, batchPath) => {
+        const page = globalThis;
+        const wiz = page.WIZ_global_data ?? {};
+        const at = wiz.SNlM0e;
+        if (!at) return { error: "NO_AT_TOKEN" };
+        const sid = wiz.FdrFJe ?? "";
+        const bl = wiz.cfb2h ?? "";
+        const reqId = Math.floor(Math.random() * 9e5) + 1e5;
+        const sourcePath = location.pathname || "/";
+        const language = (document.documentElement.lang || navigator.language || "en").split("-")[0];
+        const url = `${batchPath}?rpcids=${encodeURIComponent(rpcId)}&source-path=${encodeURIComponent(sourcePath)}&bl=${encodeURIComponent(bl)}&f.sid=${encodeURIComponent(sid)}&hl=${encodeURIComponent(language)}&_reqid=${reqId}&rt=c`;
+        const response = await fetch(url, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+            "x-same-domain": "1"
+          },
+          body: new URLSearchParams({ "f.req": fReq, at })
+        });
+        const text2 = await response.text();
+        if (match) {
+          const index = text2.indexOf(match);
+          return {
+            status: response.status,
+            matched: index >= 0,
+            text: index >= 0 ? text2.slice(index, index + 800) : ""
+          };
+        }
+        return {
+          status: response.status,
+          text: text2.slice(0, textLimit)
+        };
+      }
+    });
+    const result = results?.[0]?.result;
+    if (!result) {
+      throw new FlowBatchPageTransportError(
+        "NO_INJECTION_RESULT",
+        "Flow batch RPC returned no MAIN-world injection result."
+      );
+    }
+    if (result.error === "NO_AT_TOKEN") {
+      throw new FlowBatchPageTransportError(
+        "NO_AT_TOKEN",
+        "The current Flow page has no WIZ at token. Reload the signed-in Flow project and retry."
+      );
+    }
+    const status = result.status ?? 0;
+    const text = result.text ?? "";
+    if (status < 200 || status >= 300) {
+      throw new FlowBatchPageTransportError(
+        "BATCH_HTTP_ERROR",
+        `Flow batch RPC ${options.rpcId} returned HTTP ${status}.`,
+        status
+      );
+    }
+    return {
+      status,
+      text,
+      matched: result.matched
+    };
+  }
+
   // src/background/service-worker.ts
   try {
     if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
@@ -740,7 +1377,7 @@
     if (!response.ok && !json) throw providerError(response.status, json);
     return json;
   }
-  async function recaptchaToken(projectId) {
+  async function recaptchaToken(projectId, action = "FLOW_GENERATE") {
     void projectId;
     const tab = await findFlowTab();
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
@@ -748,13 +1385,13 @@
       chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: "MAIN",
-        args: [FLOW_SITEKEY, "FLOW_GENERATE"],
-        func: async (sitekey, action) => {
+        args: [FLOW_SITEKEY, action],
+        func: async (sitekey, action2) => {
           const pageWindow = window;
           const execute = pageWindow.grecaptcha?.enterprise?.execute;
           if (!execute) return { ok: false, message: "reCAPTCHA Enterprise widget is not ready on the Google Flow page." };
           try {
-            const token = await execute(sitekey, { action });
+            const token = await execute(sitekey, { action: action2 });
             return token ? { ok: true, token } : { ok: false, message: "reCAPTCHA returned an empty token." };
           } catch (error) {
             return { ok: false, message: error instanceof Error ? error.message : "reCAPTCHA execution failed" };
@@ -766,6 +1403,427 @@
     const reply = results?.[0]?.result;
     if (!reply?.ok || !reply.token) throw bridgeError("CAPTCHA_REQUIRED", reply?.message ?? "reCAPTCHA token unavailable", true);
     return reply.token;
+  }
+  var FLOW_BATCH_IMAGE_SUBMIT_OFFSETS_MS = [0, 500, 1500, 2500];
+  var FLOW_BATCH_IMAGE_TRANSIENT_RETRY_DELAY_MS = 34e3;
+  function recordBatchDiagnostic(capability, error) {
+    try {
+      void chrome.storage.local.set({
+        "flowgraph.debug.lastBatchError": {
+          capability,
+          code: String(error.code ?? "UNKNOWN"),
+          message: error.message,
+          at: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      });
+    } catch {
+    }
+  }
+  function toFlowBatchBridgeError(error) {
+    if (error instanceof FlowBatchPageTransportError) {
+      return bridgeError(error.code, error.message, true);
+    }
+    if (error instanceof FlowBatchProtocolError) {
+      return bridgeError("BATCH_PROTOCOL_ERROR", error.message, true);
+    }
+    if (error instanceof FlowBatchRpcError) {
+      const transient = JSON.stringify(error.detail) === "[8]";
+      return bridgeError("PROVIDER_ERROR", error.message, transient);
+    }
+    if (typeof error === "object" && error !== null && "code" in error) {
+      return error;
+    }
+    return bridgeError(
+      "BATCH_RPC_UNAVAILABLE",
+      error instanceof Error ? error.message : String(error),
+      true
+    );
+  }
+  function isTransientFlowBatchImageError(error) {
+    return error instanceof FlowBatchRpcError && JSON.stringify(error.detail) === "[8]";
+  }
+  async function waitForBatchOffset(ms, requestId) {
+    if (ms <= 0) return;
+    if (requestId) {
+      await waitWhileNotAborted(ms, requestId);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  async function submitFlowBatchImageVariant(tabId, payload, variantIndex, launchOffsetMs, requestId) {
+    await waitForBatchOffset(launchOffsetMs, requestId);
+    throwIfGenerationAborted(requestId);
+    const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.IMAGE);
+    throwIfGenerationAborted(requestId);
+    const seed = payload.seed !== void 0 ? payload.seed + variantIndex * 9973 : void 0;
+    const fReq = buildFlowImageRequest({
+      prompt: payload.prompt ?? "",
+      projectId: payload.projectId,
+      model: payload.modelKey,
+      aspect: payload.aspectRatio ?? "16:9",
+      seed,
+      referenceMediaIds: (payload.imageRefs ?? []).map((reference) => reference.mediaId)
+    }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+    const result = await timeoutable(
+      runFlowBatchPageRpc({
+        tabId,
+        rpcId: FLOW_BATCH_RPC.GENERATE_IMAGE,
+        fReq
+      }),
+      12e4
+    );
+    throwIfGenerationAborted(requestId);
+    const providerPayload = firstFlowBatchPayload(result.text, FLOW_BATCH_RPC.GENERATE_IMAGE);
+    const generated = readFlowGeneratedImages(providerPayload);
+    if (!generated.length) {
+      throw new FlowBatchProtocolError("Image generation returned no flow-content.google image URL.");
+    }
+    return generated[0];
+  }
+  async function generateT2iViaBatch(payload, requestId) {
+    const prompt = (payload.prompt ?? "").trim();
+    if (!prompt) throw bridgeError("INVALID_INPUT", "Text-to-Image requires a non-empty prompt.", false);
+    const tab = await findFlowTab(payload.projectId);
+    if (!tab?.id) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    const liveProjectId = projectIdFromUrl(tab.url ?? "");
+    if (!liveProjectId || liveProjectId !== payload.projectId) {
+      throw bridgeError(
+        "PROJECT_MISMATCH",
+        `Active Google Flow tab project (${liveProjectId || "none"}) does not match request projectId (${payload.projectId}).`,
+        false
+      );
+    }
+    const count = Math.min(4, Math.max(1, Math.floor(payload.batchCount ?? 1)));
+    const indices = Array.from({ length: count }, (_unused, index) => index);
+    const firstWave = await Promise.allSettled(
+      indices.map((index) => submitFlowBatchImageVariant(
+        tab.id,
+        payload,
+        index,
+        FLOW_BATCH_IMAGE_SUBMIT_OFFSETS_MS[index] ?? 0,
+        requestId
+      ))
+    );
+    const results = [...firstWave];
+    const retryIndices = results.map((result, index) => ({ result, index })).filter(({ result }) => result.status === "rejected" && isTransientFlowBatchImageError(result.reason)).map(({ index }) => index);
+    if (retryIndices.length) {
+      await waitForBatchOffset(FLOW_BATCH_IMAGE_TRANSIENT_RETRY_DELAY_MS, requestId);
+      const retried = await Promise.allSettled(
+        retryIndices.map((index, position) => submitFlowBatchImageVariant(
+          tab.id,
+          payload,
+          index,
+          FLOW_BATCH_IMAGE_SUBMIT_OFFSETS_MS[position] ?? 0,
+          requestId
+        ))
+      );
+      retryIndices.forEach((index, position) => {
+        results[index] = retried[position];
+      });
+    }
+    const primary = results.find(
+      (result) => result.status === "fulfilled"
+    );
+    if (!primary) {
+      const failure = results.find(
+        (result) => result.status === "rejected"
+      );
+      throw failure?.reason ?? new FlowBatchProtocolError("All image variants failed.");
+    }
+    return completeGenerate(requestId, {
+      mediaId: primary.value.mediaId,
+      type: "IMAGE",
+      projectId: payload.projectId,
+      previewUrl: primary.value.url,
+      mimeType: "image/jpeg"
+    }, payload.projectId);
+  }
+  var flowBatchPollers = /* @__PURE__ */ new Map();
+  function flowBatchPollerForTab(tabId) {
+    const existing = flowBatchPollers.get(tabId);
+    if (existing) return existing;
+    const created = new FlowBatchVideoPoller({
+      run: async (rpcId, fReq, options) => (await runFlowBatchPageRpc({
+        tabId,
+        rpcId,
+        fReq,
+        match: options?.match
+      })).text
+    });
+    flowBatchPollers.set(tabId, created);
+    return created;
+  }
+  function assertSingleBatchVideoSettingsSupported(payload, label) {
+    const count = Math.max(1, Math.floor(payload.batchCount ?? 1));
+    if (count > 1) {
+      throw bridgeError(
+        "BATCH_RPC_UNAVAILABLE",
+        `${label} batch transport currently preserves x1 only; requested x${count} must use the verified Flow UI path.`,
+        true
+      );
+    }
+    if (payload.seed !== void 0) {
+      throw bridgeError(
+        "BATCH_RPC_UNAVAILABLE",
+        `${label} batch capture does not prove a seed slot; explicit seed must use the verified Flow UI path.`,
+        true
+      );
+    }
+    const resolution = String(payload.targetResolution ?? "").trim().toLowerCase();
+    if (resolution && resolution !== "720p") {
+      throw bridgeError(
+        "BATCH_RPC_UNAVAILABLE",
+        `${label} batch transport is enabled only for captured 720p/default payloads; requested ${payload.targetResolution} must use the verified Flow UI path.`,
+        true
+      );
+    }
+  }
+  async function waitForFlowBatchOperationMedia(tabId, operationId, projectId, requestId) {
+    const poller = flowBatchPollerForTab(tabId);
+    poller.rememberOperation(operationId, projectId);
+    const deadline = Date.now() + MEDIA_WAIT_VIDEO_MS;
+    let complaint = "";
+    while (Date.now() <= deadline) {
+      throwIfGenerationAborted(requestId);
+      const result = await poller.pollOperation(operationId, projectId);
+      complaint = result.complaint ?? complaint;
+      if (result.mediaId) {
+        emitGenerateProgress(requestId, result.mediaId);
+        return {
+          mediaId: result.mediaId,
+          previewUrl: result.url
+        };
+      }
+      await waitForBatchOffset(3e3, requestId);
+    }
+    throw bridgeError(
+      "TIMEOUT",
+      `Flow batch operation ${operationId} did not expose a media id before the video deadline${complaint ? `: ${complaint}` : "."}`,
+      true
+    );
+  }
+  async function generateT2vViaBatch(payload, requestId) {
+    const prompt = (payload.prompt ?? "").trim();
+    if (!prompt) throw bridgeError("INVALID_INPUT", "Text-to-Video requires a non-empty prompt.", false);
+    assertSingleBatchVideoSettingsSupported(payload, "Omni Text-to-Video");
+    const tab = await findFlowTab(payload.projectId);
+    if (!tab?.id) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    const liveProjectId = projectIdFromUrl(tab.url ?? "");
+    if (!liveProjectId || liveProjectId !== payload.projectId) {
+      throw bridgeError(
+        "PROJECT_MISMATCH",
+        `Active Google Flow tab project (${liveProjectId || "none"}) does not match request projectId (${payload.projectId}).`,
+        false
+      );
+    }
+    throwIfGenerationAborted(requestId);
+    const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.VIDEO);
+    throwIfGenerationAborted(requestId);
+    const fReq = buildFlowTextVideoRequest({
+      prompt,
+      projectId: payload.projectId,
+      model: payload.modelKey,
+      aspect: payload.aspectRatio ?? "16:9"
+    }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+    const result = await timeoutable(
+      runFlowBatchPageRpc({
+        tabId: tab.id,
+        rpcId: FLOW_BATCH_RPC.GENERATE_VIDEO_TEXT,
+        fReq
+      }),
+      12e4
+    );
+    throwIfGenerationAborted(requestId);
+    const submitted = readFlowTextVideoSubmit(
+      firstFlowBatchPayload(result.text, FLOW_BATCH_RPC.GENERATE_VIDEO_TEXT)
+    );
+    emitGenerateProgress(requestId, submitted.mediaId);
+    return completeGenerate(requestId, {
+      mediaId: submitted.mediaId,
+      type: "VIDEO",
+      projectId: submitted.projectId ?? payload.projectId,
+      workflowId: submitted.workflowId
+    }, payload.projectId);
+  }
+  async function completeOperationBackedBatchVideo(tabId, payload, rpcId, responseText, requestId) {
+    const operation = readFlowOperation(firstFlowBatchPayload(responseText, rpcId));
+    const media = await waitForFlowBatchOperationMedia(
+      tabId,
+      operation.operationId,
+      operation.projectId ?? payload.projectId,
+      requestId
+    );
+    return completeGenerate(requestId, {
+      mediaId: media.mediaId,
+      type: "VIDEO",
+      projectId: operation.projectId ?? payload.projectId,
+      workflowId: operation.operationId,
+      previewUrl: media.previewUrl
+    }, payload.projectId);
+  }
+  async function generateI2vViaBatch(payload, requestId) {
+    const prompt = (payload.prompt ?? "").trim();
+    if (!prompt) throw bridgeError("INVALID_INPUT", "Image-to-Video requires a non-empty prompt.", false);
+    if (!payload.startImage?.mediaId) {
+      throw bridgeError("INVALID_INPUT", "Image-to-Video batch transport requires a start image mediaId.", false);
+    }
+    assertSingleBatchVideoSettingsSupported(payload, "Omni Image-to-Video");
+    const tab = await findFlowTab(payload.projectId);
+    if (!tab?.id) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    const liveProjectId = projectIdFromUrl(tab.url ?? "");
+    if (liveProjectId !== payload.projectId) {
+      throw bridgeError(
+        "PROJECT_MISMATCH",
+        `Active Google Flow tab project (${liveProjectId || "none"}) does not match request projectId (${payload.projectId}).`,
+        false
+      );
+    }
+    throwIfGenerationAborted(requestId);
+    const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.VIDEO);
+    const fReq = buildFlowFirstFrameVideoRequest({
+      prompt,
+      projectId: payload.projectId,
+      sourceMediaId: payload.startImage.mediaId,
+      model: payload.modelKey,
+      aspect: payload.aspectRatio ?? "16:9"
+    }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+    const result = await timeoutable(
+      runFlowBatchPageRpc({
+        tabId: tab.id,
+        rpcId: FLOW_BATCH_RPC.GENERATE_VIDEO,
+        fReq
+      }),
+      12e4
+    );
+    throwIfGenerationAborted(requestId);
+    return completeOperationBackedBatchVideo(
+      tab.id,
+      payload,
+      FLOW_BATCH_RPC.GENERATE_VIDEO,
+      result.text,
+      requestId
+    );
+  }
+  async function generateInterpolationViaBatch(payload, requestId) {
+    const prompt = (payload.prompt ?? "").trim();
+    if (!prompt) throw bridgeError("INVALID_INPUT", "First+Last video requires a non-empty prompt.", false);
+    if (!payload.startImage?.mediaId || !payload.endImage?.mediaId) {
+      throw bridgeError("INVALID_INPUT", "First+Last batch transport requires both start and end image mediaIds.", false);
+    }
+    assertSingleBatchVideoSettingsSupported(payload, "Omni First+Last");
+    const tab = await findFlowTab(payload.projectId);
+    if (!tab?.id) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    const liveProjectId = projectIdFromUrl(tab.url ?? "");
+    if (liveProjectId !== payload.projectId) {
+      throw bridgeError(
+        "PROJECT_MISMATCH",
+        `Active Google Flow tab project (${liveProjectId || "none"}) does not match request projectId (${payload.projectId}).`,
+        false
+      );
+    }
+    throwIfGenerationAborted(requestId);
+    const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.VIDEO);
+    const fReq = buildFlowFirstLastVideoRequest({
+      prompt,
+      projectId: payload.projectId,
+      startMediaId: payload.startImage.mediaId,
+      endMediaId: payload.endImage.mediaId,
+      model: resolveFlowFirstLastModelKey(payload.modelKey),
+      aspect: payload.aspectRatio ?? "16:9"
+    }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+    const result = await timeoutable(
+      runFlowBatchPageRpc({
+        tabId: tab.id,
+        rpcId: FLOW_BATCH_RPC.GENERATE_VIDEO_FIRST_LAST,
+        fReq
+      }),
+      12e4
+    );
+    throwIfGenerationAborted(requestId);
+    return completeOperationBackedBatchVideo(
+      tab.id,
+      payload,
+      FLOW_BATCH_RPC.GENERATE_VIDEO_FIRST_LAST,
+      result.text,
+      requestId
+    );
+  }
+  async function generateReferenceVideoViaBatch(payload, requestId) {
+    const prompt = (payload.prompt ?? "").trim();
+    const referenceMediaIds = (payload.imageRefs ?? []).map((reference) => reference.mediaId).filter(Boolean);
+    if (!prompt) throw bridgeError("INVALID_INPUT", "Reference Video requires a non-empty prompt.", false);
+    if (!referenceMediaIds.length) {
+      throw bridgeError("INVALID_INPUT", "Reference Video batch transport requires at least one reference mediaId.", false);
+    }
+    assertSingleBatchVideoSettingsSupported(payload, "Omni Reference Video");
+    const tab = await findFlowTab(payload.projectId);
+    if (!tab?.id) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
+    const liveProjectId = projectIdFromUrl(tab.url ?? "");
+    if (liveProjectId !== payload.projectId) {
+      throw bridgeError(
+        "PROJECT_MISMATCH",
+        `Active Google Flow tab project (${liveProjectId || "none"}) does not match request projectId (${payload.projectId}).`,
+        false
+      );
+    }
+    throwIfGenerationAborted(requestId);
+    const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.VIDEO);
+    const fReq = buildFlowReferenceVideoRequest({
+      prompt,
+      projectId: payload.projectId,
+      referenceMediaIds,
+      model: payload.modelKey,
+      aspect: payload.aspectRatio ?? "16:9"
+    }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+    const result = await timeoutable(
+      runFlowBatchPageRpc({
+        tabId: tab.id,
+        rpcId: FLOW_BATCH_RPC.GENERATE_VIDEO_REFERENCES,
+        fReq
+      }),
+      12e4
+    );
+    throwIfGenerationAborted(requestId);
+    return completeOperationBackedBatchVideo(
+      tab.id,
+      payload,
+      FLOW_BATCH_RPC.GENERATE_VIDEO_REFERENCES,
+      result.text,
+      requestId
+    );
+  }
+  async function pollFlowBatchMediaStatus(payload) {
+    const tab = await findFlowTab(payload.projectId);
+    if (!tab?.id) return void 0;
+    const liveProjectId = projectIdFromUrl(tab.url ?? "");
+    if (liveProjectId !== payload.projectId) return void 0;
+    try {
+      const result = await flowBatchPollerForTab(tab.id).pollMedia(
+        payload.mediaId,
+        payload.projectId
+      );
+      if (result.status === "SUCCESSFUL" && result.url) {
+        return {
+          status: "SUCCESSFUL",
+          media: {
+            mediaId: payload.mediaId,
+            type: "VIDEO",
+            projectId: payload.projectId,
+            previewUrl: result.url
+          }
+        };
+      }
+      return {
+        status: "ACTIVE"
+      };
+    } catch (error) {
+      const normalized = toFlowBatchBridgeError(error);
+      const code = String(normalized.code ?? "BATCH_RPC_UNAVAILABLE");
+      return mayFallbackFromBatch(code) ? void 0 : {
+        status: "FAILED",
+        errorMessage: normalized.message
+      };
+    }
   }
   var ENDPOINT_BY_KIND = {
     t2i: "projects/{projectId}/flowMedia:batchGenerateImages",
@@ -1621,6 +2679,81 @@
     const isDirectApiPath = payload.kind === "videoUpscale" || payload.kind === "upscale";
     if (isDirectApiPath) {
       return generateApi(payload, requestId);
+    }
+    const capabilityRoute = resolveFlowCapabilityRoute(payload);
+    if (payload.kind === "t2i" && capabilityRoute.primary === "BATCH_RPC") {
+      try {
+        return await generateT2iViaBatch(payload, requestId);
+      } catch (error) {
+        const batchError = toFlowBatchBridgeError(error);
+        const code = String(batchError.code ?? "BATCH_RPC_UNAVAILABLE");
+        if (capabilityRoute.fallback !== "FLOW_UI" || !mayFallbackFromBatch(code)) {
+          throw batchError;
+        }
+        console.warn(
+          `[FlowGraph] Batch T2I unavailable (${code}); falling back to verified Flow UI transport.`
+        );
+      }
+    }
+    if (payload.kind === "t2v" && capabilityRoute.primary === "BATCH_RPC") {
+      try {
+        return await generateT2vViaBatch(payload, requestId);
+      } catch (error) {
+        const batchError = toFlowBatchBridgeError(error);
+        recordBatchDiagnostic("t2v", batchError);
+        const code = String(batchError.code ?? "BATCH_RPC_UNAVAILABLE");
+        if (capabilityRoute.fallback !== "FLOW_UI" || !mayFallbackFromBatch(code)) {
+          throw batchError;
+        }
+        console.warn(
+          `[FlowGraph] Batch Omni T2V unavailable (${code}); falling back to verified Flow UI transport.`
+        );
+      }
+    }
+    if (payload.kind === "i2v" && capabilityRoute.primary === "BATCH_RPC") {
+      try {
+        return await generateI2vViaBatch(payload, requestId);
+      } catch (error) {
+        const batchError = toFlowBatchBridgeError(error);
+        recordBatchDiagnostic("i2v", batchError);
+        const code = String(batchError.code ?? "BATCH_RPC_UNAVAILABLE");
+        if (capabilityRoute.fallback !== "FLOW_UI" || !mayFallbackFromBatch(code)) {
+          throw batchError;
+        }
+        console.warn(
+          `[FlowGraph] Batch Omni I2V unavailable (${code}); falling back to verified Flow UI transport.`
+        );
+      }
+    }
+    if (payload.kind === "interpolation" && capabilityRoute.primary === "BATCH_RPC") {
+      try {
+        return await generateInterpolationViaBatch(payload, requestId);
+      } catch (error) {
+        const batchError = toFlowBatchBridgeError(error);
+        recordBatchDiagnostic("interpolation", batchError);
+        const code = String(batchError.code ?? "BATCH_RPC_UNAVAILABLE");
+        if (capabilityRoute.fallback !== "FLOW_UI" || !mayFallbackFromBatch(code)) {
+          throw batchError;
+        }
+        console.warn(
+          `[FlowGraph] Batch Omni First+Last unavailable (${code}); falling back to verified Flow UI transport.`
+        );
+      }
+    }
+    if (payload.kind === "reference" && capabilityRoute.primary === "BATCH_RPC") {
+      try {
+        return await generateReferenceVideoViaBatch(payload, requestId);
+      } catch (error) {
+        const batchError = toFlowBatchBridgeError(error);
+        recordBatchDiagnostic("reference", batchError);
+        const code = String(batchError.code ?? "BATCH_RPC_UNAVAILABLE");
+        if (capabilityRoute.fallback !== "FLOW_UI" || !mayFallbackFromBatch(code)) {
+          throw batchError;
+        }
+        console.warn(
+          `[FlowGraph] Batch Omni Reference Video unavailable (${code}); falling back to verified Flow UI transport.`
+        );
+      }
     }
     const composerTab = await ensureFlowProjectComposerReady(tab, payload.projectId);
     await ensureFlowContentScript(tabId);
@@ -2517,6 +3650,8 @@
         errorMessage: payload.playbackRefresh ? "Could not refresh the exact video source from Flow." : "Exact video is not playable on the Flow page. Retry to refresh this exact clip."
       };
     }
+    const batchStatus = await pollFlowBatchMediaStatus(payload);
+    if (batchStatus) return batchStatus;
     try {
       const previewUrl = await resolveMediaUrl(payload.mediaId, "IMAGE");
       if (previewUrl) {

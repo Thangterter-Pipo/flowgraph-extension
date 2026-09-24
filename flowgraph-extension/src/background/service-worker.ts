@@ -91,6 +91,33 @@ import {
   truncateFlowPrompt,
   type CostScalarField,
 } from '../shared/generationPreflight';
+import {
+  FLOW_BATCH_CAPTCHA_ACTION,
+  FLOW_BATCH_CAPTCHA_SLOT,
+  FLOW_BATCH_RPC,
+  FlowBatchProtocolError,
+  FlowBatchRpcError,
+  buildFlowFirstFrameVideoRequest,
+  buildFlowFirstLastVideoRequest,
+  buildFlowImageRequest,
+  buildFlowReferenceVideoRequest,
+  buildFlowTextVideoRequest,
+  firstFlowBatchPayload,
+  readFlowGeneratedImages,
+  resolveFlowFirstLastModelKey,
+  readFlowOperation,
+  readFlowTextVideoSubmit,
+  type FlowBatchGeneratedImage,
+} from '../adapters/google-flow/batch/FlowBatchProtocol';
+import { FlowBatchVideoPoller } from '../adapters/google-flow/batch/FlowBatchPolling';
+import {
+  mayFallbackFromBatch,
+  resolveFlowCapabilityRoute,
+} from '../adapters/google-flow/FlowCapabilityRouter';
+import {
+  FlowBatchPageTransportError,
+  runFlowBatchPageRpc,
+} from './FlowBatchPageTransport';
 
 // Configure sidePanel to open automatically when clicking the extension icon
 try {
@@ -458,7 +485,7 @@ async function fxApiPost(path: string, body: unknown): Promise<unknown> {
 // Generation request builders (verified shapes only)
 // ---------------------------------------------------------------------------
 
-async function recaptchaToken(projectId: string): Promise<string> {
+async function recaptchaToken(projectId: string, action = 'FLOW_GENERATE'): Promise<string> {
   void projectId;
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
@@ -473,7 +500,7 @@ async function recaptchaToken(projectId: string): Promise<string> {
     chrome.scripting.executeScript({
       target: { tabId: tab.id },
       world: 'MAIN',
-      args: [FLOW_SITEKEY, 'FLOW_GENERATE'],
+      args: [FLOW_SITEKEY, action],
       func: async (sitekey: string, action: string) => {
         const pageWindow = window as typeof window & {
           grecaptcha?: {
@@ -497,6 +524,514 @@ async function recaptchaToken(projectId: string): Promise<string> {
   const reply = results?.[0]?.result as { ok?: boolean; token?: string; message?: string } | undefined;
   if (!reply?.ok || !reply.token) throw bridgeError('CAPTCHA_REQUIRED', reply?.message ?? 'reCAPTCHA token unavailable', true);
   return reply.token;
+}
+
+
+const FLOW_BATCH_IMAGE_SUBMIT_OFFSETS_MS = [0, 500, 1_500, 2_500] as const;
+const FLOW_BATCH_IMAGE_TRANSIENT_RETRY_DELAY_MS = 34_000;
+
+function recordBatchDiagnostic(capability: string, error: Error & { code?: string }): void {
+  try {
+    void chrome.storage.local.set({
+      'flowgraph.debug.lastBatchError': {
+        capability,
+        code: String(error.code ?? 'UNKNOWN'),
+        message: error.message,
+        at: new Date().toISOString(),
+      },
+    });
+  } catch {
+    // Best-effort sanitized diagnostic only.
+  }
+}
+
+function toFlowBatchBridgeError(error: unknown): Error & { code?: string; retryable?: boolean } {
+  if (error instanceof FlowBatchPageTransportError) {
+    return bridgeError(error.code, error.message, true);
+  }
+  if (error instanceof FlowBatchProtocolError) {
+    return bridgeError('BATCH_PROTOCOL_ERROR', error.message, true);
+  }
+  if (error instanceof FlowBatchRpcError) {
+    const transient = JSON.stringify(error.detail) === '[8]';
+    return bridgeError('PROVIDER_ERROR', error.message, transient);
+  }
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    return error as Error & { code?: string; retryable?: boolean };
+  }
+  return bridgeError(
+    'BATCH_RPC_UNAVAILABLE',
+    error instanceof Error ? error.message : String(error),
+    true,
+  );
+}
+
+function isTransientFlowBatchImageError(error: unknown): boolean {
+  return error instanceof FlowBatchRpcError && JSON.stringify(error.detail) === '[8]';
+}
+
+async function waitForBatchOffset(ms: number, requestId?: string): Promise<void> {
+  if (ms <= 0) return;
+  if (requestId) {
+    await waitWhileNotAborted(ms, requestId);
+    return;
+  }
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function submitFlowBatchImageVariant(
+  tabId: number,
+  payload: GeneratePayload,
+  variantIndex: number,
+  launchOffsetMs: number,
+  requestId?: string,
+): Promise<FlowBatchGeneratedImage> {
+  await waitForBatchOffset(launchOffsetMs, requestId);
+  throwIfGenerationAborted(requestId);
+
+  const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.IMAGE);
+  throwIfGenerationAborted(requestId);
+
+  const seed = payload.seed !== undefined ? payload.seed + variantIndex * 9_973 : undefined;
+  const fReq = buildFlowImageRequest({
+    prompt: payload.prompt ?? '',
+    projectId: payload.projectId,
+    model: payload.modelKey,
+    aspect: payload.aspectRatio ?? '16:9',
+    seed,
+    referenceMediaIds: (payload.imageRefs ?? []).map((reference) => reference.mediaId),
+  }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+
+  const result = await timeoutable(
+    runFlowBatchPageRpc({
+      tabId,
+      rpcId: FLOW_BATCH_RPC.GENERATE_IMAGE,
+      fReq,
+    }),
+    120_000,
+  );
+  throwIfGenerationAborted(requestId);
+
+  const providerPayload = firstFlowBatchPayload(result.text, FLOW_BATCH_RPC.GENERATE_IMAGE);
+  const generated = readFlowGeneratedImages(providerPayload);
+  if (!generated.length) {
+    throw new FlowBatchProtocolError('Image generation returned no flow-content.google image URL.');
+  }
+  return generated[0];
+}
+
+async function generateT2iViaBatch(
+  payload: GeneratePayload,
+  requestId?: string,
+): Promise<NormalizedMediaRef> {
+  const prompt = (payload.prompt ?? '').trim();
+  if (!prompt) throw bridgeError('INVALID_INPUT', 'Text-to-Image requires a non-empty prompt.', false);
+
+  const tab = await findFlowTab(payload.projectId);
+  if (!tab?.id) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
+  const liveProjectId = projectIdFromUrl(tab.url ?? '');
+  if (!liveProjectId || liveProjectId !== payload.projectId) {
+    throw bridgeError(
+      'PROJECT_MISMATCH',
+      `Active Google Flow tab project (${liveProjectId || 'none'}) does not match request projectId (${payload.projectId}).`,
+      false,
+    );
+  }
+
+  const count = Math.min(4, Math.max(1, Math.floor(payload.batchCount ?? 1)));
+  const indices = Array.from({ length: count }, (_unused, index) => index);
+  const firstWave = await Promise.allSettled(
+    indices.map((index) => submitFlowBatchImageVariant(
+      tab.id!,
+      payload,
+      index,
+      FLOW_BATCH_IMAGE_SUBMIT_OFFSETS_MS[index] ?? 0,
+      requestId,
+    )),
+  );
+
+  const results = [...firstWave];
+  const retryIndices = results
+    .map((result, index) => ({ result, index }))
+    .filter(({ result }) => result.status === 'rejected' && isTransientFlowBatchImageError(result.reason))
+    .map(({ index }) => index);
+
+  if (retryIndices.length) {
+    await waitForBatchOffset(FLOW_BATCH_IMAGE_TRANSIENT_RETRY_DELAY_MS, requestId);
+    const retried = await Promise.allSettled(
+      retryIndices.map((index, position) => submitFlowBatchImageVariant(
+        tab.id!,
+        payload,
+        index,
+        FLOW_BATCH_IMAGE_SUBMIT_OFFSETS_MS[position] ?? 0,
+        requestId,
+      )),
+    );
+    retryIndices.forEach((index, position) => {
+      results[index] = retried[position];
+    });
+  }
+
+  const primary = results.find(
+    (result): result is PromiseFulfilledResult<FlowBatchGeneratedImage> => result.status === 'fulfilled',
+  );
+  if (!primary) {
+    const failure = results.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    throw failure?.reason ?? new FlowBatchProtocolError('All image variants failed.');
+  }
+
+  return completeGenerate(requestId, {
+    mediaId: primary.value.mediaId,
+    type: 'IMAGE',
+    projectId: payload.projectId,
+    previewUrl: primary.value.url,
+    mimeType: 'image/jpeg',
+  }, payload.projectId);
+}
+
+const flowBatchPollers = new Map<number, FlowBatchVideoPoller>();
+
+function flowBatchPollerForTab(tabId: number): FlowBatchVideoPoller {
+  const existing = flowBatchPollers.get(tabId);
+  if (existing) return existing;
+  const created = new FlowBatchVideoPoller({
+    run: async (rpcId, fReq, options) => (
+      await runFlowBatchPageRpc({
+        tabId,
+        rpcId,
+        fReq,
+        match: options?.match,
+      })
+    ).text,
+  });
+  flowBatchPollers.set(tabId, created);
+  return created;
+}
+
+function assertSingleBatchVideoSettingsSupported(payload: GeneratePayload, label: string): void {
+  const count = Math.max(1, Math.floor(payload.batchCount ?? 1));
+  if (count > 1) {
+    throw bridgeError(
+      'BATCH_RPC_UNAVAILABLE',
+      `${label} batch transport currently preserves x1 only; requested x${count} must use the verified Flow UI path.`,
+      true,
+    );
+  }
+  if (payload.seed !== undefined) {
+    throw bridgeError(
+      'BATCH_RPC_UNAVAILABLE',
+      `${label} batch capture does not prove a seed slot; explicit seed must use the verified Flow UI path.`,
+      true,
+    );
+  }
+  const resolution = String(payload.targetResolution ?? '').trim().toLowerCase();
+  if (resolution && resolution !== '720p') {
+    throw bridgeError(
+      'BATCH_RPC_UNAVAILABLE',
+      `${label} batch transport is enabled only for captured 720p/default payloads; requested ${payload.targetResolution} must use the verified Flow UI path.`,
+      true,
+    );
+  }
+}
+
+async function waitForFlowBatchOperationMedia(
+  tabId: number,
+  operationId: string,
+  projectId: string,
+  requestId?: string,
+): Promise<{ mediaId: string; previewUrl?: string }> {
+  const poller = flowBatchPollerForTab(tabId);
+  poller.rememberOperation(operationId, projectId);
+  const deadline = Date.now() + MEDIA_WAIT_VIDEO_MS;
+  let complaint = '';
+
+  while (Date.now() <= deadline) {
+    throwIfGenerationAborted(requestId);
+    const result = await poller.pollOperation(operationId, projectId);
+    complaint = result.complaint ?? complaint;
+    if (result.mediaId) {
+      emitGenerateProgress(requestId, result.mediaId);
+      return {
+        mediaId: result.mediaId,
+        previewUrl: result.url,
+      };
+    }
+    await waitForBatchOffset(3_000, requestId);
+  }
+
+  throw bridgeError(
+    'TIMEOUT',
+    `Flow batch operation ${operationId} did not expose a media id before the video deadline${complaint ? `: ${complaint}` : '.'}`,
+    true,
+  );
+}
+
+async function generateT2vViaBatch(
+  payload: GeneratePayload,
+  requestId?: string,
+): Promise<NormalizedMediaRef> {
+  const prompt = (payload.prompt ?? '').trim();
+  if (!prompt) throw bridgeError('INVALID_INPUT', 'Text-to-Video requires a non-empty prompt.', false);
+  assertSingleBatchVideoSettingsSupported(payload, 'Omni Text-to-Video');
+
+  const tab = await findFlowTab(payload.projectId);
+  if (!tab?.id) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
+  const liveProjectId = projectIdFromUrl(tab.url ?? '');
+  if (!liveProjectId || liveProjectId !== payload.projectId) {
+    throw bridgeError(
+      'PROJECT_MISMATCH',
+      `Active Google Flow tab project (${liveProjectId || 'none'}) does not match request projectId (${payload.projectId}).`,
+      false,
+    );
+  }
+
+  throwIfGenerationAborted(requestId);
+  const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.VIDEO);
+  throwIfGenerationAborted(requestId);
+
+  const fReq = buildFlowTextVideoRequest({
+    prompt,
+    projectId: payload.projectId,
+    model: payload.modelKey,
+    aspect: payload.aspectRatio ?? '16:9',
+  }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+
+  const result = await timeoutable(
+    runFlowBatchPageRpc({
+      tabId: tab.id,
+      rpcId: FLOW_BATCH_RPC.GENERATE_VIDEO_TEXT,
+      fReq,
+    }),
+    120_000,
+  );
+  throwIfGenerationAborted(requestId);
+
+  const submitted = readFlowTextVideoSubmit(
+    firstFlowBatchPayload(result.text, FLOW_BATCH_RPC.GENERATE_VIDEO_TEXT),
+  );
+  emitGenerateProgress(requestId, submitted.mediaId);
+
+  return completeGenerate(requestId, {
+    mediaId: submitted.mediaId,
+    type: 'VIDEO',
+    projectId: submitted.projectId ?? payload.projectId,
+    workflowId: submitted.workflowId,
+  }, payload.projectId);
+}
+
+async function completeOperationBackedBatchVideo(
+  tabId: number,
+  payload: GeneratePayload,
+  rpcId: string,
+  responseText: string,
+  requestId?: string,
+): Promise<NormalizedMediaRef> {
+  const operation = readFlowOperation(firstFlowBatchPayload(responseText, rpcId));
+  const media = await waitForFlowBatchOperationMedia(
+    tabId,
+    operation.operationId,
+    operation.projectId ?? payload.projectId,
+    requestId,
+  );
+  return completeGenerate(requestId, {
+    mediaId: media.mediaId,
+    type: 'VIDEO',
+    projectId: operation.projectId ?? payload.projectId,
+    workflowId: operation.operationId,
+    previewUrl: media.previewUrl,
+  }, payload.projectId);
+}
+
+async function generateI2vViaBatch(
+  payload: GeneratePayload,
+  requestId?: string,
+): Promise<NormalizedMediaRef> {
+  const prompt = (payload.prompt ?? '').trim();
+  if (!prompt) throw bridgeError('INVALID_INPUT', 'Image-to-Video requires a non-empty prompt.', false);
+  if (!payload.startImage?.mediaId) {
+    throw bridgeError('INVALID_INPUT', 'Image-to-Video batch transport requires a start image mediaId.', false);
+  }
+  assertSingleBatchVideoSettingsSupported(payload, 'Omni Image-to-Video');
+
+  const tab = await findFlowTab(payload.projectId);
+  if (!tab?.id) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
+  const liveProjectId = projectIdFromUrl(tab.url ?? '');
+  if (liveProjectId !== payload.projectId) {
+    throw bridgeError(
+      'PROJECT_MISMATCH',
+      `Active Google Flow tab project (${liveProjectId || 'none'}) does not match request projectId (${payload.projectId}).`,
+      false,
+    );
+  }
+
+  throwIfGenerationAborted(requestId);
+  const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.VIDEO);
+  const fReq = buildFlowFirstFrameVideoRequest({
+    prompt,
+    projectId: payload.projectId,
+    sourceMediaId: payload.startImage.mediaId,
+    model: payload.modelKey,
+    aspect: payload.aspectRatio ?? '16:9',
+  }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+
+  const result = await timeoutable(
+    runFlowBatchPageRpc({
+      tabId: tab.id,
+      rpcId: FLOW_BATCH_RPC.GENERATE_VIDEO,
+      fReq,
+    }),
+    120_000,
+  );
+  throwIfGenerationAborted(requestId);
+  return completeOperationBackedBatchVideo(
+    tab.id,
+    payload,
+    FLOW_BATCH_RPC.GENERATE_VIDEO,
+    result.text,
+    requestId,
+  );
+}
+
+
+async function generateInterpolationViaBatch(
+  payload: GeneratePayload,
+  requestId?: string,
+): Promise<NormalizedMediaRef> {
+  const prompt = (payload.prompt ?? '').trim();
+  if (!prompt) throw bridgeError('INVALID_INPUT', 'First+Last video requires a non-empty prompt.', false);
+  if (!payload.startImage?.mediaId || !payload.endImage?.mediaId) {
+    throw bridgeError('INVALID_INPUT', 'First+Last batch transport requires both start and end image mediaIds.', false);
+  }
+  assertSingleBatchVideoSettingsSupported(payload, 'Omni First+Last');
+
+  const tab = await findFlowTab(payload.projectId);
+  if (!tab?.id) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
+  const liveProjectId = projectIdFromUrl(tab.url ?? '');
+  if (liveProjectId !== payload.projectId) {
+    throw bridgeError(
+      'PROJECT_MISMATCH',
+      `Active Google Flow tab project (${liveProjectId || 'none'}) does not match request projectId (${payload.projectId}).`,
+      false,
+    );
+  }
+
+  throwIfGenerationAborted(requestId);
+  const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.VIDEO);
+  const fReq = buildFlowFirstLastVideoRequest({
+    prompt,
+    projectId: payload.projectId,
+    startMediaId: payload.startImage.mediaId,
+    endMediaId: payload.endImage.mediaId,
+    model: resolveFlowFirstLastModelKey(payload.modelKey),
+    aspect: payload.aspectRatio ?? '16:9',
+  }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+
+  const result = await timeoutable(
+    runFlowBatchPageRpc({
+      tabId: tab.id,
+      rpcId: FLOW_BATCH_RPC.GENERATE_VIDEO_FIRST_LAST,
+      fReq,
+    }),
+    120_000,
+  );
+  throwIfGenerationAborted(requestId);
+  return completeOperationBackedBatchVideo(
+    tab.id,
+    payload,
+    FLOW_BATCH_RPC.GENERATE_VIDEO_FIRST_LAST,
+    result.text,
+    requestId,
+  );
+}
+
+async function generateReferenceVideoViaBatch(
+  payload: GeneratePayload,
+  requestId?: string,
+): Promise<NormalizedMediaRef> {
+  const prompt = (payload.prompt ?? '').trim();
+  const referenceMediaIds = (payload.imageRefs ?? []).map((reference) => reference.mediaId).filter(Boolean);
+  if (!prompt) throw bridgeError('INVALID_INPUT', 'Reference Video requires a non-empty prompt.', false);
+  if (!referenceMediaIds.length) {
+    throw bridgeError('INVALID_INPUT', 'Reference Video batch transport requires at least one reference mediaId.', false);
+  }
+  assertSingleBatchVideoSettingsSupported(payload, 'Omni Reference Video');
+
+  const tab = await findFlowTab(payload.projectId);
+  if (!tab?.id) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
+  const liveProjectId = projectIdFromUrl(tab.url ?? '');
+  if (liveProjectId !== payload.projectId) {
+    throw bridgeError(
+      'PROJECT_MISMATCH',
+      `Active Google Flow tab project (${liveProjectId || 'none'}) does not match request projectId (${payload.projectId}).`,
+      false,
+    );
+  }
+
+  throwIfGenerationAborted(requestId);
+  const captchaToken = await recaptchaToken(payload.projectId, FLOW_BATCH_CAPTCHA_ACTION.VIDEO);
+  const fReq = buildFlowReferenceVideoRequest({
+    prompt,
+    projectId: payload.projectId,
+    referenceMediaIds,
+    model: payload.modelKey,
+    aspect: payload.aspectRatio ?? '16:9',
+  }).split(FLOW_BATCH_CAPTCHA_SLOT).join(captchaToken);
+
+  const result = await timeoutable(
+    runFlowBatchPageRpc({
+      tabId: tab.id,
+      rpcId: FLOW_BATCH_RPC.GENERATE_VIDEO_REFERENCES,
+      fReq,
+    }),
+    120_000,
+  );
+  throwIfGenerationAborted(requestId);
+  return completeOperationBackedBatchVideo(
+    tab.id,
+    payload,
+    FLOW_BATCH_RPC.GENERATE_VIDEO_REFERENCES,
+    result.text,
+    requestId,
+  );
+}
+
+async function pollFlowBatchMediaStatus(
+  payload: MediaStatusPayload,
+): Promise<MediaStatusData | undefined> {
+  const tab = await findFlowTab(payload.projectId);
+  if (!tab?.id) return undefined;
+  const liveProjectId = projectIdFromUrl(tab.url ?? '');
+  if (liveProjectId !== payload.projectId) return undefined;
+
+  try {
+    const result = await flowBatchPollerForTab(tab.id).pollMedia(
+      payload.mediaId,
+      payload.projectId,
+    );
+    if (result.status === 'SUCCESSFUL' && result.url) {
+      return {
+        status: 'SUCCESSFUL',
+        media: {
+          mediaId: payload.mediaId,
+          type: 'VIDEO',
+          projectId: payload.projectId,
+          previewUrl: result.url,
+        },
+      };
+    }
+    return {
+      status: 'ACTIVE',
+    };
+  } catch (error) {
+    const normalized = toFlowBatchBridgeError(error);
+    const code = String(normalized.code ?? 'BATCH_RPC_UNAVAILABLE');
+    return mayFallbackFromBatch(code) ? undefined : {
+      status: 'FAILED',
+      errorMessage: normalized.message,
+    };
+  }
 }
 
 const ENDPOINT_BY_KIND: Record<string, string> = {
@@ -1557,6 +2092,87 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
   if (isDirectApiPath) {
     return generateApi(payload, requestId);
   }
+
+  const capabilityRoute = resolveFlowCapabilityRoute(payload);
+  if (payload.kind === 't2i' && capabilityRoute.primary === 'BATCH_RPC') {
+    try {
+      return await generateT2iViaBatch(payload, requestId);
+    } catch (error) {
+      const batchError = toFlowBatchBridgeError(error);
+      const code = String(batchError.code ?? 'BATCH_RPC_UNAVAILABLE');
+      if (capabilityRoute.fallback !== 'FLOW_UI' || !mayFallbackFromBatch(code)) {
+        throw batchError;
+      }
+      console.warn(
+        `[FlowGraph] Batch T2I unavailable (${code}); falling back to verified Flow UI transport.`,
+      );
+    }
+  }
+
+  if (payload.kind === 't2v' && capabilityRoute.primary === 'BATCH_RPC') {
+    try {
+      return await generateT2vViaBatch(payload, requestId);
+    } catch (error) {
+      const batchError = toFlowBatchBridgeError(error);
+      recordBatchDiagnostic('t2v', batchError);
+      const code = String(batchError.code ?? 'BATCH_RPC_UNAVAILABLE');
+      if (capabilityRoute.fallback !== 'FLOW_UI' || !mayFallbackFromBatch(code)) {
+        throw batchError;
+      }
+      console.warn(
+        `[FlowGraph] Batch Omni T2V unavailable (${code}); falling back to verified Flow UI transport.`,
+      );
+    }
+  }
+
+  if (payload.kind === 'i2v' && capabilityRoute.primary === 'BATCH_RPC') {
+    try {
+      return await generateI2vViaBatch(payload, requestId);
+    } catch (error) {
+      const batchError = toFlowBatchBridgeError(error);
+      recordBatchDiagnostic('i2v', batchError);
+      const code = String(batchError.code ?? 'BATCH_RPC_UNAVAILABLE');
+      if (capabilityRoute.fallback !== 'FLOW_UI' || !mayFallbackFromBatch(code)) {
+        throw batchError;
+      }
+      console.warn(
+        `[FlowGraph] Batch Omni I2V unavailable (${code}); falling back to verified Flow UI transport.`,
+      );
+    }
+  }
+
+  if (payload.kind === 'interpolation' && capabilityRoute.primary === 'BATCH_RPC') {
+    try {
+      return await generateInterpolationViaBatch(payload, requestId);
+    } catch (error) {
+      const batchError = toFlowBatchBridgeError(error);
+      recordBatchDiagnostic('interpolation', batchError);
+      const code = String(batchError.code ?? 'BATCH_RPC_UNAVAILABLE');
+      if (capabilityRoute.fallback !== 'FLOW_UI' || !mayFallbackFromBatch(code)) {
+        throw batchError;
+      }
+      console.warn(
+        `[FlowGraph] Batch Omni First+Last unavailable (${code}); falling back to verified Flow UI transport.`,
+      );
+    }
+  }
+
+  if (payload.kind === 'reference' && capabilityRoute.primary === 'BATCH_RPC') {
+    try {
+      return await generateReferenceVideoViaBatch(payload, requestId);
+    } catch (error) {
+      const batchError = toFlowBatchBridgeError(error);
+      recordBatchDiagnostic('reference', batchError);
+      const code = String(batchError.code ?? 'BATCH_RPC_UNAVAILABLE');
+      if (capabilityRoute.fallback !== 'FLOW_UI' || !mayFallbackFromBatch(code)) {
+        throw batchError;
+      }
+      console.warn(
+        `[FlowGraph] Batch Omni Reference Video unavailable (${code}); falling back to verified Flow UI transport.`,
+      );
+    }
+  }
+
   // UI-driven generation requires the actual project composer. Media preview
   // resolution may have left the provider tab on /edit/<mediaId>; recover the
   // project route and wait for its composer without activating the tab.
@@ -2677,6 +3293,14 @@ async function handleMediaStatus(payload: MediaStatusPayload): Promise<MediaStat
         : 'Exact video is not playable on the Flow page. Retry to refresh this exact clip.',
     };
   }
+
+  // Current Flow batch transport exposes media readiness through as29s.
+  // Prefer that browser-bound signal before touching legacy REST polling. A
+  // poster-only response is ACTIVE, never SUCCESSFUL, so downstream cannot
+  // accidentally treat a still image as a completed video.
+  const batchStatus = await pollFlowBatchMediaStatus(payload);
+  if (batchStatus) return batchStatus;
+
   // If the media item is already an existing asset in the active project,
   // attempt to resolve its preview directly via resolveMediaUrl.
   try {

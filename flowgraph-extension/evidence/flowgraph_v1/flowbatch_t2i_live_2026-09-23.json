@@ -1,0 +1,65 @@
+{
+  "evidence_id": "flowbatch_t2i_live_2026-09-23",
+  "captured_at": "2026-09-23T05:21:21.322Z",
+  "capability": "Text-to-Image",
+  "transport": {
+    "surface": "flow.google.com",
+    "kind": "batchexecute",
+    "path": "/_/AiSandboxAngularFrontend/data/batchexecute",
+    "rpc_id": "ogiZ0b",
+    "auth_boundary": "browser page session + WIZ metadata + single-use reCAPTCHA",
+    "sensitive_material_persisted": false
+  },
+  "flowgraph": {
+    "run_id": "6e384743-f5eb-4aef-8d58-0e15b9639c44",
+    "project_id": "4522d4f3-8f5c-49dc-ae2c-82e7cbcb664d",
+    "workflow_shape": "Prompt -> Text-to-Image",
+    "node_count": 2,
+    "edge_count": 1,
+    "run_status": "success",
+    "node_status": {
+      "1": "success",
+      "2": "success"
+    }
+  },
+  "artifact": {
+    "media_id": "af072390-cb39-4507-ae89-155d25b2f4d1",
+    "type": "IMAGE",
+    "mime_type": "image/jpeg",
+    "decoded_dimensions": {
+      "width": 1376,
+      "height": 768
+    },
+    "provider_media_host": "flow-content.google",
+    "exact_media_id_found_on_flow_page": true,
+    "signed_url_persisted": false
+  },
+  "transport_discrimination": {
+    "flow_composer_text_after_run": "",
+    "verification_prompt_present_in_flow_page_text": false,
+    "exact_generated_media_present": true,
+    "conclusion": "Batch-first T2I completed without observable Flow composer mutation; UI fallback was not observed."
+  },
+  "verification": {
+    "typecheck": "PASS",
+    "production_build": "PASS",
+    "test_files": {
+      "passed": 78,
+      "total": 78
+    },
+    "tests": {
+      "passed": 1068,
+      "total": 1068
+    },
+    "targeted_batch_tests": {
+      "passed": 9,
+      "protocol": 5,
+      "capability_router": 4
+    }
+  },
+  "notes": [
+    "The live test used a temporary two-node custom template to avoid running downstream video generation.",
+    "The temporary custom template was removed after verification and the Studio canvas was restored to the standard 4-node / 4-wire template.",
+    "Legacy REST remains available only for migration hold / unported capabilities; this evidence verifies the new T2I batch transport path."
+  ]
+}
