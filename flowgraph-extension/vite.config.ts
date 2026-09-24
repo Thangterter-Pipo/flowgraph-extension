@@ -16,6 +16,21 @@ export default defineConfig({
         sidepanel: resolve(rootDir, 'sidepanel.html'),
         studio: resolve(rootDir, 'studio.html'),
       },
+      output: {
+        manualChunks: (id) => {
+          if (id.includes('node_modules')) {
+            if (id.includes('@xyflow')) {
+              return 'vendor-xyflow';
+            }
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor-react';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-lucide';
+            }
+          }
+        },
+      },
     },
   },
 });
