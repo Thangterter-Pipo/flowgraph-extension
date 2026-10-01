@@ -588,8 +588,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
   // Trạng thái Thu Gọn / Mở Rộng Node Siêu Tối Giản
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [editingPromptNodeId, setEditingPromptNodeId] = useState<string | null>(null);
-  const isEditingPrompt = editingPromptNodeId === id;
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const promptInputRef = React.useRef<HTMLTextAreaElement>(null);
   const [activeComboboxId, setActiveComboboxId] = useState<string | null>(null);
   const setGlobalComboboxId = React.useCallback((next: string | null) => {
@@ -963,10 +962,10 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                   detail: { sourceNodeId: id, parsed }
                 }));
               }}
-              onBlur={() => setEditingPromptNodeId(null)}
+              onBlur={() => setIsEditingPrompt(false)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
-                  setEditingPromptNodeId(null);
+                  setIsEditingPrompt(false);
                 }
               }}
               onMouseDown={(e) => e.stopPropagation()}
@@ -977,13 +976,11 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
               className="prompt-display-view"
               onDoubleClick={(e) => {
                 e.stopPropagation();
-                setEditingPromptNodeId(id);
-                setTimeout(() => promptInputRef.current?.focus(), 10);
+                setIsEditingPrompt(true);
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                setEditingPromptNodeId(id);
-                setTimeout(() => promptInputRef.current?.focus(), 10);
+                setIsEditingPrompt(true);
               }}
               title="Click hoặc Double-click để chỉnh sửa prompt. Kéo thả để di chuyển node."
               style={{
