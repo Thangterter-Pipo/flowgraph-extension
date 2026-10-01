@@ -76,12 +76,11 @@ export function toRuntimeError(error: unknown, nodeId?: string): RuntimeError {
   const normalized: BridgeError = error instanceof RuntimeError
     ? error.toBridgeError()
     : normalizeError(error);
-  const combined = `${normalized.code} ${normalized.message} ${normalized.reason ?? ''}`;
   let code = CODE_MAP[normalized.code];
   if (!code) {
-    if (normalized.reason === 'PUBLIC_ERROR_UNUSUAL_ACTIVITY' || combined.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')) {
+    if (normalized.reason === 'PUBLIC_ERROR_UNUSUAL_ACTIVITY') {
       code = 'PROVIDER_ERROR';
-    } else if (combined.includes('reCAPTCHA') || combined.includes('UNUSUAL_ACTIVITY')) {
+    } else if (normalized.code === 'CAPTCHA_REQUIRED' || normalized.message.includes('reCAPTCHA')) {
       code = 'CAPTCHA_REQUIRED';
     } else {
       code = 'PROVIDER_ERROR';

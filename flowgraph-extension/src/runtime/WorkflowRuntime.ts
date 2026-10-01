@@ -44,7 +44,7 @@ export interface RuntimeNodeEvent {
   runId: string;
   nodeId: string;
   state: RuntimeNodeState;
-  error?: { code: string; message: string; retryable: boolean; diagnosticId?: string };
+  error?: { code: string; message: string; retryable: boolean; diagnosticId?: string; reason?: string };
   result?: { type: 'image' | 'video'; mediaId: string; previewUrl: string; mimeType?: string; fileName?: string; projectId?: string };
   creditsUsed?: number;
   /** True when the node result was replayed from the project cache (no provider call). */
@@ -457,7 +457,13 @@ export class WorkflowRuntime {
             runId,
             nodeId,
             state: 'failed',
-            error: { code: runtimeError.code, message: runtimeError.message, retryable: runtimeError.retryable, diagnosticId: runtimeError.diagnosticId },
+            error: {
+              code: runtimeError.code,
+              message: runtimeError.message,
+              retryable: runtimeError.retryable,
+              diagnosticId: runtimeError.diagnosticId,
+              ...(runtimeError.reason ? { reason: runtimeError.reason } : {}),
+            },
           });
         }
       }

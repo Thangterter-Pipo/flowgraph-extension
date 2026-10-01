@@ -304,30 +304,39 @@
   }
 
   // src/shared/bridge.ts
+  var ERROR_REASON_RE = /^[A-Z][A-Z0-9_]{0,62}$/;
+  function sanitizeErrorReason(reason) {
+    if (typeof reason !== "string") return void 0;
+    const trimmed = reason.trim();
+    return ERROR_REASON_RE.test(trimmed) ? trimmed : void 0;
+  }
   function makeResponse(requestId, data) {
     return { requestId, ok: true, data };
   }
   function makeError(requestId, code, message, retryable = false, reason) {
     reportDiagnostic("RPC_FAILED");
-    return { requestId, ok: false, error: { code, message, retryable, ...reason ? { reason } : {} } };
+    const safeReason = sanitizeErrorReason(reason);
+    return { requestId, ok: false, error: { code, message, retryable, ...safeReason ? { reason: safeReason } : {} } };
   }
   function normalizeError(error) {
     if (typeof error === "object" && error !== null && "code" in error && "message" in error) {
       const candidate = error;
+      const safeReason = sanitizeErrorReason(candidate.reason);
       return {
         code: String(candidate.code ?? "UNKNOWN"),
         message: String(candidate.message ?? "Unknown error"),
         retryable: Boolean(candidate.retryable),
-        ...typeof candidate.reason === "string" && candidate.reason ? { reason: candidate.reason } : {}
+        ...safeReason ? { reason: safeReason } : {}
       };
     }
     if (error instanceof Error) {
       const candidate = error;
+      const safeReason = sanitizeErrorReason(candidate.reason);
       return {
         code: "UNKNOWN",
         message: error.message,
         retryable: false,
-        ...typeof candidate.reason === "string" && candidate.reason ? { reason: candidate.reason } : {}
+        ...safeReason ? { reason: safeReason } : {}
       };
     }
     return { code: "UNKNOWN", message: String(error), retryable: false };
@@ -1459,7 +1468,12 @@
     const code = String(body?.error?.code ?? "");
     const message = String(body?.error?.message ?? `${status}`);
     const combined = `${code} ${message}`;
-    if (combined.includes("reCAPTCHA") || combined.includes("UNUSUAL_ACTIVITY")) {
+    if (combined.includes("PUBLIC_ERROR_UNUSUAL_ACTIVITY")) {
+      const err = bridgeError("PROVIDER_ERROR", message || code, false);
+      err.reason = "PUBLIC_ERROR_UNUSUAL_ACTIVITY";
+      return err;
+    }
+    if (combined.includes("reCAPTCHA")) {
       return bridgeError("CAPTCHA_REQUIRED", message || "reCAPTCHA evaluation failed", true);
     }
     if (status === 401) {
@@ -4044,7 +4058,7 @@
       }
     } catch (error) {
       const normalized = normalizeError(error);
-      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
     }
   }
   var SYNC_WRITE_TYPES = /* @__PURE__ */ new Set([
@@ -5403,7 +5417,7 @@
         return makeResponse(request.requestId, await bindRealtimeMode(tab, payload.value));
       } catch (error) {
         const normalized = normalizeError(error);
-        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
       }
     }
     if (request.type === "FLOWGRAPH_SYNC_SET_MODEL") {
@@ -5411,7 +5425,7 @@
         return makeResponse(request.requestId, await bindRealtimeModel(tab, String(payload.value ?? "")));
       } catch (error) {
         const normalized = normalizeError(error);
-        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
       }
     }
     if (request.type === "FLOWGRAPH_SYNC_SET_DURATION") {
@@ -5419,7 +5433,7 @@
         return makeResponse(request.requestId, await bindRealtimeDuration(tab, payload.value));
       } catch (error) {
         const normalized = normalizeError(error);
-        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
       }
     }
     if (SYNC_FOREGROUND_TYPES.has(request.type) && !tab.active) {
@@ -5430,7 +5444,7 @@
         return makeResponse(request.requestId, await bindRealtimeStartImage(tab, mediaId));
       } catch (error) {
         const normalized = normalizeError(error);
-        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
       }
     }
     if (request.type === "FLOWGRAPH_SYNC_END_FRAME") {
@@ -5439,7 +5453,7 @@
         return makeResponse(request.requestId, await bindRealtimeEndImage(tab, mediaId));
       } catch (error) {
         const normalized = normalizeError(error);
-        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
       }
     }
     if (request.type === "FLOWGRAPH_SYNC_REFERENCE_MEDIA") {
@@ -5448,7 +5462,7 @@
         return makeResponse(request.requestId, await bindRealtimeReferenceMedia(tab, values));
       } catch (error) {
         const normalized = normalizeError(error);
-        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+        return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
       }
     }
     if (request.type === "FLOWGRAPH_SYNC_BIND_MEDIA") {

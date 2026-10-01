@@ -479,6 +479,7 @@ interface NodeErrorInfo {
   message: string;
   retryable: boolean;
   diagnosticId?: string;
+  reason?: string;
 }
 
 function getStoredActiveProjectId(): string | undefined {
@@ -1709,7 +1710,7 @@ function Studio() {
     });
 
     const runEvents: RuntimeEvent[] = [];
-    let lastForwardedNodeError: { code?: string; message?: string; retryable?: boolean } | undefined;
+    let lastForwardedNodeError: { code?: string; message?: string; retryable?: boolean; reason?: string } | undefined;
     const emit = (event: RuntimeEvent) => {
       if (!acceptRuntimeEvent(event, projectIdAtStart, runGenerationRef.current, epochAtStart, runEpochRef.current)) return;
       if (runGenerationRef.current?.runId === PENDING_RUN_ID && event.runId) {
@@ -1772,7 +1773,7 @@ function Studio() {
               error: event.issues && event.issues.length > 0
                 ? { code: 'VALIDATION_FAILED', message: event.issues[0].message, retryable: false }
                 : event.state === 'failed' && lastForwardedNodeError
-                  ? { code: lastForwardedNodeError.code, message: lastForwardedNodeError.message, retryable: lastForwardedNodeError.retryable }
+                  ? { code: lastForwardedNodeError.code, message: lastForwardedNodeError.message, retryable: lastForwardedNodeError.retryable, reason: lastForwardedNodeError.reason }
                   : undefined,
             }).catch(() => {});
           }
@@ -1809,7 +1810,7 @@ function Studio() {
         const displayMessage = isUnusual
           ? 'Google Flow từ chối yêu cầu do phát hiện hoạt động bất thường (UNUSUAL_ACTIVITY). Hãy tạm dừng vài phút, kiểm tra tab Google Flow và tắt VPN/proxy nếu đang bật.'
           : runtimeError.message;
-        setRunError({ code: runtimeError.code, message: displayMessage, retryable: runtimeError.retryable, diagnosticId: runtimeError.diagnosticId });
+        setRunError({ code: runtimeError.code, message: displayMessage, retryable: runtimeError.retryable, diagnosticId: runtimeError.diagnosticId, reason: runtimeError.reason });
         setRunStatus('error');
       }
     } finally {

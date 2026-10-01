@@ -74,6 +74,14 @@ export interface BridgeError {
   reason?: string;
 }
 
+const ERROR_REASON_RE = /^[A-Z][A-Z0-9_]{0,62}$/;
+
+export function sanitizeErrorReason(reason: unknown): string | undefined {
+  if (typeof reason !== 'string') return undefined;
+  const trimmed = reason.trim();
+  return ERROR_REASON_RE.test(trimmed) ? trimmed : undefined;
+}
+
 export function makeRequest<T = unknown>(type: RequestType, payload?: unknown, requestId = PRE_SIGNED_REQUEST_ID): BridgeRequest {
   return { type, requestId, payload };
 }
@@ -84,26 +92,29 @@ export function makeResponse<T = unknown>(requestId: string, data?: T): BridgeRe
 
 export function makeError<T = unknown>(requestId: string, code: string, message: string, retryable = false, reason?: string): BridgeResponse<T> {
   reportDiagnostic('RPC_FAILED');
-  return { requestId, ok: false, error: { code, message, retryable, ...(reason ? { reason } : {}) } };
+  const safeReason = sanitizeErrorReason(reason);
+  return { requestId, ok: false, error: { code, message, retryable, ...(safeReason ? { reason: safeReason } : {}) } };
 }
 
 export function normalizeError(error: unknown): BridgeError {
   if (typeof error === 'object' && error !== null && 'code' in error && 'message' in error) {
     const candidate = error as { code: unknown; message: unknown; retryable?: unknown; reason?: unknown };
+    const safeReason = sanitizeErrorReason(candidate.reason);
     return {
       code: String(candidate.code ?? 'UNKNOWN'),
       message: String(candidate.message ?? 'Unknown error'),
       retryable: Boolean(candidate.retryable),
-      ...(typeof candidate.reason === 'string' && candidate.reason ? { reason: candidate.reason } : {}),
+      ...(safeReason ? { reason: safeReason } : {}),
     };
   }
   if (error instanceof Error) {
     const candidate = error as Error & { reason?: unknown };
+    const safeReason = sanitizeErrorReason(candidate.reason);
     return {
       code: 'UNKNOWN',
       message: error.message,
       retryable: false,
-      ...(typeof candidate.reason === 'string' && candidate.reason ? { reason: candidate.reason } : {}),
+      ...(safeReason ? { reason: safeReason } : {}),
     };
   }
   return { code: 'UNKNOWN', message: String(error), retryable: false };

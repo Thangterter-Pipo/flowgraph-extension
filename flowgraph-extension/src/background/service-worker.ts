@@ -425,11 +425,16 @@ function mapStatus(st: string): MediaStatusData['status'] {
   return 'UNKNOWN';
 }
 
-function providerError(status: number, body: unknown): Error & { code: string; retryable: boolean } {
+function providerError(status: number, body: unknown): Error & { code: string; retryable: boolean; reason?: string } {
   const code = String((body as AiSandboxResponse | null)?.error?.code ?? '');
   const message = String((body as AiSandboxResponse | null)?.error?.message ?? `${status}`);
   const combined = `${code} ${message}`;
-  if (combined.includes('reCAPTCHA') || combined.includes('UNUSUAL_ACTIVITY')) {
+  if (combined.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')) {
+    const err = bridgeError('PROVIDER_ERROR', message || code, false) as Error & { code: string; retryable: boolean; reason?: string };
+    err.reason = 'PUBLIC_ERROR_UNUSUAL_ACTIVITY';
+    return err;
+  }
+  if (combined.includes('reCAPTCHA')) {
     return bridgeError('CAPTCHA_REQUIRED', message || 'reCAPTCHA evaluation failed', true);
   }
   if (status === 401) {
@@ -3580,7 +3585,7 @@ async function handleRequest(request: BridgeRequest): Promise<BridgeResponse<unk
     }
   } catch (error) {
     const normalized = normalizeError(error);
-    return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+    return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
   }
 }
 
@@ -5084,7 +5089,7 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
       return makeResponse(request.requestId, await bindRealtimeMode(tab, payload.value));
     } catch (error) {
       const normalized = normalizeError(error);
-      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
     }
   }
   if (request.type === 'FLOWGRAPH_SYNC_SET_MODEL') {
@@ -5092,7 +5097,7 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
       return makeResponse(request.requestId, await bindRealtimeModel(tab, String(payload.value ?? '')));
     } catch (error) {
       const normalized = normalizeError(error);
-      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
     }
   }
   if (request.type === 'FLOWGRAPH_SYNC_SET_DURATION') {
@@ -5100,7 +5105,7 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
       return makeResponse(request.requestId, await bindRealtimeDuration(tab, payload.value));
     } catch (error) {
       const normalized = normalizeError(error);
-      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
     }
   }
   // SYNC_FOREGROUND_TYPES đã được làm rỗng, không cướp active: true
@@ -5115,7 +5120,7 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
       return makeResponse(request.requestId, await bindRealtimeStartImage(tab, mediaId));
     } catch (error) {
       const normalized = normalizeError(error);
-      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
     }
   }
   if (request.type === 'FLOWGRAPH_SYNC_END_FRAME') {
@@ -5126,7 +5131,7 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
       return makeResponse(request.requestId, await bindRealtimeEndImage(tab, mediaId));
     } catch (error) {
       const normalized = normalizeError(error);
-      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
     }
   }
   if (request.type === 'FLOWGRAPH_SYNC_REFERENCE_MEDIA') {
@@ -5140,7 +5145,7 @@ async function forwardSyncWrite(request: BridgeRequest): Promise<BridgeResponse<
       return makeResponse(request.requestId, await bindRealtimeReferenceMedia(tab, values));
     } catch (error) {
       const normalized = normalizeError(error);
-      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable);
+      return makeError(request.requestId, normalized.code, normalized.message, normalized.retryable, normalized.reason);
     }
   }
   if (request.type === 'FLOWGRAPH_SYNC_BIND_MEDIA') {
