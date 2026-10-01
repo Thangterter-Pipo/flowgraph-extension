@@ -164,46 +164,9 @@ export function useStudioConnection(): StudioConnection {
     setProjectsLoading(true);
     setProjectsError(undefined);
     try {
-      // 1. Quét toàn bộ projects đã từng lưu trong localStorage của Studio
       const knownProjectsMap = new Map<string, ProjectInfo>();
-      
-      // Thêm activeProject hiện tại nếu có
-      const currentActive = loadPersistedProject();
-      if (currentActive?.projectId) {
-        knownProjectsMap.set(currentActive.projectId, {
-          projectId: currentActive.projectId,
-          projectTitle: currentActive.projectName || 'Dự án Hiện tại',
-        });
-      }
 
-      // Quét tất cả các key lưu workflow trong localStorage để tìm các project khác
-      try {
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i) || '';
-          if (key.startsWith('flowgraph.workflow.v1.') && key.endsWith('.main')) {
-            const parts = key.split('.');
-            const pid = parts[3];
-            if (pid && !knownProjectsMap.has(pid)) {
-              try {
-                const wf = JSON.parse(localStorage.getItem(key) || '{}');
-                const title = wf.projectBinding?.projectName || wf.name || `Project ${pid.slice(0, 8)}`;
-                knownProjectsMap.set(pid, { projectId: pid, projectTitle: title });
-              } catch {}
-            }
-          } else if (key.startsWith('flowgraph.filmProject.v1.')) {
-            const pid = key.replace('flowgraph.filmProject.v1.', '');
-            if (pid && !knownProjectsMap.has(pid)) {
-              try {
-                const fp = JSON.parse(localStorage.getItem(key) || '{}');
-                const title = fp.project?.title || `Film ${pid.slice(0, 8)}`;
-                knownProjectsMap.set(pid, { projectId: pid, projectTitle: title });
-              } catch {}
-            }
-          }
-        }
-      } catch {}
-
-      // 2. Thử gọi adapter hoặc quét trực tiếp tab Google Flow để lấy toàn bộ các dự án thật
+      // Chỉ trích xuất và hiển thị các dự án của tài khoản đang được kết nối thực tế
       try {
         if (typeof chrome !== 'undefined' && chrome.tabs) {
           const tabs = await chrome.tabs.query({ url: '*://flow.google.com/*' });
@@ -213,6 +176,17 @@ export function useStudioConnection(): StudioConnection {
               target: { tabId: flowTab.id },
               func: () => {
                 const list: Array<{ id: string; title: string }> = [];
+                // 1. Lấy dự án hiện tại đang mở trên tab Flow
+                const pathMatch = location.pathname.match(/\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+                if (pathMatch && pathMatch[1]) {
+                  let docTitle = document.title.replace(/^Google Flow\s*[–—-]\s*/i, '').trim();
+                  if (!docTitle || docTitle.toLowerCase() === 'new project') {
+                    docTitle = 'Dự án Hiện tại (new project)';
+                  }
+                  list.push({ id: pathMatch[1], title: docTitle });
+                }
+
+                // 2. Quét các thẻ project card trong DOM của tab Flow nếu đang ở trang chủ hoặc menu
                 const regex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
                 const elements = Array.from(document.querySelectorAll('a, button, div, span'));
                 const projectNodes = elements.filter((el) => {
@@ -240,7 +214,7 @@ export function useStudioConnection(): StudioConnection {
             const scraped = injected?.[0]?.result;
             if (Array.isArray(scraped)) {
               for (const s of scraped) {
-                if (s.id && !knownProjectsMap.has(s.id)) {
+                if (s.id) {
                   knownProjectsMap.set(s.id, { projectId: s.id, projectTitle: s.title });
                 }
               }
@@ -249,18 +223,22 @@ export function useStudioConnection(): StudioConnection {
         }
       } catch {}
 
-      // 3. Thử gọi adapter để lấy thêm từ Google Flow nếu backend hỗ trợ
-      try {
-        const data = await adapter().listProjects();
-        if (data?.projects?.length) {
-          for (const p of data.projects) {
-            knownProjectsMap.set(p.projectId, p);
-          }
-        }
-      } catch {}
+      // Nếu tab Flow đang kết nối trả về dự án, cập nhật chính xác danh sách này
+      if (knownProjectsMap.size > 0) {
+        const list = Array.from(knownProjectsMap.values());
+        setProjects(list);
+        return;
+      }
 
-      const list = Array.from(knownProjectsMap.values());
-      setProjects(list);
+      // Fallback: Nếu không đọc được từ tab, chỉ dùng activeProject hiện tại nếu khớp ID của tab
+      const currentActive = loadPersistedProject();
+      if (currentActive?.projectId) {
+        knownProjectsMap.set(currentActive.projectId, {
+          projectId: currentActive.projectId,
+          projectTitle: currentActive.projectName || 'Dự án Hiện tại',
+        });
+      }
+      setProjects(Array.from(knownProjectsMap.values()));
     } catch (error) {
       setProjectsError(error instanceof Error ? error.message : String(error));
     } finally {
