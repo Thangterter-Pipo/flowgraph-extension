@@ -112,6 +112,18 @@ describe('FlowBatchProtocol codec and readers', () => {
     const errorChunk = JSON.stringify([['wrb.fr', FLOW_BATCH_RPC.GENERATE_IMAGE, null, null, null, [8]]]);
     const bad = `)]}'\n${errorChunk.length}\n${errorChunk}\n`;
     expect(() => firstFlowBatchPayload(bad, FLOW_BATCH_RPC.GENERATE_IMAGE)).toThrow(FlowBatchRpcError);
+
+    // Kiểm tra cấu trúc lỗi PUBLIC_ERROR_UNUSUAL_ACTIVITY thật
+    const unusualErrorDetail = [7, null, [['type.googleapis.com/google.rpc.ErrorInfo', ['PUBLIC_ERROR_UNUSUAL_ACTIVITY']]]];
+    const unusualChunk = JSON.stringify([['wrb.fr', FLOW_BATCH_RPC.GENERATE_VIDEO_REFERENCES, null, null, null, unusualErrorDetail]]);
+    const unusualBad = `)]}'\n${unusualChunk.length}\n${unusualChunk}\n`;
+    try {
+      firstFlowBatchPayload(unusualBad, FLOW_BATCH_RPC.GENERATE_VIDEO_REFERENCES);
+      expect.fail('Must throw FlowBatchRpcError');
+    } catch (e: any) {
+      expect(e).toBeInstanceOf(FlowBatchRpcError);
+      expect(JSON.stringify(e.detail)).toContain('PUBLIC_ERROR_UNUSUAL_ACTIVITY');
+    }
   });
 
   it('reads workflow-backed text-video submit media ids without inventing an operation id', () => {

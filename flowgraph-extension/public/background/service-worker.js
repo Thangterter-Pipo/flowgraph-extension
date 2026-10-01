@@ -1545,7 +1545,17 @@
       return bridgeError("BATCH_PROTOCOL_ERROR", error.message, true);
     }
     if (error instanceof FlowBatchRpcError) {
-      const transient = JSON.stringify(error.detail) === "[8]";
+      const detailStr = JSON.stringify(error.detail);
+      if (detailStr.includes("PUBLIC_ERROR_UNUSUAL_ACTIVITY")) {
+        const err = bridgeError(
+          "PROVIDER_ERROR",
+          "Google Flow t\u1EEB ch\u1ED1i y\xEAu c\u1EA7u do ph\xE1t hi\u1EC7n ho\u1EA1t \u0111\u1ED9ng b\u1EA5t th\u01B0\u1EDDng (PUBLIC_ERROR_UNUSUAL_ACTIVITY). H\xE3y t\u1EA1m d\u1EEBng v\xE0i ph\xFAt, ki\u1EC3m tra tab Google Flow v\xE0 t\u1EAFt VPN/proxy n\u1EBFu \u0111ang b\u1EADt.",
+          false
+        );
+        err.reason = "PUBLIC_ERROR_UNUSUAL_ACTIVITY";
+        return err;
+      }
+      const transient = detailStr === "[8]";
       return bridgeError("PROVIDER_ERROR", error.message, transient);
     }
     if (typeof error === "object" && error !== null && "code" in error) {

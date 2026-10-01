@@ -545,7 +545,7 @@ function recordBatchDiagnostic(capability: string, error: Error & { code?: strin
   }
 }
 
-function toFlowBatchBridgeError(error: unknown): Error & { code?: string; retryable?: boolean } {
+function toFlowBatchBridgeError(error: unknown): Error & { code?: string; retryable?: boolean; reason?: string } {
   if (error instanceof FlowBatchPageTransportError) {
     return bridgeError(error.code, error.message, true);
   }
@@ -553,11 +553,21 @@ function toFlowBatchBridgeError(error: unknown): Error & { code?: string; retrya
     return bridgeError('BATCH_PROTOCOL_ERROR', error.message, true);
   }
   if (error instanceof FlowBatchRpcError) {
-    const transient = JSON.stringify(error.detail) === '[8]';
+    const detailStr = JSON.stringify(error.detail);
+    if (detailStr.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')) {
+      const err = bridgeError(
+        'PROVIDER_ERROR',
+        'Google Flow từ chối yêu cầu do phát hiện hoạt động bất thường (PUBLIC_ERROR_UNUSUAL_ACTIVITY). Hãy tạm dừng vài phút, kiểm tra tab Google Flow và tắt VPN/proxy nếu đang bật.',
+        false,
+      ) as Error & { code?: string; retryable?: boolean; reason?: string };
+      err.reason = 'PUBLIC_ERROR_UNUSUAL_ACTIVITY';
+      return err;
+    }
+    const transient = detailStr === '[8]';
     return bridgeError('PROVIDER_ERROR', error.message, transient);
   }
   if (typeof error === 'object' && error !== null && 'code' in error) {
-    return error as Error & { code?: string; retryable?: boolean };
+    return error as Error & { code?: string; retryable?: boolean; reason?: string };
   }
   return bridgeError(
     'BATCH_RPC_UNAVAILABLE',
