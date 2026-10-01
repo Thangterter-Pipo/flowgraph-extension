@@ -1734,22 +1734,25 @@ function readFlowProjectCards(expectedUrl: string): ProjectListData {
     !/^\/$/.test(page.pathname) || page.search || page.hash) return unavailable();
   const projects: ProjectListData['projects'] = [];
   const seen = new Set<string>();
-  const cards = Array.from(document.querySelectorAll('flow-project-card'));
-  for (const c of cards) {
-    const a = c.querySelector('a.project-thumbnail-container');
-    const footer = c.querySelector('.project-card-footer') as HTMLElement | null;
-    const img = c.querySelector('img') as HTMLImageElement | null;
-    const href = a ? a.getAttribute('href') : '';
-    const m = href ? href.match(/\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i) : null;
-    if (m) {
-      const projectId = m[1].toLowerCase();
-      if (seen.has(projectId)) continue;
-      let title = footer ? (footer.innerText || footer.textContent || '').split('\n')[0].trim() : '';
-      title = title.replace(/\b(edit|delete|add)\b/gi, '').trim();
-      const thumbnailUrl = img?.getAttribute('src') || img?.currentSrc || undefined;
-      seen.add(projectId);
-      projects.push({ projectId, projectTitle: title || 'Untitled Project', thumbnailUrl });
-    }
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('a.project-thumbnail-container[href]')) {
+    let url: URL;
+    try { url = new URL(link.getAttribute('href') ?? '', page.origin); } catch { continue; }
+    if (url.origin !== page.origin || url.username || url.password || url.search || url.hash) continue;
+    const match = url.pathname.match(/^\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i);
+    if (!match) continue;
+    const projectId = match[1].toLowerCase();
+    if (seen.has(projectId)) continue;
+    const card = link.closest<HTMLElement>('.project-card, flow-project-card');
+    const title = card?.innerText.split('\n').map(line => line.trim()).find(Boolean);
+    if (!title || /^(edit|delete)$/i.test(title)) continue;
+    const img = typeof (card || link).querySelector === 'function' ? (card || link).querySelector<HTMLImageElement>('img') : null;
+    const thumbnailUrl = img?.getAttribute('src') || img?.currentSrc || undefined;
+    seen.add(projectId);
+    projects.push({
+      projectId,
+      projectTitle: title.slice(0, 300),
+      ...(thumbnailUrl ? { thumbnailUrl } : {}),
+    });
   }
   return projects.length ? { projects, source: 'flow-dom', partial: true } : unavailable();
 }
