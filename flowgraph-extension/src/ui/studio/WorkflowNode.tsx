@@ -588,6 +588,8 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
   // Trạng thái Thu Gọn / Mở Rộng Node Siêu Tối Giản
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const promptInputRef = React.useRef<HTMLTextAreaElement>(null);
   const [activeComboboxId, setActiveComboboxId] = useState<string | null>(null);
   const setGlobalComboboxId = React.useCallback((next: string | null) => {
     window.dispatchEvent(new CustomEvent('flowgraph:combobox-open', { detail: { id: next } }));
@@ -939,27 +941,69 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
       {/* 2. Media or Prompt Body */}
       <div className="flow-card-body">
         {isPrompt ? (
-          <textarea
-            className="prompt-textarea nodrag nopan"
-            rows={3}
-            value={data.config.prompt ?? ''}
-            placeholder="Nhập nội dung mô tả prompt tại đây (hỗ trợ tự chỉnh cấu hình: 16:9, 9:16, 8s, 4K, x2, Veo Lite...)"
-            onChange={(e) => {
-              const newPrompt = e.target.value;
-              dispatchUpdate('prompt', newPrompt);
-              const parsed = parseConfigFromPrompt(newPrompt);
-              if (parsed.aspectRatio) dispatchUpdate('aspectRatio', parsed.aspectRatio);
-              if (parsed.duration) dispatchUpdate('duration', parsed.duration);
-              if (parsed.resolution) dispatchUpdate('resolution', parsed.resolution);
-              if (parsed.batchCount) dispatchUpdate('batchCount', parsed.batchCount);
-              if (parsed.modelKeyword) dispatchUpdate('model', parsed.modelKeyword);
-              window.dispatchEvent(new CustomEvent('flowgraph:prompt-parsed-config', {
-                detail: { sourceNodeId: id, parsed }
-              }));
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            title="Nhập prompt sáng tạo"
-          />
+          isEditingPrompt ? (
+            <textarea
+              ref={promptInputRef}
+              className="prompt-textarea nodrag nopan"
+              autoFocus
+              rows={3}
+              value={data.config.prompt ?? ''}
+              placeholder="Nhập nội dung mô tả prompt tại đây (hỗ trợ tự chỉnh cấu hình: 16:9, 9:16, 8s, 4K, x2, Veo Lite...)"
+              onChange={(e) => {
+                const newPrompt = e.target.value;
+                dispatchUpdate('prompt', newPrompt);
+                const parsed = parseConfigFromPrompt(newPrompt);
+                if (parsed.aspectRatio) dispatchUpdate('aspectRatio', parsed.aspectRatio);
+                if (parsed.duration) dispatchUpdate('duration', parsed.duration);
+                if (parsed.resolution) dispatchUpdate('resolution', parsed.resolution);
+                if (parsed.batchCount) dispatchUpdate('batchCount', parsed.batchCount);
+                if (parsed.modelKeyword) dispatchUpdate('model', parsed.modelKeyword);
+                window.dispatchEvent(new CustomEvent('flowgraph:prompt-parsed-config', {
+                  detail: { sourceNodeId: id, parsed }
+                }));
+              }}
+              onBlur={() => setIsEditingPrompt(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setIsEditingPrompt(false);
+                }
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              title="Nhập prompt sáng tạo (Bấm ra ngoài hoặc Esc để kết thúc nhập)"
+            />
+          ) : (
+            <div
+              className="prompt-display-view"
+              onClick={() => {
+                setIsEditingPrompt(true);
+                setTimeout(() => promptInputRef.current?.focus(), 10);
+              }}
+              title="Click để chỉnh sửa prompt. Kéo thả để di chuyển node."
+              style={{
+                minHeight: '68px',
+                maxHeight: '120px',
+                overflowY: 'auto',
+                padding: '8px 10px',
+                fontSize: '12px',
+                lineHeight: '1.45',
+                borderRadius: '6px',
+                border: '1px solid transparent',
+                cursor: 'pointer',
+                userSelect: 'none',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                transition: 'border-color 0.15s ease, background 0.15s ease',
+              }}
+            >
+              {data.config.prompt?.trim() ? (
+                <span>{data.config.prompt}</span>
+              ) : (
+                <span style={{ opacity: 0.45, fontStyle: 'italic' }}>
+                  Nhấp vào đây để soạn thảo câu lệnh prompt...
+                </span>
+              )}
+            </div>
+          )
         ) : isGemini ? (
           /* Specialized UI cho Gemini Enhance: Text Box hiển thị prompt điện ảnh đã mở rộng */
           <div className="gemini-enhance-body nodrag nopan">
