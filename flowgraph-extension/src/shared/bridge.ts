@@ -248,6 +248,8 @@ export interface GeneratePayload {
   durationSeconds?: number;
   /** Requested provider batch size. Runtime still exposes the primary media output. */
   batchCount?: number;
+  /** Force explicit transport route (e.g. 'FLOW_UI' to bypass BATCH_RPC completely). */
+  transportPreference?: 'BATCH_RPC' | 'FLOW_UI';
 }
 
 export interface MediaStatusPayload {

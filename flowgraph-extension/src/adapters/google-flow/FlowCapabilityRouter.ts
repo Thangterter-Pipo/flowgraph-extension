@@ -21,8 +21,14 @@ function model(payload: Pick<GeneratePayload, 'modelKey'>): string {
  * path or fail closed; they are never silently coerced to a different mode.
  */
 export function resolveFlowCapabilityRoute(
-  payload: Pick<GeneratePayload, 'kind' | 'modelKey'>,
+  payload: Pick<GeneratePayload, 'kind' | 'modelKey' | 'transportPreference'>,
 ): FlowCapabilityRoute {
+  if (payload.transportPreference === 'FLOW_UI') {
+    return {
+      primary: 'FLOW_UI',
+      reason: 'User explicitly forced Flow UI transport.',
+    };
+  }
   const key = model(payload);
 
   switch (payload.kind) {

@@ -12,7 +12,10 @@ export async function generateCancellable(
   abortSignal?: AbortSignal,
 ): Promise<NormalizedMediaRef> {
   const signal = abortSignal ?? context.abortSignal;
-  const generatePromise = adapter.generate(payload, {
+  const generatePromise = adapter.generate({
+    ...payload,
+    transportPreference: payload.transportPreference ?? context.transportPreference,
+  }, {
     abortSignal: signal,
     onMediaId: (mediaId) => {
       if (mediaId) context.trackMediaJob(mediaId);

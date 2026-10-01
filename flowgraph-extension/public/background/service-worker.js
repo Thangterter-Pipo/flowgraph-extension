@@ -1101,6 +1101,12 @@
     return String(payload.modelKey || "").trim().toLowerCase();
   }
   function resolveFlowCapabilityRoute(payload) {
+    if (payload.transportPreference === "FLOW_UI") {
+      return {
+        primary: "FLOW_UI",
+        reason: "User explicitly forced Flow UI transport."
+      };
+    }
     const key = model(payload);
     switch (payload.kind) {
       case "t2i":

@@ -37,6 +37,8 @@ export interface RuntimeRunOptions {
   initialOutputs?: Map<string, Record<string, RuntimeValue>>;
   /** Initial completed node IDs from canvas. */
   initialCompleted?: Set<string>;
+  /** Explicit transport route override (e.g. 'FLOW_UI' to bypass batch RPC). */
+  transportPreference?: 'BATCH_RPC' | 'FLOW_UI';
 }
 
 export interface RuntimeNodeEvent {
@@ -249,6 +251,7 @@ export class WorkflowRuntime {
       flow: options.flow,
       abortSignal: abort.signal,
       cache,
+      transportPreference: options.transportPreference,
     });
     const planEdges: PlanEdge[] = edges.map((edge) => ({ ...edge, sourceHandle: edge.sourceHandle ?? undefined, targetHandle: edge.targetHandle ?? undefined }));
     const plan = planGraph(nodes.map((node) => ({ id: node.id, kind: node.kind })), planEdges);

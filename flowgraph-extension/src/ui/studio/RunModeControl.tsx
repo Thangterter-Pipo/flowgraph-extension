@@ -8,6 +8,7 @@ interface Props {
   onMenuChange: (open: boolean) => void;
   onContinue: () => void;
   onRestart: () => void;
+  onRunViaFlowUi?: () => void;
   onStop: () => void;
 }
 
@@ -27,6 +28,11 @@ export function RunModeControl(props: Props) {
         <button role="menuitem" className="fg-btn run-restart-btn" onClick={() => { props.onMenuChange(false); props.onRestart(); }}>
           <RotateCcw size={14} /> Chạy lại từ đầu
         </button>
+        {props.onRunViaFlowUi && (
+          <button role="menuitem" className="fg-btn run-flow-ui-btn" style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { props.onMenuChange(false); props.onRunViaFlowUi?.(); }}>
+            <Play size={14} /> Chạy qua giao diện Flow (Flow UI)
+          </button>
+        )}
       </div>}
     </div>
     {props.running && <button className="fg-btn fg-btn-danger" onClick={props.onStop} aria-label="Dừng workflow"><Square size={13} /> Dừng workflow</button>}

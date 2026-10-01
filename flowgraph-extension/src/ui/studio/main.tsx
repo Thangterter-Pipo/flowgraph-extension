@@ -685,10 +685,11 @@ function Studio() {
     const handleRunEvent = (event: any) => {
       const mode = event.detail?.mode === 'restart' ? 'restart' : 'continue';
       const confirmed = event.detail?.confirmed ?? true;
+      const transport = event.detail?.transport === 'FLOW_UI' ? 'FLOW_UI' : undefined;
       if (mode === 'restart') {
-        void runWorkflow(false, true, confirmed, 'restart');
+        void runWorkflow(false, true, confirmed, 'restart', transport);
       } else {
-        void runWorkflow(false, true, confirmed, 'continue');
+        void runWorkflow(false, true, confirmed, 'continue', transport);
       }
     };
     window.addEventListener('flowgraph:run-workflow' as any, handleRunEvent);
@@ -1540,7 +1541,13 @@ function Studio() {
     });
   }, [nodes, edges, connection.activeProject]);
 
-  const runWorkflow = useCallback(async (failureMode = false, allowExperimental = false, restartConfirmed = false, mode: WorkflowRunMode = 'continue') => {
+  const runWorkflow = useCallback(async (
+    failureMode = false,
+    allowExperimental = false,
+    restartConfirmed = false,
+    mode: WorkflowRunMode = 'continue',
+    forceTransport?: 'BATCH_RPC' | 'FLOW_UI',
+  ) => {
     void failureMode;
     console.log('[runWorkflow] Triggered! Status:', runStatus, 'isCanvasUnlocked:', connection.isCanvasUnlocked, 'block:', connection.runBlockReason);
 
@@ -1799,6 +1806,7 @@ function Studio() {
           initialOutputs,
           initialCompleted,
           concurrency: 1, // Khóa cứng 1 luồng tuần tự để tránh debugger contention trên tab Google Flow
+          transportPreference: forceTransport,
         },
         emit,
       );
@@ -2673,7 +2681,9 @@ function Studio() {
           <RunModeControl running={runStatus === 'running'} disabled={!connection.isCanvasUnlocked}
             menuOpen={runMenuOpen} onMenuChange={setRunMenuOpen}
             onContinue={() => void runWorkflow(false)}
-            onRestart={() => void runWorkflow(false, false, false, 'restart')} onStop={stopWorkflow} />
+            onRestart={() => void runWorkflow(false, false, false, 'restart')}
+            onRunViaFlowUi={() => void runWorkflow(false, false, true, 'continue', 'FLOW_UI')}
+            onStop={stopWorkflow} />
         </div>
       </header>
       {runFeedback && typeof document !== 'undefined' ? createPortal(
