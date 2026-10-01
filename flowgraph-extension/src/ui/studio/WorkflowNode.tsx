@@ -588,7 +588,8 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
   // Trạng thái Thu Gọn / Mở Rộng Node Siêu Tối Giản
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+  const [editingPromptNodeId, setEditingPromptNodeId] = useState<string | null>(null);
+  const isEditingPrompt = editingPromptNodeId === id;
   const promptInputRef = React.useRef<HTMLTextAreaElement>(null);
   const [activeComboboxId, setActiveComboboxId] = useState<string | null>(null);
   const setGlobalComboboxId = React.useCallback((next: string | null) => {
@@ -962,10 +963,10 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                   detail: { sourceNodeId: id, parsed }
                 }));
               }}
-              onBlur={() => setIsEditingPrompt(false)}
+              onBlur={() => setEditingPromptNodeId(null)}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') {
-                  setIsEditingPrompt(false);
+                  setEditingPromptNodeId(null);
                 }
               }}
               onMouseDown={(e) => e.stopPropagation()}
@@ -974,11 +975,17 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
           ) : (
             <div
               className="prompt-display-view"
-              onClick={() => {
-                setIsEditingPrompt(true);
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setEditingPromptNodeId(id);
                 setTimeout(() => promptInputRef.current?.focus(), 10);
               }}
-              title="Click để chỉnh sửa prompt. Kéo thả để di chuyển node."
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingPromptNodeId(id);
+                setTimeout(() => promptInputRef.current?.focus(), 10);
+              }}
+              title="Click hoặc Double-click để chỉnh sửa prompt. Kéo thả để di chuyển node."
               style={{
                 minHeight: '68px',
                 maxHeight: '120px',
