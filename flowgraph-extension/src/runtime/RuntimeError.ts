@@ -75,7 +75,15 @@ export function toRuntimeError(error: unknown, nodeId?: string): RuntimeError {
     ? error.toBridgeError()
     : normalizeError(error);
   const combined = `${normalized.code} ${normalized.message}`;
-  const code = CODE_MAP[normalized.code]
-    ?? (combined.includes('reCAPTCHA') || combined.includes('UNUSUAL_ACTIVITY') ? 'CAPTCHA_REQUIRED' : 'PROVIDER_ERROR');
+  let code = CODE_MAP[normalized.code];
+  if (!code) {
+    if (combined.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')) {
+      code = 'PROVIDER_ERROR';
+    } else if (combined.includes('reCAPTCHA') || combined.includes('UNUSUAL_ACTIVITY')) {
+      code = 'CAPTCHA_REQUIRED';
+    } else {
+      code = 'PROVIDER_ERROR';
+    }
+  }
   return new RuntimeError(code, normalized.message, { retryable: normalized.retryable, nodeId });
 }

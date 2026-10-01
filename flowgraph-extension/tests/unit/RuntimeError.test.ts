@@ -26,5 +26,8 @@ describe('RuntimeError', () => {
   it('never leaks raw provider messages into codes', () => {
     const error = toRuntimeError({ code: 'PERMISSION_DENIED', message: 'reCAPTCHA evaluation failed' });
     expect(error.code).toBe('CAPTCHA_REQUIRED');
+
+    const unusual = toRuntimeError({ code: 'UNKNOWN', message: 'MZZa6b failed: PUBLIC_ERROR_UNUSUAL_ACTIVITY' });
+    expect(unusual.code).toBe('PROVIDER_ERROR');
   });
 });
