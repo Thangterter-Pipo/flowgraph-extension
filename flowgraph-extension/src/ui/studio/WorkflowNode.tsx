@@ -1010,12 +1010,12 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
           )
         ) : isGemini ? (
           /* Specialized UI cho Gemini Enhance: Text Box hiển thị prompt điện ảnh đã mở rộng */
-          <div className="gemini-enhance-body nodrag nopan">
+          <div className="gemini-enhance-body">
             <div className="gemini-text-header">
               <span className="gemini-badge">Prompt Điện Ảnh (8K)</span>
               {(data.result as any)?.text && (
                 <button
-                  className="gemini-copy-btn"
+                  className="gemini-copy-btn nodrag nopan"
                   onClick={(e) => {
                     e.stopPropagation();
                     navigator.clipboard.writeText((data.result as any).text || '');
@@ -1026,12 +1026,56 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                 </button>
               )}
             </div>
-            <textarea
-              className="gemini-output-textarea nodrag nopan"
-              readOnly
-              value={(data.result as any)?.text || data.config.prompt || 'Đang đợi input prompt từ node trước để viết lại...'}
-              placeholder="Prompt sau khi enhance qua model AI Gateway sẽ hiển thị tại đây..."
-            />
+            {isEditingPrompt ? (
+              <textarea
+                ref={promptInputRef}
+                className="gemini-output-textarea nodrag nopan"
+                autoFocus
+                value={(data.result as any)?.text || data.config.prompt || ''}
+                placeholder="Prompt sau khi enhance qua model AI Gateway sẽ hiển thị tại đây..."
+                onChange={(e) => {
+                  dispatchUpdate('prompt', e.target.value);
+                }}
+                onBlur={() => setIsEditingPrompt(false)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setIsEditingPrompt(false);
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                title="Nhập prompt mở rộng (Bấm ra ngoài hoặc Esc để kết thúc)"
+              />
+            ) : (
+              <div
+                className="gemini-display-view"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditingPrompt(true);
+                }}
+                title="Click để chỉnh sửa prompt điện ảnh. Kéo thả để di chuyển node."
+                style={{
+                  minHeight: '68px',
+                  maxHeight: '120px',
+                  overflowY: 'auto',
+                  padding: '8px 10px',
+                  fontSize: '12px',
+                  lineHeight: '1.45',
+                  borderRadius: '6px',
+                  border: '1px solid transparent',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  transition: 'border-color 0.15s ease, background 0.15s ease',
+                }}
+              >
+                {(data.result as any)?.text || data.config.prompt ? (
+                  <span>{(data.result as any)?.text || data.config.prompt}</span>
+                ) : (
+                  <span style={{ opacity: 0.45, fontStyle: 'italic' }}>
+                    Đang đợi input prompt từ node trước để viết lại...
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         ) : isCharacter ? (
           /* Specialized UI cho Character: Hiển thị thuần túy hình ảnh Character DNA (ảnh chân dung đầu ra) */
