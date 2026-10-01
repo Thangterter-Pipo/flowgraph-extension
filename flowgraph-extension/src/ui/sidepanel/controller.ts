@@ -113,6 +113,13 @@ export function createSidepanelController(
         if (!data || !Array.isArray(data.projects)) throw new Error('Danh sách dự án không đúng định dạng.');
         const projects = data.projects.filter((p) => p && typeof p.projectId === 'string' && typeof p.projectTitle === 'string');
         if (state.pendingCreated && !projects.some(p => p.projectId === state.pendingCreated?.projectId)) projects.unshift(state.pendingCreated);
+        
+        if (projects.length > 0) {
+          try {
+            localStorage.setItem('flowgraph.cachedProjects.v1', JSON.stringify(projects));
+          } catch {}
+        }
+
         publish({
           projectsLoaded: true,
           projects,
@@ -123,7 +130,22 @@ export function createSidepanelController(
               : undefined),
         });
       } catch (error) {
-        if (version === revision) publish({ projects: state.pendingCreated ? [state.pendingCreated] : [], projectsLoaded: false, projectsError: errorText(error) });
+        if (version === revision) {
+          let cached: typeof state.projects = [];
+          try {
+            const raw = localStorage.getItem('flowgraph.cachedProjects.v1');
+            if (raw) cached = JSON.parse(raw);
+          } catch {}
+          if (cached && cached.length > 0) {
+            publish({
+              projects: cached,
+              projectsLoaded: true,
+              projectsError: undefined,
+            });
+          } else {
+            publish({ projects: state.pendingCreated ? [state.pendingCreated] : [], projectsLoaded: false, projectsError: errorText(error) });
+          }
+        }
       }
     })().finally(() => {
       projectsWork = undefined;

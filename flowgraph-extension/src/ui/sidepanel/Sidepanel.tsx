@@ -84,6 +84,64 @@ export function CreateProjectDialog({ busy, locked, error, createdProject, onClo
   </dialog>;
 }
 
+const thumbnailBlobCache = new Map<string, string>();
+
+function ProjectThumbnail({ url, title, hue }: { url?: string; title: string; hue: number }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(() => (url && thumbnailBlobCache.has(url) ? thumbnailBlobCache.get(url)! : null));
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!url) {
+      setBlobUrl(null);
+      setFailed(false);
+      return;
+    }
+    if (thumbnailBlobCache.has(url)) {
+      setBlobUrl(thumbnailBlobCache.get(url)!);
+      return;
+    }
+    let cancelled = false;
+    fetch(url)
+      .then((res) => {
+        if (!res.ok) throw new Error('Fetch failed');
+        return res.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        const objectUrl = URL.createObjectURL(blob);
+        thumbnailBlobCache.set(url, objectUrl);
+        setBlobUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  if (blobUrl && !failed) {
+    return (
+      <span className="sp-thumbnail has-image" aria-hidden="true">
+        <img
+          src={blobUrl}
+          alt={title}
+          className="sp-thumbnail-img"
+          onError={() => setFailed(true)}
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span className="sp-thumbnail" style={{ '--project-hue': hue } as React.CSSProperties} aria-hidden="true">
+      <Workflow size={26} />
+      <span>{title.slice(0, 2).toUpperCase()}</span>
+    </span>
+  );
+}
+
 export function SidepanelView({ state, controller, lastRun, historyError }: {
   state: Snapshot; controller: Controller; lastRun: LastRun | null; historyError?: string;
 }) {
@@ -158,16 +216,7 @@ export function SidepanelView({ state, controller, lastRun, historyError }: {
             return <li className={`sp-project-card${selected ? ' is-selected' : ''}`} key={project.projectId}>
               <button type="button" className="sp-project-select" disabled={projectLocked} aria-label={`Chọn dự án ${title}`} aria-pressed={selected}
                 onClick={() => { setSelectedProjectId(project.projectId); void controller.selectProject(project.projectId); }}>
-                {project.thumbnailUrl ? (
-                  <span className="sp-thumbnail has-image" aria-hidden="true">
-                    <img src={project.thumbnailUrl} alt={title} className="sp-thumbnail-img" />
-                  </span>
-                ) : (
-                  <span className="sp-thumbnail" style={{ '--project-hue': hue } as React.CSSProperties} aria-hidden="true">
-                    <Workflow size={26} />
-                    <span>{title.slice(0, 2).toUpperCase()}</span>
-                  </span>
-                )}
+                <ProjectThumbnail url={project.thumbnailUrl} title={title} hue={hue} />
                 <span className="sp-project-info"><strong title={title}>{title}</strong>{selected && <span className="sp-selected"><Check size={11} aria-hidden="true" />Đang chọn</span>}
                   {date && Number.isFinite(date.getTime()) && <span className="sp-meta">Tạo {date.toLocaleDateString('vi-VN')}</span>}</span>
               </button>
