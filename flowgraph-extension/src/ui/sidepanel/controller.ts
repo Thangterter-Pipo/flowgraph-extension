@@ -116,7 +116,11 @@ export function createSidepanelController(
         publish({
           projectsLoaded: true,
           projects,
-          projectsError: data.error || (data.source === 'fallback' ? 'Chỉ có danh sách dự phòng; thử tải lại.' : undefined),
+          projectsError: data.error || (data.source === 'fallback'
+            ? 'Chỉ có danh sách dự phòng; thử tải lại.'
+            : (data.source === 'flow-dom' || data.partial)
+              ? 'Chỉ hiển thị dự án đang tải ở trang Flow; đây chưa phải toàn bộ lịch sử dự án.'
+              : undefined),
         });
       } catch (error) {
         if (version === revision) publish({ projects: state.pendingCreated ? [state.pendingCreated] : [], projectsLoaded: false, projectsError: errorText(error) });
