@@ -5,6 +5,7 @@
 // ever receives sanitized state (names, ids, statuses, error codes).
 
 export const BRIDGE_PREFIX = 'FLOWGRAPH_' as const;
+import { reportDiagnostic } from './devDiagnostics';
 
 /** Pre-arranged correlation ids for one-shot UI → SW requests. */
 export const PRE_SIGNED_REQUEST_ID = 'ui:sw:request';
@@ -81,6 +82,7 @@ export function makeResponse<T = unknown>(requestId: string, data?: T): BridgeRe
 }
 
 export function makeError<T = unknown>(requestId: string, code: string, message: string, retryable = false): BridgeResponse<T> {
+  reportDiagnostic('RPC_FAILED');
   return { requestId, ok: false, error: { code, message, retryable } };
 }
 
@@ -110,6 +112,7 @@ export function timeoutable<T>(promise: Promise<T>, ms: number): Promise<T> {
 export class BridgeTimeoutError extends Error {
   constructor(public readonly ms: number) {
     super(`Bridge request timed out after ${ms}ms`);
+    reportDiagnostic('RPC_FAILED');
     this.name = 'BridgeTimeoutError';
   }
 }
@@ -157,7 +160,8 @@ export interface ProjectInfo {
 
 export interface ProjectListData {
   projects: ProjectInfo[];
-  source: 'runtime' | 'fallback';
+  source: 'runtime' | 'fallback' | 'flow-dom';
+  partial?: boolean;
   error?: string;
 }
 

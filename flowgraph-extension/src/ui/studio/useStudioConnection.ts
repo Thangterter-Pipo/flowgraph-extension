@@ -138,18 +138,6 @@ export function useStudioConnection(): StudioConnection {
       setAccount(liveAccount);
       setFlow(liveFlow);
       setCredits(liveCredits);
-      if (liveFlow.projectId) {
-        setActiveProject((current) => {
-          if (current?.projectId === liveFlow.projectId) return current;
-          const selected: ActiveProjectState = {
-            projectId: liveFlow.projectId!,
-            projectName: liveFlow.title?.replace(/^Google Flow\s*[-–]\s*/i, '').trim() || 'Flow project',
-            selectedAt: new Date().toISOString(),
-          };
-          persistActiveProject(selected);
-          return selected;
-        });
-      }
       localStorage.setItem(ACCOUNT_PILL_KEY, JSON.stringify(liveAccount));
       localStorage.setItem(FLOW_PILL_KEY, JSON.stringify(liveFlow));
     } catch (error) {
@@ -165,14 +153,7 @@ export function useStudioConnection(): StudioConnection {
       const status = await adapter().healthCheck();
       setFlow(status.flow);
       localStorage.setItem(FLOW_PILL_KEY, JSON.stringify(status.flow));
-      if (status.flow.projectId && !activeProject) {
-        setActiveProject({
-          projectId: status.flow.projectId,
-          projectName: 'Flow project',
-          selectedAt: new Date().toISOString(),
-        });
-        persistActiveProject({ projectId: status.flow.projectId, projectName: 'Flow project', selectedAt: new Date().toISOString() });
-      }
+
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setFlow({ state: 'ERROR', error: message });
@@ -320,6 +301,26 @@ export function useStudioConnection(): StudioConnection {
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, [refreshAccount]);
+
+  // Sidepanel và Studio là hai document khác nhau. StorageEvent là tín hiệu
+  // realtime nhẹ, dùng để chuyển Project đã chọn mà không chờ polling.
+  useEffect(() => {
+    const listener = (event: StorageEvent) => {
+      if (event.key !== ACTIVE_PROJECT_KEY) return;
+      if (!event.newValue) {
+        setActiveProject(undefined);
+        return;
+      }
+      try {
+        const next = JSON.parse(event.newValue) as ActiveProjectState;
+        if (next?.projectId && next?.projectName) setActiveProject(next);
+      } catch {
+        // Bỏ qua payload hỏng; không mở khóa Studio bằng dữ liệu không hợp lệ.
+      }
+    };
+    window.addEventListener('storage', listener);
+    return () => window.removeEventListener('storage', listener);
+  }, []);
 
   const selectProject = useCallback(async (projectId: string): Promise<ActiveProjectState> => {
     const project = projects.find((candidate) => candidate.projectId === projectId);

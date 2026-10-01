@@ -13,6 +13,7 @@ import { validateGraph, type NodeSpecForValidation, type RuntimePlanEdge, type V
 import { registryModelResolver } from './registryModelResolver';
 import { retryGraphChanged, workflowRetrySnapshot } from './workflowSnapshot';
 import { RuntimeError, toRuntimeError } from './RuntimeError';
+import { reportDiagnostic } from '../shared/devDiagnostics';
 import { attachTrustedProjectToNodeResult } from './mediaProvenance';
 import { buildExecutors, supportedKinds } from './executors';
 import { PollManager } from './PollManager';
@@ -448,6 +449,7 @@ export class WorkflowRuntime {
           emit({ type: 'node', runId, nodeId, state: 'success', outputs: output.outputs, result: attachTrustedProjectToNodeResult(output.result, options.activeProject.projectId), creditsUsed: output.creditsUsed });
         } catch (error) {
           const runtimeError = toRuntimeError(error, nodeId);
+          reportDiagnostic('WORKFLOW_FAILED');
           context.fail(nodeId, runtimeError);
           failed.add(nodeId);
           emit({

@@ -1,4 +1,6 @@
 // Manifest V3 background service worker — FlowGraph provider bridge.
+import { installDiagnostics } from '../shared/devDiagnostics';
+installDiagnostics('service-worker');
 // Responsibilities:
 //  - message router with requestId correlation + timeout (FG-0103)
 //  - OAuth bearer token held IN MEMORY ONLY (never persisted, never sent to UI)
@@ -459,11 +461,9 @@ async function aisandboxFetch(path: string, body: unknown, timeoutMs = REQUEST_T
 }
 
 async function fxApiGet(path: string): Promise<unknown> {
-  const auth = await ensureSession();
-  void auth;
   const response = await timeoutable(fetch(`${FX_API_BASE}/${path}`, { method: 'GET', credentials: 'include' }), REQUEST_TIMEOUT_MS);
   const json: unknown = await response.json().catch(() => null);
-  if (!response.ok && !json) throw providerError(response.status, json);
+  if (!response.ok) throw providerError(response.status, null);
   return json;
 }
 
@@ -1710,11 +1710,74 @@ function unwrapTrpc(json: unknown): unknown {
   return root?.result?.data?.json?.result;
 }
 
-  async function handleProjectList(): Promise<ProjectListData> {
+// Serialized by executeScript: keep all validation inside this read-only function.
+function readFlowProjectCards(expectedUrl: string): ProjectListData {
+  const unavailable = (): ProjectListData => ({ projects: [], source: 'flow-dom', partial: true,
+    error: 'Chưa đọc được dự án. Hãy mở trang danh sách dự án Google Flow, đợi tải xong rồi thử lại.' });
+  const page = new URL(location.href);
+  if (location.href !== expectedUrl || page.origin !== 'https://flow.google.com' || page.username || page.password ||
+    !/^\/$/.test(page.pathname) || page.search || page.hash) return unavailable();
+  const projects: ProjectListData['projects'] = [];
+  const seen = new Set<string>();
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('a.project-thumbnail-container[href]')) {
+    let url: URL;
+    try { url = new URL(link.getAttribute('href') ?? '', page.origin); } catch { continue; }
+    if (url.origin !== page.origin || url.username || url.password || url.search || url.hash) continue;
+    const match = url.pathname.match(/^\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i);
+    if (!match) continue;
+    const projectId = match[1].toLowerCase();
+    if (seen.has(projectId)) continue;
+    const card = link.closest<HTMLElement>('.project-card, flow-project-card');
+    const title = card?.innerText.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+    if (!title || /^(edit|delete)$/i.test(title)) continue;
+    seen.add(projectId);
+    projects.push({ projectId, projectTitle: title.slice(0, 300) });
+  }
+  return projects.length ? { projects, source: 'flow-dom', partial: true } : unavailable();
+}
+
+async function handleProjectList(): Promise<ProjectListData> {
+    // No findFlowTab(): it injects the content bridge. Never combine accounts/tabs.
+    const tabs = (await chrome.tabs.query({})).filter(tab => {
+      try {
+        const url = new URL(tab.url ?? '');
+        return tab.id !== undefined && url.protocol === 'https:' && !url.username && !url.password && !url.port &&
+          ((url.hostname === 'flow.google.com' && /^\/(?:project\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?)?$/i.test(url.pathname)) ||
+            (url.hostname === 'labs.google' && /^\/fx\/(?:[a-z]{2}(?:-[A-Za-z]{2})?\/)?tools\/flow(?:\/project\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?\/?$/i.test(url.pathname)));
+      } catch { return false; }
+    });
+    if (tabs.length !== 1) throw bridgeError('PROJECT_LIST_UNAVAILABLE',
+      'Hãy giữ một thẻ Google Flow và mở trang danh sách dự án để tải lại; không gộp dữ liệu giữa các thẻ.', false);
+    const tab = tabs[0];
+    if (new URL(tab.url!).hostname === 'flow.google.com') {
+      try {
+        const results = await timeoutable(chrome.scripting.executeScript({
+          target: { tabId: tab.id! }, world: 'ISOLATED', func: readFlowProjectCards, args: [tab.url!],
+        }), REQUEST_TIMEOUT_MS);
+        const data = results[0]?.result;
+        if ((await chrome.tabs.get(tab.id!)).url !== tab.url || !data || data.error || !data.projects.length) {
+          throw new Error('unavailable');
+        }
+        return data;
+      } catch {
+        throw bridgeError('PROJECT_LIST_UNAVAILABLE',
+          'Chưa đọc được dự án. Hãy mở trang danh sách dự án Google Flow, đợi tải xong rồi thử lại.', true);
+      }
+    }
+    // Legacy cookie API cannot prove which tab account it belongs to.
+    throw bridgeError('PROJECT_LIST_UNAVAILABLE', 'Hãy mở trang danh sách tại https://flow.google.com/ rồi thử lại.', false);
+}
+
+async function handleLegacyProjectList(): Promise<ProjectListData> {
     const inputParam = encodeURIComponent(JSON.stringify({ json: { pageSize: 20, toolName: 'PINHOLE' } }));
     const json = await fxApiGet(`trpc/project.searchUserProjects?input=${inputParam}`);
     const result = unwrapTrpc(json) as { projects?: Array<{ projectId: string; projectInfo?: { projectTitle?: string } | string; creationTime?: string }> } | null;
-    const raw = result?.projects ?? [];
+    if (!result || !Array.isArray(result.projects) || result.projects.some(project =>
+      !project || typeof project.projectId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(project.projectId) ||
+      (typeof project.projectInfo !== 'string' && typeof project.projectInfo?.projectTitle !== 'string')
+    )) throw bridgeError('PROVIDER_ERROR', 'Google Flow returned an invalid project list.', false);
+    const raw = result.projects;
   const projects = raw.map((project) => ({
     projectId: project.projectId,
     projectTitle: typeof project.projectInfo === 'string' ? project.projectInfo : (project.projectInfo?.projectTitle ?? 'Untitled project'),
@@ -5140,33 +5203,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return false;
 });
 
-// Live gate reactivity: when the Google Flow tab navigates (e.g. project -> home),
-// immediately re-read its status and broadcast to the Studio so the canvas gate
-// locks/unlocks without waiting for the Studio's 120s poll or a manual reload.
-// This is a notification of real Flow-tab state; it does not force-enable anything.
+// Live tab-state reactivity: Sidepanel and Studio receive the current Flow page
+// immediately after navigation or tab activation, including leaving Flow entirely.
+// Polling remains only a recovery path when Chrome drops an event.
+async function broadcastCurrentFlow(): Promise<void> {
+  let flow: FlowStatus;
+  try {
+    flow = await pingFlowTab();
+  } catch (error) {
+    flow = { state: 'ERROR', error: error instanceof Error ? error.message : String(error) };
+  }
+  await chrome.runtime.sendMessage({
+    type: 'FLOWGRAPH_EVENT',
+    requestId: 'sw:flow:changed',
+    payload: { flow },
+  }).catch(() => {});
+}
+
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  // Re-read on every relevant navigation: a URL change (SPA project/home) and/or a
-  // full page load. Without the `status === 'complete'` case a project navigation
-  // would broadcast a transient ERROR during page load.
   if (!changeInfo.url && changeInfo.status !== 'complete') return;
-  const url = tab?.url ?? changeInfo.url;
-  if (!isFlowUrl(url ?? '')) return;
-  void (async () => {
-    try {
-      const flow = await pingFlowTab();
-      // pingFlowTab now derives a definitive gate state from the real tab URL even
-      // while the content-script relay is still warming up, so a settled navigation
-      // always broadcasts the true project state (never a stale READY or a fail-open).
-      if (flow.state !== 'READY' && flow.state !== 'PROJECT_REQUIRED') return;
-      await chrome.runtime.sendMessage({
-        type: 'FLOWGRAPH_EVENT',
-        requestId: 'sw:flow:changed',
-        payload: { flow },
-      }).catch(() => {
-        // No Studio page is listening; the next poll or reload will re-read state.
-      });
-    } catch {
-      // Best-effort. The next FLOWGRAPH_FLOW_STATUS request re-reads live state.
-    }
-  })();
+  const url = tab?.url ?? changeInfo.url ?? '';
+  if (isFlowUrl(url) || changeInfo.status === 'complete') void broadcastCurrentFlow();
+});
+
+chrome.tabs.onActivated.addListener(() => {
+  void broadcastCurrentFlow();
 });

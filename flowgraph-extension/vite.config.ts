@@ -11,6 +11,9 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    // Chrome extensions can reject Vite's modulepreload hints as cross-world
+    // resources. Extension pages load the generated chunks normally instead.
+    modulePreload: false,
     rollupOptions: {
       input: {
         sidepanel: resolve(rootDir, 'sidepanel.html'),

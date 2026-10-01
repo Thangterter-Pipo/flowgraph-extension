@@ -1,4 +1,127 @@
 (() => {
+  // src/shared/devDiagnostics.ts
+  var DEVELOPER_MODE_KEY = "flowgraph.developerMode.v1";
+  var ENDPOINT = "http://127.0.0.1:3081/dev-errors";
+  var MESSAGES = {
+    UNCAUGHT_ERROR: "Uncaught extension error",
+    UNHANDLED_REJECTION: "Unhandled extension rejection",
+    RPC_FAILED: "Extension RPC failed",
+    WORKFLOW_FAILED: "Workflow execution failed",
+    DEVLOG_SELF_TEST: "Developer logging integration self-test"
+  };
+  function createDiagnostics(source, version, send = (...args) => fetch(...args)) {
+    let enabled = false;
+    let running = false;
+    let epoch = 0;
+    let windowStart = 0;
+    let count = 0;
+    let active;
+    const queue = [];
+    const seen = /* @__PURE__ */ new Map();
+    async function drain() {
+      if (running) return;
+      running = true;
+      try {
+        while (enabled && queue.length) {
+          const body = queue.shift();
+          const generation = epoch;
+          for (let attempt = 0; attempt < 2 && enabled && generation === epoch; attempt++) {
+            const controller = new AbortController();
+            active = controller;
+            let timer;
+            try {
+              const timeout = new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                  controller.abort();
+                  reject(new Error("timeout"));
+                }, 1500);
+              });
+              const response = await Promise.race([send(ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body,
+                signal: controller.signal,
+                credentials: "omit",
+                redirect: "error",
+                cache: "no-store"
+              }), timeout]);
+              if (response.ok || response.status < 500) break;
+            } catch {
+            } finally {
+              clearTimeout(timer);
+              active = void 0;
+            }
+          }
+        }
+      } finally {
+        running = false;
+      }
+    }
+    return {
+      setEnabled(value) {
+        enabled = value === true;
+        if (!enabled) {
+          epoch++;
+          queue.length = 0;
+          seen.clear();
+          active?.abort();
+        }
+      },
+      report(code, _discardedError) {
+        if (!enabled || !Object.hasOwn(MESSAGES, code)) return;
+        const now = Date.now();
+        if (now - windowStart >= 6e4) {
+          windowStart = now;
+          count = 0;
+        }
+        for (const [key2, time] of seen) if (now - time >= 1e4) seen.delete(key2);
+        const id = typeof chrome !== "undefined" ? chrome.runtime?.id : void 0;
+        const stack = id ? (new Error().stack ?? "").split("\n").slice(1, 9).flatMap((line) => {
+          if (!line.includes(`chrome-extension://${id}/`)) return [];
+          const match = line.match(/:(\d{1,7}):(\d{1,7})\)?$/);
+          return match ? [`extension:${match[1]}:${match[2]}`] : [];
+        }).join("\n") : "";
+        const key = `${code}:${stack}`;
+        if (seen.has(key) || count >= 20 || queue.length >= 16) return;
+        const body = JSON.stringify({
+          time: new Date(now).toISOString(),
+          source,
+          version: /^\d{1,5}(?:\.\d{1,5}){1,3}$/.test(version) ? version : "0.0.0",
+          code,
+          message: MESSAGES[code],
+          stack
+        });
+        if (new TextEncoder().encode(body).length > 4096) return;
+        seen.set(key, now);
+        count++;
+        queue.push(body);
+        void drain();
+      }
+    };
+  }
+  var installed;
+  function reportDiagnostic(code) {
+    installed?.report(code);
+  }
+  function installDiagnostics(source) {
+    if (installed || typeof chrome === "undefined" || !chrome.runtime?.id || globalThis.location?.protocol !== "chrome-extension:" || globalThis.location.hostname !== chrome.runtime.id || !chrome.storage?.local) return;
+    const logger = createDiagnostics(source, chrome.runtime.getManifest().version);
+    installed = logger;
+    let changed = false;
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && DEVELOPER_MODE_KEY in changes) {
+        changed = true;
+        logger.setEnabled(changes[DEVELOPER_MODE_KEY].newValue === true);
+      }
+    });
+    void chrome.storage.local.get(DEVELOPER_MODE_KEY).then((data) => {
+      if (!changed) logger.setEnabled(data[DEVELOPER_MODE_KEY] === true);
+    }).catch(() => {
+    });
+    globalThis.addEventListener("error", () => logger.report("UNCAUGHT_ERROR"));
+    globalThis.addEventListener("unhandledrejection", () => logger.report("UNHANDLED_REJECTION"));
+  }
+
   // src/shared/flowPayloads.ts
   function recaptchaContext(token) {
     return {
@@ -185,6 +308,7 @@
     return { requestId, ok: true, data };
   }
   function makeError(requestId, code, message, retryable = false) {
+    reportDiagnostic("RPC_FAILED");
     return { requestId, ok: false, error: { code, message, retryable } };
   }
   function normalizeError(error) {
@@ -218,6 +342,7 @@
     constructor(ms) {
       super(`Bridge request timed out after ${ms}ms`);
       this.ms = ms;
+      reportDiagnostic("RPC_FAILED");
       this.name = "BridgeTimeoutError";
     }
   };
@@ -1128,6 +1253,7 @@
   }
 
   // src/background/service-worker.ts
+  installDiagnostics("service-worker");
   try {
     if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
       void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {
@@ -1354,14 +1480,6 @@
     } catch {
     }
     if (!response.ok) throw providerError(response.status, json);
-    return json;
-  }
-  async function fxApiGet(path) {
-    const auth = await ensureSession();
-    void auth;
-    const response = await timeoutable(fetch(`${FX_API_BASE}/${path}`, { method: "GET", credentials: "include" }), REQUEST_TIMEOUT_MS);
-    const json = await response.json().catch(() => null);
-    if (!response.ok && !json) throw providerError(response.status, json);
     return json;
   }
   async function fxApiPost(path, body) {
@@ -2341,17 +2459,74 @@
     const root = json;
     return root?.result?.data?.json?.result;
   }
+  function readFlowProjectCards(expectedUrl) {
+    const unavailable = () => ({
+      projects: [],
+      source: "flow-dom",
+      partial: true,
+      error: "Ch\u01B0a \u0111\u1ECDc \u0111\u01B0\u1EE3c d\u1EF1 \xE1n. H\xE3y m\u1EDF trang danh s\xE1ch d\u1EF1 \xE1n Google Flow, \u0111\u1EE3i t\u1EA3i xong r\u1ED3i th\u1EED l\u1EA1i."
+    });
+    const page = new URL(location.href);
+    if (location.href !== expectedUrl || page.origin !== "https://flow.google.com" || page.username || page.password || !/^\/$/.test(page.pathname) || page.search || page.hash) return unavailable();
+    const projects = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const link of document.querySelectorAll("a.project-thumbnail-container[href]")) {
+      let url;
+      try {
+        url = new URL(link.getAttribute("href") ?? "", page.origin);
+      } catch {
+        continue;
+      }
+      if (url.origin !== page.origin || url.username || url.password || url.search || url.hash) continue;
+      const match = url.pathname.match(/^\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i);
+      if (!match) continue;
+      const projectId = match[1].toLowerCase();
+      if (seen.has(projectId)) continue;
+      const card = link.closest(".project-card, flow-project-card");
+      const title = card?.innerText.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+      if (!title || /^(edit|delete)$/i.test(title)) continue;
+      seen.add(projectId);
+      projects.push({ projectId, projectTitle: title.slice(0, 300) });
+    }
+    return projects.length ? { projects, source: "flow-dom", partial: true } : unavailable();
+  }
   async function handleProjectList() {
-    const inputParam = encodeURIComponent(JSON.stringify({ json: { pageSize: 20, toolName: "PINHOLE" } }));
-    const json = await fxApiGet(`trpc/project.searchUserProjects?input=${inputParam}`);
-    const result = unwrapTrpc(json);
-    const raw = result?.projects ?? [];
-    const projects = raw.map((project) => ({
-      projectId: project.projectId,
-      projectTitle: typeof project.projectInfo === "string" ? project.projectInfo : project.projectInfo?.projectTitle ?? "Untitled project",
-      creationTime: project.creationTime
-    }));
-    return { projects, source: "runtime" };
+    const tabs = (await chrome.tabs.query({})).filter((tab2) => {
+      try {
+        const url = new URL(tab2.url ?? "");
+        return tab2.id !== void 0 && url.protocol === "https:" && !url.username && !url.password && !url.port && (url.hostname === "flow.google.com" && /^\/(?:project\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/?)?$/i.test(url.pathname) || url.hostname === "labs.google" && /^\/fx\/(?:[a-z]{2}(?:-[A-Za-z]{2})?\/)?tools\/flow(?:\/project\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?\/?$/i.test(url.pathname));
+      } catch {
+        return false;
+      }
+    });
+    if (tabs.length !== 1) throw bridgeError(
+      "PROJECT_LIST_UNAVAILABLE",
+      "H\xE3y gi\u1EEF m\u1ED9t th\u1EBB Google Flow v\xE0 m\u1EDF trang danh s\xE1ch d\u1EF1 \xE1n \u0111\u1EC3 t\u1EA3i l\u1EA1i; kh\xF4ng g\u1ED9p d\u1EEF li\u1EC7u gi\u1EEFa c\xE1c th\u1EBB.",
+      false
+    );
+    const tab = tabs[0];
+    if (new URL(tab.url).hostname === "flow.google.com") {
+      try {
+        const results = await timeoutable(chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: "ISOLATED",
+          func: readFlowProjectCards,
+          args: [tab.url]
+        }), REQUEST_TIMEOUT_MS);
+        const data = results[0]?.result;
+        if ((await chrome.tabs.get(tab.id)).url !== tab.url || !data || data.error || !data.projects.length) {
+          throw new Error("unavailable");
+        }
+        return data;
+      } catch {
+        throw bridgeError(
+          "PROJECT_LIST_UNAVAILABLE",
+          "Ch\u01B0a \u0111\u1ECDc \u0111\u01B0\u1EE3c d\u1EF1 \xE1n. H\xE3y m\u1EDF trang danh s\xE1ch d\u1EF1 \xE1n Google Flow, \u0111\u1EE3i t\u1EA3i xong r\u1ED3i th\u1EED l\u1EA1i.",
+          true
+        );
+      }
+    }
+    throw bridgeError("PROJECT_LIST_UNAVAILABLE", "H\xE3y m\u1EDF trang danh s\xE1ch t\u1EA1i https://flow.google.com/ r\u1ED3i th\u1EED l\u1EA1i.", false);
   }
   async function handleProjectCreate(projectTitle) {
     const json = await fxApiPost("trpc/project.createProject", buildCreateProjectRequest(projectTitle));
@@ -5306,22 +5481,26 @@
     }
     return false;
   });
+  async function broadcastCurrentFlow() {
+    let flow;
+    try {
+      flow = await pingFlowTab();
+    } catch (error) {
+      flow = { state: "ERROR", error: error instanceof Error ? error.message : String(error) };
+    }
+    await chrome.runtime.sendMessage({
+      type: "FLOWGRAPH_EVENT",
+      requestId: "sw:flow:changed",
+      payload: { flow }
+    }).catch(() => {
+    });
+  }
   chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
     if (!changeInfo.url && changeInfo.status !== "complete") return;
-    const url = tab?.url ?? changeInfo.url;
-    if (!isFlowUrl(url ?? "")) return;
-    void (async () => {
-      try {
-        const flow = await pingFlowTab();
-        if (flow.state !== "READY" && flow.state !== "PROJECT_REQUIRED") return;
-        await chrome.runtime.sendMessage({
-          type: "FLOWGRAPH_EVENT",
-          requestId: "sw:flow:changed",
-          payload: { flow }
-        }).catch(() => {
-        });
-      } catch {
-      }
-    })();
+    const url = tab?.url ?? changeInfo.url ?? "";
+    if (isFlowUrl(url) || changeInfo.status === "complete") void broadcastCurrentFlow();
+  });
+  chrome.tabs.onActivated.addListener(() => {
+    void broadcastCurrentFlow();
   });
 })();

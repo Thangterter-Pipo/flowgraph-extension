@@ -6,6 +6,7 @@
   "permissions": [
     "storage",
     "sidePanel",
+    "windows",
     "scripting",
     "downloads",
     "debugger"
@@ -15,6 +16,7 @@
     "https://flow.google.com/*",
     "https://aisandbox-pa.googleapis.com/*",
     "http://127.0.0.1:3091/*",
+    "http://127.0.0.1:3081/*",
     "http://localhost:20128/*",
     "http://127.0.0.1:20128/*",
     "http://localhost:10100/*",

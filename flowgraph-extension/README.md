@@ -6,7 +6,7 @@
 
 <p align="center">
   <img alt="V1 Ready" src="https://img.shields.io/badge/Real%20Runtime%20V1-READY-2ea44f">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-104%2F104%20passing-2ea44f">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-1156%2F1156%20passing-2ea44f">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-0%20errors-3178c6">
   <img alt="Chrome Extension" src="https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4">
   <img alt="React" src="https://img.shields.io/badge/React-18.3.1-61DAFB">
@@ -54,8 +54,8 @@ Three clean cache-bypassed full-chain verification runs were completed on the sa
 
 | Verification | Result |
 |---|---:|
-| Automated tests | **104 / 104 PASS** |
-| Test files | **15 / 15 PASS** |
+| Automated tests | **1156 / 1156 PASS** |
+| Test files | **87 / 87 PASS** |
 | TypeScript | **0 errors** |
 | Production build | **PASS** |
 | Clean full-chain E2E runs | **3 / 3 PASS** |
