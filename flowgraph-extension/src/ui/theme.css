@@ -426,10 +426,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   display: none !important;
 }
 
-/* Ẩn watermark mặc định của React Flow để giao diện sạch bóng 100% */
+/* Giữ attribution theo giấy phép React Flow; không che watermark bằng CSS. */
 .react-flow__attribution {
-  display: none !important;
+  background: rgba(7, 11, 18, .78) !important;
+  color: var(--muted) !important;
+  border: 1px solid rgba(36, 49, 72, .8);
+  border-radius: 5px;
+  padding: 2px 5px;
 }
+.react-flow__attribution a { color: var(--muted) !important; }
 
 /* Canvas chiếm trọn vẹn toàn bộ vùng làm việc */
 .studio-main {
@@ -2360,7 +2365,10 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
 .project-create-row .fg-btn{min-height:30px;font-size:9px;white-space:nowrap}
 
 .canvas-gate{position:relative;display:grid;grid-template-rows:minmax(0,1fr);min-height:0;height:100%}
-.canvas-gate-overlay{position:absolute;inset:0;z-index:60;display:grid;place-items:center;background:rgba(4,7,12,.74);backdrop-filter:blur(4px)}
+.canvas-project-required{height:100%;display:grid;place-content:center;justify-items:center;gap:8px;text-align:center;padding:32px;color:var(--text);background:var(--canvas-bg,var(--bg));}
+.canvas-project-required strong{font-size:15px;letter-spacing:.08em;text-transform:uppercase;}
+.canvas-project-required span{max-width:340px;color:var(--muted);font-size:12px;line-height:1.5;}
+.canvas-gate-overlay{position:absolute;inset:0;z-index:60;display:grid;place-items:center;background:rgba(4,7,12,.66);backdrop-filter:blur(2px)}
 .canvas-gate-card{width:min(440px,92%);display:grid;justify-items:center;text-align:center;gap:11px;padding:30px 26px;border:1px solid #2b3c56;border-radius:14px;background:#0c1420;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 .canvas-gate-card>svg{color:#9a74d3}
 .canvas-gate-card h2{margin:0;font-size:15px;letter-spacing:.12em;color:#d9e4f1}

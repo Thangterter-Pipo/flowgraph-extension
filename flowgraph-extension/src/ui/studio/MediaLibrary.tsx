@@ -88,7 +88,7 @@ export function MediaLibrary({
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search recent media"
+          placeholder="Tìm media gần đây"
         />
       </div>
       <div className="media-library-filters">

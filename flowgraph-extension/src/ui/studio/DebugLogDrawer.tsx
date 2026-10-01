@@ -156,7 +156,7 @@ export function DebugLogDrawer({ open, onClose, nodeTitles = {}, activeLiveEvent
             </div>
             <div className="debug-realtime-stream">
               {activeLiveEvents.length === 0 ? (
-                <div className="debug-empty-detail">Chưa có sự kiện realtime nào. Bấm <strong>Run Workflow</strong> để lắng nghe log trực tiếp theo từng mili-giây.</div>
+                <div className="debug-empty-detail">Chưa có sự kiện realtime nào. Bấm <strong>Chạy workflow</strong> để lắng nghe log trực tiếp theo từng mili-giây.</div>
               ) : (
                 activeLiveEvents.map((evt, idx) => {
                   const isErr = evt.status === 'failed' || evt.kind?.includes('error');
@@ -208,7 +208,7 @@ export function DebugLogDrawer({ open, onClose, nodeTitles = {}, activeLiveEvent
             <div className="debug-runs-sidebar">
           <div className="debug-section-label">LỊCH SỬ PHIÊN CHẠY</div>
           {runs.length === 0 ? (
-            <div className="debug-empty">Chưa có dữ liệu phiên chạy nào. Bấm Run Workflow để bắt đầu.</div>
+            <div className="debug-empty">Chưa có dữ liệu phiên chạy nào. Bấm Chạy workflow để bắt đầu.</div>
           ) : (
             <div className="debug-runs-list">
               {runs.map((r) => {

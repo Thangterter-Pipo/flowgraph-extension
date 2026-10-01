@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { DeveloperModeToggle } from '../components/DeveloperModeToggle';
 import {
   X,
   Settings as SettingsIcon,
@@ -541,6 +542,7 @@ export function SettingsModal({ open, onClose, settings, onSave }: SettingsModal
                     <span>Ghi log chi tiết (Execution Logs) vào <code>localStorage.flowgraph.runHistory.v1</code></span>
                   </label>
                 </div>
+                <DeveloperModeToggle />
 
                 <div className="checkbox-row">
                   <label className="checkbox-label">

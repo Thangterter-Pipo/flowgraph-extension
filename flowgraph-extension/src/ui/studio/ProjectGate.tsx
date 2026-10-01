@@ -38,24 +38,24 @@ export function ConnectionPill({ state, label, onRefresh, icon, title, className
 }
 
 function accountPillLabel(state: string, email?: string, credits?: number): string {
-  if (state === 'CHECKING') return 'Checking Account…';
+  if (state === 'CHECKING') return 'Đang kiểm tra tài khoản…';
   if (state === 'CONNECTED') {
     const credText = credits !== undefined ? ` · ⚡ ${credits} cr` : '';
     return (email ?? 'Google Account') + credText;
   }
-  if (state === 'SESSION_EXPIRED') return 'Session Expired';
-  if (state === 'DISCONNECTED') return 'Account Disconnected';
-  if (state === 'ERROR') return 'Account Error';
+  if (state === 'SESSION_EXPIRED') return 'Phiên đã hết hạn';
+  if (state === 'DISCONNECTED') return 'Tài khoản đã ngắt kết nối';
+  if (state === 'ERROR') return 'Lỗi tài khoản';
   return 'Google Account';
 }
 
 function flowPillLabel(state: string, projectId?: string): string {
-  if (state === 'CHECKING') return 'Checking Flow…';
-  if (state === 'READY') return `Flow · ${projectId?.slice(0, 8) ?? 'ready'}`;
-  if (state === 'PROJECT_REQUIRED') return 'Flow · Project required';
-  if (state === 'CONNECTED') return 'Flow Connected';
-  if (state === 'DISCONNECTED') return 'Flow Disconnected';
-  if (state === 'ERROR') return 'Flow Error';
+  if (state === 'CHECKING') return 'Đang kiểm tra Flow…';
+  if (state === 'READY') return `Flow · ${projectId?.slice(0, 8) ?? 'sẵn sàng'}`;
+  if (state === 'PROJECT_REQUIRED') return 'Flow · Cần Project';
+  if (state === 'CONNECTED') return 'Flow đã kết nối';
+  if (state === 'DISCONNECTED') return 'Flow đã ngắt kết nối';
+  if (state === 'ERROR') return 'Lỗi Flow';
   return 'Google Flow';
 }
 
@@ -95,26 +95,26 @@ export function ProjectDropdown({ connection, runLocked = false }: { connection:
       <button
         className="fg-btn project-dropdown-trigger"
         disabled={runLocked}
-        title={runLocked ? 'Stop the run before switching project' : undefined}
+        title={runLocked ? 'Dừng workflow trước khi đổi Project' : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => { if (runLocked) return; setOpen((value) => !value); }}
       >
         <FolderKanban size={13} />
-        <span className="project-dropdown-active">{activeId ? connection.activeProject?.projectName ?? 'Flow Project' : 'Select Project'}</span>
+        <span className="project-dropdown-active">{activeId ? connection.activeProject?.projectName ?? 'Flow Project' : 'Chọn Project'}</span>
         <ChevronDown size={12} />
       </button>
       {open && (
         <div className="project-dropdown-menu" role="menu">
           <div className="project-menu-head">
             <strong>GOOGLE FLOW PROJECTS</strong>
-            <button className="fg-icon-btn" onClick={() => void connection.refreshProjects()} title="Refresh projects"><RefreshCcw size={12} /></button>
+            <button className="fg-icon-btn" onClick={() => void connection.refreshProjects()} title="Làm mới danh sách Project" aria-label="Làm mới danh sách Project"><RefreshCcw size={12} /></button>
             <button className="fg-icon-btn" onClick={() => setOpen(false)} aria-label="Đóng danh sách project"><X size={12} /></button>
           </div>
           <div className="project-menu-list">
-            {connection.projectsLoading && <div className="project-menu-note">Loading projects…</div>}
+            {connection.projectsLoading && <div className="project-menu-note" role="status" aria-live="polite">Đang tải danh sách Project…</div>}
             {!connection.projectsLoading && connection.projectsError && <div className="project-menu-note error">{connection.projectsError}</div>}
-            {!connection.projectsLoading && !connection.projectsError && connection.projects.length === 0 && <div className="project-menu-note">No projects found — create one below.</div>}
+            {!connection.projectsLoading && !connection.projectsError && connection.projects.length === 0 && <div className="project-menu-note">Chưa có Project — tạo một Project bên dưới.</div>}
             {connection.projects.map((project: ProjectInfo) => (
               <button
                 className={`project-menu-item ${project.projectId === activeId ? 'active' : ''}`}
@@ -138,7 +138,7 @@ export function ProjectDropdown({ connection, runLocked = false }: { connection:
               onKeyDown={(event) => { if (event.key === 'Enter') void createAndSelect(); }}
             />
             <button className="fg-btn fg-btn-primary" onClick={() => void createAndSelect()} disabled={runLocked || creating || !newTitle.trim()}>
-              <Plus size={12} /> {creating ? 'Creating…' : 'Create'}
+              <Plus size={12} /> {creating ? 'Đang tạo…' : 'Tạo Project'}
             </button>
           </div>
         </div>
@@ -152,70 +152,79 @@ export function ProjectGateOverlay({ connection, children }: {
   children: React.ReactNode;
 }) {
   if (connection.isCanvasUnlocked) return <>{children}</>;
+  // Studio chỉ được mở từ lịch sử hoặc sau khi tạo Project trong Sidepanel.
+  // Nếu người dùng mở trực tiếp studio.html, không dựng canvas/gate card giả;
+  // giữ một màn hình khóa tối giản cho tới khi có Project được chọn thật.
+  if (!connection.activeProject?.projectId) {
+    return <div className="canvas-project-required" role="status" aria-live="polite">
+      <strong>Chưa có Project</strong>
+      <span>Hãy chọn hoặc tạo Project trong Sidepanel để mở Studio.</span>
+    </div>;
+  }
   const block = connection.runBlockReason;
 
   const getExplanation = () => {
     if (connection.account.state === 'CHECKING' || connection.flow.state === 'CHECKING') {
-      return 'Checking connection status with Google Flow. Please wait a moment…';
+      return 'Đang xác minh tài khoản, tab Flow và Project hiện tại…';
     }
     if (connection.account.state !== 'CONNECTED') {
       if (connection.account.state === 'SESSION_EXPIRED') {
-        return 'Your Google Flow session has expired. Please refresh the Google Flow tab and sign in again.';
+        return 'Phiên Google Flow đã hết hạn. Hãy làm mới tab Flow và đăng nhập lại.';
       }
       if (connection.account.state === 'ERROR') {
-        return connection.account.error || 'Google Account authentication error. Refresh the Google Flow tab.';
+        return connection.account.error || 'Không xác minh được tài khoản Google. Hãy làm mới tab Flow.';
       }
-      return 'Connect your Google Account and open the FlowGraph tab in Google Flow to unlock the workspace.';
+      return 'Hãy kết nối tài khoản Google và mở Google Flow để mở khóa workspace.';
     }
     if (connection.flow.state === 'ERROR') {
-      return connection.flow.error || 'Google Flow tab is in an error state. Check the console in Google Flow and refresh.';
+      return connection.flow.error || 'Tab Google Flow đang báo lỗi. Hãy kiểm tra tab Flow và làm mới.';
     }
     if (connection.flow.state === 'DISCONNECTED' || !connection.flow.url) {
-      return 'No active Google Flow tab detected. Open https://flow.google.com/ in another tab to connect.';
+      return 'Chưa tìm thấy tab Google Flow. Hãy mở https://flow.google.com/ trong tab khác.';
     }
     if (connection.flow.state === 'PROJECT_REQUIRED' || !connection.flow.projectId) {
-      return 'Google Flow is open, but not inside a project. Please navigate into a project on Google Flow.';
+      return 'Google Flow đã mở nhưng chưa ở trong Project. Hãy mở một Project trong Flow.';
     }
     if (block?.code === 'PROJECT_MISMATCH') {
       return block.message;
     }
     if (!connection.activeProject?.projectId) {
-      return 'Select or create a Google Flow project to unlock the workspace.';
+      return 'Chọn hoặc tạo Project Google Flow để mở khóa workspace.';
     }
-    return block?.message || 'Select or create a Google Flow project to unlock the workspace.';
+    return block?.message || 'Chọn hoặc tạo Project Google Flow để mở khóa workspace.';
   };
 
   const getTitle = () => {
     if (connection.account.state === 'CHECKING' || connection.flow.state === 'CHECKING') {
-      return 'CHECKING CONNECTION…';
+      return 'ĐANG KIỂM TRA KẾT NỐI…';
     }
     if (connection.account.state !== 'CONNECTED') {
-      return 'ACCOUNT REQUIRED';
+      return 'CẦN KẾT NỐI TÀI KHOẢN';
     }
     if (connection.flow.state === 'DISCONNECTED' || !connection.flow.url) {
-      return 'FLOW TAB REQUIRED';
+      return 'CẦN MỞ TAB FLOW';
     }
     if (connection.flow.state === 'ERROR' || (connection.account as any).state === 'ERROR') {
-      return 'CONNECTION ERROR';
+      return 'LỖI KẾT NỐI';
     }
     if (block?.code === 'PROJECT_MISMATCH') {
-      return 'PROJECT MISMATCH';
+      return 'PROJECT KHÔNG KHỚP';
     }
-    return 'PROJECT REQUIRED';
+    return 'CẦN CHỌN PROJECT';
   };
 
   return (
     <div className="canvas-gate">
       {children}
-      <div className="canvas-gate-overlay">
+      <div className="canvas-gate-overlay" role="dialog" aria-modal="true" aria-labelledby="canvas-gate-title" aria-describedby="canvas-gate-description" aria-busy={connection.account.state === 'CHECKING' || connection.flow.state === 'CHECKING'}>
         <div className="canvas-gate-card">
           <FolderKanban size={30} />
-          <h2>{getTitle()}</h2>
-          <p>{getExplanation()}</p>
+          <h2 id="canvas-gate-title">{getTitle()}</h2>
+          <p id="canvas-gate-description" role="status" aria-live="polite">{getExplanation()}</p>
           <div className="canvas-gate-actions">
             <ProjectDropdown connection={connection} />
             <button className="fg-btn" onClick={() => { void connection.refreshFlow(); void connection.refreshAccount(); }}>
-              Refresh Status
+              Làm mới trạng thái
             </button>
           </div>
         </div>

@@ -98,7 +98,7 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
     this.transport = transport ?? {
       request: <T>(type: RequestType, payload?: unknown, givenId?: string) => new Promise<BridgeResponse<T>>((resolve) => {
         if (!inExtension) {
-          resolve(makeError(makeRequest<T>(type, payload).requestId, 'BRIDGE_UNAVAILABLE', 'FlowGraph must run inside Chrome with the extension loaded.'));
+          resolve(makeError(makeRequest<T>(type, payload).requestId, 'BRIDGE_UNAVAILABLE', 'FlowGraph đang chạy ở chế độ preview web. Hãy mở Sidepanel từ Chrome Extension để kết nối Google Flow và Project thật.'));
           return;
         }
         const requestId = givenId ?? crypto.randomUUID();

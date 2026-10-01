@@ -29,6 +29,6 @@ export function RunModeControl(props: Props) {
         </button>
       </div>}
     </div>
-    {props.running && <button className="fg-btn fg-btn-primary" onClick={props.onStop}><Square size={13} /> Stop Workflow</button>}
+    {props.running && <button className="fg-btn fg-btn-danger" onClick={props.onStop} aria-label="Dừng workflow"><Square size={13} /> Dừng workflow</button>}
   </>;
 }

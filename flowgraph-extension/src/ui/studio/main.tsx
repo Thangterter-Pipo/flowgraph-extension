@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { installDiagnostics } from '../../shared/devDiagnostics';
+installDiagnostics('studio');
 import { createPortal } from 'react-dom';
 import {
   addEdge,
@@ -367,7 +369,7 @@ function NodeLibrary({
         <input
           ref={searchRef}
           type="text"
-          placeholder="Search nodes..."
+          placeholder="Tìm Node..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -2647,8 +2649,8 @@ function Studio() {
             onRefresh={() => void connection.refreshFlow()}
             icon={<Workflow size={14} />}
           />
-          <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Save</button>
-          <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Export</button>
+          <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Lưu</button>
+          <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Xuất</button>
           {/* Nút chuyển đổi nhanh Light/Dark trong cùng một theme family. */}
           <button
             className="fg-btn fg-icon-btn"

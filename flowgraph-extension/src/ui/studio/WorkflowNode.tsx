@@ -555,7 +555,7 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
   if (!blobUrl && !src) {
     return (
       <div className="placeholder-art empty-media-well" aria-hidden="true">
-        <span className="empty-media-copy">No photo available</span>
+        <span className="empty-media-copy">Chưa có ảnh</span>
       </div>
     );
   }
@@ -564,7 +564,7 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
   if (!finalSrc) {
     return (
       <div className="placeholder-art empty-media-well" aria-hidden="true">
-        <span className="empty-media-copy">No photo available</span>
+        <span className="empty-media-copy">Chưa có ảnh</span>
       </div>
     );
   }
@@ -817,10 +817,10 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
     : data.kind === 'videoInput'
     ? 'Choose existing Flow video'
     : ['download', 'mediaInput'].includes(data.kind)
-    ? 'No media available'
+    ? 'Chưa có media'
     : isVideoNode
-      ? 'No video available'
-      : 'No photo available';
+      ? 'Chưa có video'
+      : 'Chưa có ảnh';
   const portTop = (index: number, count: number, side: 'in' | 'out') => {
     if (count <= 1) return spec.isMediaHolder && side === 'out' ? '27%' : '50%';
     // Keep connector spacing invariant when the media surface changes aspect ratio.
@@ -997,7 +997,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                 />
               ) : (
                 <div className="placeholder-art empty-media-well" aria-hidden="true">
-                  <span className="empty-media-copy">No photo available</span>
+                  <span className="empty-media-copy">Chưa có ảnh</span>
                 </div>
               )}
               {data.config.characterId ? (
@@ -1150,7 +1150,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                     {mediaPickerOpen ? (
                       <div className="provider-media-picker" onMouseDown={(e) => e.stopPropagation()}>
                         {verifiedMedia.length === 0 ? (
-                          <span className="provider-media-empty">No verified Flow media on this graph yet.</span>
+                          <span className="provider-media-empty">Chưa có media Flow đã xác minh trên graph này.</span>
                         ) : verifiedMedia.map((item) => (
                           <button
                             key={`${item.sourceNodeId}-${item.mediaId}`}
@@ -1303,7 +1303,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                     {mediaPickerOpen ? (
                       <div className="provider-media-picker" onMouseDown={(e) => e.stopPropagation()}>
                         {verifiedMedia.length === 0 ? (
-                          <span className="provider-media-empty">No verified Flow media on this graph yet.</span>
+                          <span className="provider-media-empty">Chưa có media Flow đã xác minh trên graph này.</span>
                         ) : verifiedMedia.map((item) => (
                           <button
                             key={`${item.sourceNodeId}-${item.mediaId}`}
@@ -1405,10 +1405,10 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
           {isDownload ? (
             <div className="download-actions-toolbar">
               <button className="btn-stitch-primary" onClick={handleDownloadClick}>
-                <Download size={13} /> Download
+                <Download size={13} /> Tải xuống
               </button>
               <button className="btn-stitch-secondary" onClick={handleOpenClick}>
-                <ExternalLink size={12} /> Open
+                <ExternalLink size={12} /> Mở
               </button>
               <button className="btn-stitch-icon" title="Chi tiết file" onClick={handleOpenClick}>
                 <MoreHorizontal size={13} />
