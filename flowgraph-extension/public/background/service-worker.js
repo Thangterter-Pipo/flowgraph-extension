@@ -2509,7 +2509,9 @@
     if (location.href !== expectedUrl || page.origin !== "https://flow.google.com" || page.username || page.password || !/^\/$/.test(page.pathname) || page.search || page.hash) return unavailable();
     const projects = [];
     const seen = /* @__PURE__ */ new Set();
-    for (const link of document.querySelectorAll("a.project-thumbnail-container[href]")) {
+    for (const card of document.querySelectorAll("flow-project-card, .project-card")) {
+      const link = card.querySelector("a.project-thumbnail-container[href]") || card.closest("a[href]");
+      if (!link) continue;
       let url;
       try {
         url = new URL(link.getAttribute("href") ?? "", page.origin);
@@ -2521,11 +2523,12 @@
       if (!match) continue;
       const projectId = match[1].toLowerCase();
       if (seen.has(projectId)) continue;
-      const card = link.closest(".project-card, flow-project-card");
-      const title = card?.innerText.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+      const title = card.innerText.split("\n").map((line) => line.trim()).find(Boolean);
       if (!title || /^(edit|delete)$/i.test(title)) continue;
+      const img = card.querySelector("img");
+      const thumbnailUrl = img?.getAttribute("src") || img?.currentSrc || void 0;
       seen.add(projectId);
-      projects.push({ projectId, projectTitle: title.slice(0, 300) });
+      projects.push({ projectId, projectTitle: title.slice(0, 300), thumbnailUrl });
     }
     return projects.length ? { projects, source: "flow-dom", partial: true } : unavailable();
   }

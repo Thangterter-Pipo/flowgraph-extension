@@ -176,6 +176,7 @@ export interface FlowStatus {
 export interface ProjectInfo {
   projectId: string;
   projectTitle: string;
+  thumbnailUrl?: string;
   creationTime?: string;
 }
 

@@ -158,7 +158,16 @@ export function SidepanelView({ state, controller, lastRun, historyError }: {
             return <li className={`sp-project-card${selected ? ' is-selected' : ''}`} key={project.projectId}>
               <button type="button" className="sp-project-select" disabled={projectLocked} aria-label={`Chọn dự án ${title}`} aria-pressed={selected}
                 onClick={() => { setSelectedProjectId(project.projectId); void controller.selectProject(project.projectId); }}>
-                <span className="sp-thumbnail" style={{ '--project-hue': hue } as React.CSSProperties} aria-hidden="true"><Workflow size={26} /><span>{title.slice(0, 2).toUpperCase()}</span></span>
+                {project.thumbnailUrl ? (
+                  <span className="sp-thumbnail has-image" aria-hidden="true">
+                    <img src={project.thumbnailUrl} alt={title} className="sp-thumbnail-img" />
+                  </span>
+                ) : (
+                  <span className="sp-thumbnail" style={{ '--project-hue': hue } as React.CSSProperties} aria-hidden="true">
+                    <Workflow size={26} />
+                    <span>{title.slice(0, 2).toUpperCase()}</span>
+                  </span>
+                )}
                 <span className="sp-project-info"><strong title={title}>{title}</strong>{selected && <span className="sp-selected"><Check size={11} aria-hidden="true" />Đang chọn</span>}
                   {date && Number.isFinite(date.getTime()) && <span className="sp-meta">Tạo {date.toLocaleDateString('vi-VN')}</span>}</span>
               </button>

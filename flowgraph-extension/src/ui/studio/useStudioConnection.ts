@@ -175,7 +175,7 @@ export function useStudioConnection(): StudioConnection {
             const injected = await chrome.scripting.executeScript({
               target: { tabId: flowTab.id },
               func: () => {
-                const list: Array<{ id: string; title: string }> = [];
+                const list: Array<{ id: string; title: string; thumbnailUrl?: string }> = [];
                 const regex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
                 // 1. Quét toàn bộ project cards trên trang flow.google.com
@@ -183,14 +183,16 @@ export function useStudioConnection(): StudioConnection {
                 for (const c of cards) {
                   const a = c.querySelector('a.project-thumbnail-container');
                   const footer = c.querySelector('.project-card-footer') as HTMLElement | null;
+                  const img = c.querySelector('img') as HTMLImageElement | null;
                   const href = a ? a.getAttribute('href') : '';
                   const m = href ? href.match(regex) : null;
                   if (m) {
                     const id = m[0].toLowerCase();
                     let title = footer ? (footer.innerText || footer.textContent || '').split('\n')[0].trim() : '';
                     title = title.replace(/\b(edit|delete|add)\b/gi, '').trim();
+                    const thumbnailUrl = img?.getAttribute('src') || img?.currentSrc || undefined;
                     if (!list.some((item) => item.id === id)) {
-                      list.push({ id, title: title || 'Untitled Project' });
+                      list.push({ id, title: title || 'Untitled Project', thumbnailUrl });
                     }
                   }
                 }
@@ -215,7 +217,7 @@ export function useStudioConnection(): StudioConnection {
             if (Array.isArray(scraped)) {
               for (const s of scraped) {
                 if (s.id) {
-                  knownProjectsMap.set(s.id, { projectId: s.id, projectTitle: s.title });
+                  knownProjectsMap.set(s.id, { projectId: s.id, projectTitle: s.title, thumbnailUrl: s.thumbnailUrl });
                 }
               }
             }

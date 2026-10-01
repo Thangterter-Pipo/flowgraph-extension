@@ -1734,7 +1734,9 @@ function readFlowProjectCards(expectedUrl: string): ProjectListData {
     !/^\/$/.test(page.pathname) || page.search || page.hash) return unavailable();
   const projects: ProjectListData['projects'] = [];
   const seen = new Set<string>();
-  for (const link of document.querySelectorAll<HTMLAnchorElement>('a.project-thumbnail-container[href]')) {
+  for (const card of document.querySelectorAll<HTMLElement>('flow-project-card, .project-card')) {
+    const link = card.querySelector<HTMLAnchorElement>('a.project-thumbnail-container[href]') || card.closest<HTMLAnchorElement>('a[href]');
+    if (!link) continue;
     let url: URL;
     try { url = new URL(link.getAttribute('href') ?? '', page.origin); } catch { continue; }
     if (url.origin !== page.origin || url.username || url.password || url.search || url.hash) continue;
@@ -1742,11 +1744,12 @@ function readFlowProjectCards(expectedUrl: string): ProjectListData {
     if (!match) continue;
     const projectId = match[1].toLowerCase();
     if (seen.has(projectId)) continue;
-    const card = link.closest<HTMLElement>('.project-card, flow-project-card');
-    const title = card?.innerText.split(/\r?\n/).map(line => line.trim()).find(Boolean);
+    const title = card.innerText.split('\n').map(line => line.trim()).find(Boolean);
     if (!title || /^(edit|delete)$/i.test(title)) continue;
+    const img = card.querySelector<HTMLImageElement>('img');
+    const thumbnailUrl = img?.getAttribute('src') || img?.currentSrc || undefined;
     seen.add(projectId);
-    projects.push({ projectId, projectTitle: title.slice(0, 300) });
+    projects.push({ projectId, projectTitle: title.slice(0, 300), thumbnailUrl });
   }
   return projects.length ? { projects, source: 'flow-dom', partial: true } : unavailable();
 }

@@ -107,6 +107,8 @@ html, body.sidepanel-body {
 .sp-app .sp-project-select { width: 100%; justify-content: flex-start; gap: 12px; padding: 12px; border: 0; border-radius: 0; text-align: left; background: transparent; }
 .sp-app .sp-project-select:hover:not(:disabled) { background: transparent; }
 .sp-thumbnail { width: 62px; height: 64px; flex-shrink: 0; position: relative; display: grid; place-items: center; border-radius: 8px; border: 1px solid rgba(0,0,0,0.06); overflow: hidden; background: linear-gradient(135deg, #e2e8f0, #cbd5e1); color: var(--sp-primary); }
+.sp-thumbnail.has-image { background: #000000; border-color: rgba(0,0,0,0.08); }
+.sp-thumbnail-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .sp-thumbnail > span { position: absolute; bottom: 4px; left: 6px; font-size: 8px; letter-spacing: 1px; font-weight: 700; color: #475569; }
 .sp-project-info { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .sp-project-info strong { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 13px; color: var(--sp-text); }
