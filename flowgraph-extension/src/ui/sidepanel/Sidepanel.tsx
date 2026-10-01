@@ -143,7 +143,7 @@ export function SidepanelView({ state, controller, lastRun, historyError }: {
           <span className="sp-count" aria-label={`${state.projects.length} dự án`}>{state.projects.length}</span></div>
         <div className="sp-status" role="status" aria-live="polite">{state.running ? 'Đang chạy — không thể đổi dự án.' : state.selecting ? 'Đang chọn và xác nhận dự án…'
           : state.projectsLoading ? 'Đang tải danh sách dự án…' : !state.projectsLoaded && !state.projectsError ? 'Chưa tải danh sách dự án. Bấm làm mới để tải.' : ''}</div>
-        {state.projectsError && <div className="sp-error" role="alert"><p>{state.projectsError}</p>
+        {state.projectsError && !state.projects.length && <div className="sp-error" role="alert"><p>{state.projectsError}</p>
           <button type="button" disabled={state.projectsLoading} onClick={() => void controller.loadProjects()}>Thử tải lại dự án</button></div>}
         {!state.projects.length && state.projectsLoaded && !state.projectsLoading && !state.projectsError ? <section className="sp-hero sp-empty">
           <div className="sp-empty-icon"><FolderOpen size={38} strokeWidth={1.3} aria-hidden="true" /><span><Plus size={13} /></span></div>
