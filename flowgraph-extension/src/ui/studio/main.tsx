@@ -1804,7 +1804,12 @@ function Studio() {
     } catch (error) {
       if (isLiveRun(epochAtStart, runEpochRef.current, runGenerationRef.current, projectIdAtStart)) {
         const runtimeError = error instanceof RuntimeError ? error : new RuntimeError('PROVIDER_ERROR', error instanceof Error ? error.message : String(error));
-        setRunError({ code: runtimeError.code, message: runtimeError.message, retryable: runtimeError.retryable, diagnosticId: runtimeError.diagnosticId });
+        // Hiển thị thông báo tiếng Việt thân thiện, rõ ràng, không để lọt raw gRPC error ra UI
+        const isUnusual = runtimeError.message.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY') || runtimeError.message.includes('UNUSUAL_ACTIVITY');
+        const displayMessage = isUnusual
+          ? 'Google Flow từ chối yêu cầu do phát hiện hoạt động bất thường (UNUSUAL_ACTIVITY). Hãy tạm dừng vài phút, kiểm tra tab Google Flow và tắt VPN/proxy nếu đang bật.'
+          : runtimeError.message;
+        setRunError({ code: runtimeError.code, message: displayMessage, retryable: isUnusual ? false : runtimeError.retryable, diagnosticId: runtimeError.diagnosticId });
         setRunStatus('error');
       }
     } finally {
