@@ -28,5 +28,6 @@ describe('FlowCapabilityRouter', () => {
     expect(mayFallbackFromBatch('CAPTCHA_REQUIRED')).toBe(false);
     expect(mayFallbackFromBatch('INVALID_INPUT')).toBe(false);
     expect(mayFallbackFromBatch('PROVIDER_ERROR')).toBe(false);
+    expect(mayFallbackFromBatch('PROVIDER_ERROR', 'PUBLIC_ERROR_UNUSUAL_ACTIVITY')).toBe(true);
   });
 });
