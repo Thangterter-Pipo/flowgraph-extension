@@ -113,10 +113,11 @@ export function createSidepanelController(
         if (!data || !Array.isArray(data.projects)) throw new Error('Danh sách dự án không đúng định dạng.');
         const projects = data.projects.filter((p) => p && typeof p.projectId === 'string' && typeof p.projectTitle === 'string');
         if (state.pendingCreated && !projects.some(p => p.projectId === state.pendingCreated?.projectId)) projects.unshift(state.pendingCreated);
-        publish({ projectsLoaded: true, projects,
-          projectsError: data.error || (data.source === 'flow-dom' || data.partial
-            ? 'Chỉ hiển thị dự án đang tải ở trang Flow; đây chưa phải toàn bộ lịch sử dự án.'
-            : data.source === 'fallback' ? 'Chỉ có danh sách dự phòng; thử tải lại.' : undefined) });
+        publish({
+          projectsLoaded: true,
+          projects,
+          projectsError: data.error || (data.source === 'fallback' ? 'Chỉ có danh sách dự phòng; thử tải lại.' : undefined),
+        });
       } catch (error) {
         if (version === revision) publish({ projects: state.pendingCreated ? [state.pendingCreated] : [], projectsLoaded: false, projectsError: errorText(error) });
       }
