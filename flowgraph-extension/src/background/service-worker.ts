@@ -2178,7 +2178,7 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
     } catch (error) {
       const batchError = toFlowBatchBridgeError(error);
       const code = String(batchError.code ?? 'BATCH_RPC_UNAVAILABLE');
-      if (capabilityRoute.fallback !== 'FLOW_UI' || !mayFallbackFromBatch(code, batchError.reason)) {
+      if (capabilityRoute.fallback !== 'FLOW_UI' || !mayFallbackFromBatch(code)) {
         throw batchError;
       }
       console.warn(

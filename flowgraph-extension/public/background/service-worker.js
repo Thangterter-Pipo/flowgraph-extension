@@ -1181,10 +1181,7 @@
         };
     }
   }
-  function mayFallbackFromBatch(errorCode, reason) {
-    if (reason === "PUBLIC_ERROR_UNUSUAL_ACTIVITY") {
-      return true;
-    }
+  function mayFallbackFromBatch(errorCode) {
     return (/* @__PURE__ */ new Set([
       "NO_AT_TOKEN",
       "NO_INJECTION_RESULT",
@@ -2898,7 +2895,7 @@
       } catch (error) {
         const batchError = toFlowBatchBridgeError(error);
         const code = String(batchError.code ?? "BATCH_RPC_UNAVAILABLE");
-        if (capabilityRoute.fallback !== "FLOW_UI" || !mayFallbackFromBatch(code, batchError.reason)) {
+        if (capabilityRoute.fallback !== "FLOW_UI" || !mayFallbackFromBatch(code)) {
           throw batchError;
         }
         console.warn(

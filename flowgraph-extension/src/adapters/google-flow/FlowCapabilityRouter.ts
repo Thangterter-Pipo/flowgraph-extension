@@ -113,10 +113,7 @@ export function resolveFlowCapabilityRoute(
   }
 }
 
-export function mayFallbackFromBatch(errorCode: string, reason?: string): boolean {
-  if (reason === 'PUBLIC_ERROR_UNUSUAL_ACTIVITY') {
-    return true;
-  }
+export function mayFallbackFromBatch(errorCode: string): boolean {
   return new Set([
     'NO_AT_TOKEN',
     'NO_INJECTION_RESULT',
