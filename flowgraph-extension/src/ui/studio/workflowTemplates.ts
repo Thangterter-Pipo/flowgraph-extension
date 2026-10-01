@@ -119,33 +119,37 @@ export const BUILTIN_TEMPLATES: WorkflowTemplate[] = [
     ],
   },
 
-  // 5. LIVE TEST 05: Reference Images to Video (R2V)
+  // 5. LIVE TEST 05: Reference Images to Video (R2V Multi-Reference)
   {
     id: 'tpl-reference-video',
-    title: 'Reference Images Video (R2V)',
-    description: 'Tạo video từ ảnh tham chiếu phong cách/chủ thể: Prompt + Ảnh tham chiếu (T2I) → Reference Images Video (Omni 1.1 Flash) → Final Video.',
+    title: 'Multi-Reference Images to Video (R2V)',
+    description: 'Tạo video từ nhiều ảnh tham chiếu phong cách/chủ thể: 2 Ảnh tham chiếu (T2I) + Prompt Chuyển động → Reference Images Video (Omni 1.1 Flash) → Final Video.',
     category: 'cinematic',
-    tags: ['R2V', 'Reference', 'Video', 'LiveTest'],
+    tags: ['R2V', 'MultiReference', 'Video', 'LiveTest'],
     nodes: [
-      node('r2v-p1', 'prompt', 60, 80, { title: 'Style Reference Prompt', config: { prompt: 'A mystical glowing deer standing in an enchanted bioluminescent forest, magical particles.' } }),
-      node('r2v-ref-img', 't2i', 420, 80, { title: 'Generate Reference Image', config: { model: 'Nano Banana 2', aspectRatio: '16:9' } }),
-      node('r2v-p2', 'prompt', 60, 340, { title: 'Motion & Camera Prompt', config: { prompt: 'Drone shot circling around the subject in high velocity, dramatic sunset rim lighting.' } }),
-      node('r2v-gen', 'reference', 420, 340, { title: 'Reference Images Video', config: { model: 'Omni 1.1 Flash', duration: '6s', targetResolution: '720p', aspectRatio: '16:9' } }),
-      node('r2v-out', 'download', 820, 220, { title: 'Final Video', config: { format: 'Original media', fileName: 'ref-video-live' } }),
+      node('r2v-p1', 'prompt', 60, 60, { title: 'Style Reference 1 Prompt', config: { prompt: 'A mystical glowing deer standing in an enchanted bioluminescent forest, magical particles.' } }),
+      node('r2v-ref-img1', 't2i', 420, 60, { title: 'Reference Image 1', config: { model: 'Nano Banana 2', aspectRatio: '16:9' } }),
+      node('r2v-p2', 'prompt', 60, 300, { title: 'Style Reference 2 Prompt', config: { prompt: 'An ancient crystal ruin illuminated by aurora borealis, surreal fantasy atmosphere.' } }),
+      node('r2v-ref-img2', 't2i', 420, 300, { title: 'Reference Image 2', config: { model: 'Nano Banana 2', aspectRatio: '16:9' } }),
+      node('r2v-p3', 'prompt', 60, 540, { title: 'Motion & Camera Prompt', config: { prompt: 'Drone shot circling around the subject in high velocity, dramatic sunset rim lighting.' } }),
+      node('r2v-gen', 'reference', 800, 200, { title: 'Reference Images Video', config: { model: 'Omni 1.1 Flash', duration: '6s', targetResolution: '720p', aspectRatio: '16:9' } }),
+      node('r2v-out', 'download', 1180, 200, { title: 'Final Video', config: { format: 'Original media', fileName: 'ref-video-live' } }),
     ],
     edges: [
-      edge('r2v-e1', 'r2v-p1', 'prompt', 'r2v-ref-img', 'prompt', W_PROMPT),
-      edge('r2v-e2', 'r2v-ref-img', 'image', 'r2v-gen', 'references', W_IMAGE),
-      edge('r2v-e3', 'r2v-p2', 'prompt', 'r2v-gen', 'prompt', W_PROMPT),
-      edge('r2v-e4', 'r2v-gen', 'video', 'r2v-out', 'media', W_VIDEO),
+      edge('r2v-e1', 'r2v-p1', 'prompt', 'r2v-ref-img1', 'prompt', W_PROMPT),
+      edge('r2v-e2', 'r2v-ref-img1', 'image', 'r2v-gen', 'references', W_IMAGE),
+      edge('r2v-e3', 'r2v-p2', 'prompt', 'r2v-ref-img2', 'prompt', W_PROMPT),
+      edge('r2v-e4', 'r2v-ref-img2', 'image', 'r2v-gen', 'references', W_IMAGE),
+      edge('r2v-e5', 'r2v-p3', 'prompt', 'r2v-gen', 'prompt', W_PROMPT),
+      edge('r2v-e6', 'r2v-gen', 'video', 'r2v-out', 'media', W_VIDEO),
     ],
   },
 
-  // 6. LIVE TEST 06: Two-Shot Continuity & Concat (Stitch)
+  // 6. LIVE TEST 06: Two-Shot Continuity & Concat (Stitch Timeline)
   {
     id: 'tpl-extend-sequence',
     title: 'Two-Shot Continuity & Concat (Stitch Timeline)',
-    description: 'Tạo 2 cảnh độc lập liên tiếp và ghép nối liền mạch qua Stitch Timeline: Cảnh 1 (T2V) + Cảnh 2 (T2V) → Stitch Video Concat → Final Movie.',
+    description: 'Ghép nối liền mạch 2 cảnh qua Stitch Timeline: Cảnh 1 (T2V) + Cảnh 2 (T2V) → Stitch Video Concat → Final Movie.',
     category: 'cinematic',
     tags: ['Timeline', 'Stitch', 'Concat', 'Continuity', 'LiveTest'],
     nodes: [
@@ -162,6 +166,32 @@ export const BUILTIN_TEMPLATES: WorkflowTemplate[] = [
       edge('st-e3', 'st-v1', 'video', 'st-concat', 'videos', W_VIDEO),
       edge('st-e4', 'st-v2', 'video', 'st-concat', 'videos', W_VIDEO),
       edge('st-e5', 'st-concat', 'video', 'st-out', 'media', W_VIDEO),
+    ],
+  },
+
+  // 7. LIVE TEST 07: Multi-Stage Video Extension (Extend Sequence)
+  {
+    id: 'tpl-multi-extend-sequence',
+    title: 'Multi-Stage Video Extension (Extend Sequence)',
+    description: 'Mở rộng video liên tiếp nhiều chặng: Video gốc (T2V) → Mở rộng đoạn 1 (Extend Forward) → Mở rộng đoạn 2 (Extend Forward) → Final Extended Video.',
+    category: 'cinematic',
+    tags: ['Extend', 'Sequence', 'Continuity', 'Video', 'LiveTest'],
+    nodes: [
+      node('ext-p0', 'prompt', 60, 80, { title: 'Initial Scene Prompt', config: { prompt: 'A lone astronaut walking toward an alien monolith on Mars, red dust storm rising.' } }),
+      node('ext-v0', 't2v', 420, 80, { title: 'Base Video (T2V)', config: { model: 'Omni 1.1 Flash', duration: '6s', targetResolution: '720p' } }),
+      node('ext-p1', 'prompt', 60, 320, { title: 'Extension 1 Prompt', config: { prompt: 'The astronaut reaches the monolith and touches the glowing glyphs, blinding light.' } }),
+      node('ext-v1', 'extend', 800, 160, { title: 'Extend Stage 1', config: { model: 'Omni 1.1 Flash', mode: 'Extend Forward', prompt: 'Touching glowing glyphs' } }),
+      node('ext-p2', 'prompt', 420, 480, { title: 'Extension 2 Prompt', config: { prompt: 'The monolith splits open revealing a swirling cosmic wormhole.' } }),
+      node('ext-v2', 'extend', 1160, 240, { title: 'Extend Stage 2', config: { model: 'Omni 1.1 Flash', mode: 'Extend Forward', prompt: 'Monolith opens into wormhole' } }),
+      node('ext-out', 'download', 1520, 240, { title: 'Final Extended Video', config: { format: 'Original media', fileName: 'extended-mars-sequence' } }),
+    ],
+    edges: [
+      edge('ext-e0', 'ext-p0', 'prompt', 'ext-v0', 'prompt', W_PROMPT),
+      edge('ext-e1', 'ext-v0', 'video', 'ext-v1', 'video', W_VIDEO),
+      edge('ext-e2', 'ext-p1', 'prompt', 'ext-v1', 'prompt', W_PROMPT),
+      edge('ext-e3', 'ext-v1', 'video', 'ext-v2', 'video', W_VIDEO),
+      edge('ext-e4', 'ext-p2', 'prompt', 'ext-v2', 'prompt', W_PROMPT),
+      edge('ext-e5', 'ext-v2', 'video', 'ext-out', 'media', W_VIDEO),
     ],
   },
 
