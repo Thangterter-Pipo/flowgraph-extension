@@ -223,10 +223,31 @@ export function useStudioConnection(): StudioConnection {
         }
       } catch {}
 
-      // Nếu tab Flow đang kết nối trả về dự án, cập nhật chính xác danh sách này
+      // 3. Quét các key lưu workflow trong localStorage nhưng CHỈ LẤY những project có format UUID hợp lệ
+      try {
+        const cachedRaw = localStorage.getItem('flowgraph.cachedProjects.v1');
+        if (cachedRaw) {
+          const cachedList = JSON.parse(cachedRaw);
+          if (Array.isArray(cachedList)) {
+            for (const p of cachedList) {
+              if (p?.projectId && !knownProjectsMap.has(p.projectId)) {
+                knownProjectsMap.set(p.projectId, p);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // Nếu tab Flow quét được danh sách mới (khi ở trang chủ flow.google.com)
       if (knownProjectsMap.size > 0) {
         const list = Array.from(knownProjectsMap.values());
         setProjects(list);
+        try {
+          // Lưu cache danh sách dự án của tài khoản này
+          if (list.length > 1) {
+            localStorage.setItem('flowgraph.cachedProjects.v1', JSON.stringify(list));
+          }
+        } catch {}
         return;
       }
 
