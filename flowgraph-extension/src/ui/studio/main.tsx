@@ -2592,6 +2592,20 @@ function Studio() {
     });
   }, [nodes, edges, pushHistory, fitWorkflowView, setEdges, setNodes, runStatus, updateNodeInternals]);
 
+  // Hook listener cho phép AI Agent / script MCP nạp workflow trực tiếp lên Canvas theo prompt
+  useEffect(() => {
+    const handleApplyWorkflow = (event: any) => {
+      const tpl = event.detail?.template || event.detail?.workflow;
+      if (tpl && tpl.nodes && tpl.edges) {
+        applyTemplate(tpl);
+      }
+    };
+    window.addEventListener('flowgraph:apply-workflow' as any, handleApplyWorkflow);
+    return () => {
+      window.removeEventListener('flowgraph:apply-workflow' as any, handleApplyWorkflow);
+    };
+  }, [applyTemplate]);
+
   const saveCurrentAsTemplate = useCallback(() => {
     setTemplatesModalOpen(false);
     setSaveTemplateDraft({
