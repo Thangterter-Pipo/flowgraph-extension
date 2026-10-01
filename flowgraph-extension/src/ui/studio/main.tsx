@@ -2716,7 +2716,9 @@ function Studio() {
               setValidationIssues([]);
               setRunError(undefined);
             }}
-            style={{ border: 0, background: 'transparent', cursor: 'pointer', color: '#991b1b', fontWeight: 'bold', padding: '0 4px' }}
+            style={{ border: 'none', outline: 'none', boxShadow: 'none', background: 'transparent', cursor: 'pointer', color: '#991b1b', fontWeight: 'bold', padding: '0 4px', fontSize: '13px', lineHeight: 1 }}
+            title="Đóng thông báo"
+            aria-label="Đóng thông báo"
           >
             ✕
           </button>
