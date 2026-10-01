@@ -176,38 +176,38 @@ export function useStudioConnection(): StudioConnection {
               target: { tabId: flowTab.id },
               func: () => {
                 const list: Array<{ id: string; title: string }> = [];
-                // 1. Lấy dự án hiện tại đang mở trên tab Flow
-                const pathMatch = location.pathname.match(/\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
-                if (pathMatch && pathMatch[1]) {
-                  let docTitle = document.title.replace(/^Google Flow\s*[–—-]\s*/i, '').trim();
-                  if (!docTitle || docTitle.toLowerCase() === 'new project') {
-                    docTitle = 'Dự án Hiện tại (new project)';
+                const regex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
+                // 1. Quét toàn bộ project cards trên trang flow.google.com
+                const cards = Array.from(document.querySelectorAll('flow-project-card'));
+                for (const c of cards) {
+                  const a = c.querySelector('a.project-thumbnail-container');
+                  const footer = c.querySelector('.project-card-footer') as HTMLElement | null;
+                  const href = a ? a.getAttribute('href') : '';
+                  const m = href ? href.match(regex) : null;
+                  if (m) {
+                    const id = m[0].toLowerCase();
+                    let title = footer ? (footer.innerText || footer.textContent || '').split('\n')[0].trim() : '';
+                    title = title.replace(/\b(edit|delete|add)\b/gi, '').trim();
+                    if (!list.some((item) => item.id === id)) {
+                      list.push({ id, title: title || 'Untitled Project' });
+                    }
                   }
-                  list.push({ id: pathMatch[1], title: docTitle });
                 }
 
-                // 2. Quét các thẻ project card trong DOM của tab Flow nếu đang ở trang chủ hoặc menu
-                const regex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-                const elements = Array.from(document.querySelectorAll('a, button, div, span'));
-                const projectNodes = elements.filter((el) => {
-                  const t = (el.textContent || '').trim();
-                  return (t.includes('Tháng') || t.includes('FlowGraph') || t.includes('thg') || t.includes('Dự án') || t.includes('Project')) && !t.includes('addDự án mới');
-                });
-                for (const el of projectNodes) {
-                  let p: Element | null = el;
-                  for (let step = 0; step < 8 && p; step++) {
-                    const m = (p.outerHTML || '').match(regex);
-                    if (m && m[0]) {
-                      let rawTitle = (el.textContent || '').split('\n')[0].trim();
-                      rawTitle = rawTitle.replace(/editdelete/gi, '').replace(/\b(edit|delete|add)\b/gi, '').trim();
-                      if (rawTitle && rawTitle !== 'Dự án mới' && !list.some((item) => item.id === m[0])) {
-                        list.push({ id: m[0], title: rawTitle });
-                      }
-                      break;
+                // 2. Nếu đang ở trong trang project cụ thể (/project/:id), nạp thêm nếu chưa có
+                const pathMatch = location.pathname.match(/\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+                if (pathMatch && pathMatch[1]) {
+                  const currentId = pathMatch[1].toLowerCase();
+                  if (!list.some((item) => item.id === currentId)) {
+                    let docTitle = document.title.replace(/^Google Flow\s*[–—-]\s*/i, '').trim();
+                    if (!docTitle || docTitle.toLowerCase() === 'new project') {
+                      docTitle = 'Dự án Hiện tại (new project)';
                     }
-                    p = p.parentElement;
+                    list.unshift({ id: currentId, title: docTitle });
                   }
                 }
+
                 return list;
               },
             });
