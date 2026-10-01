@@ -3617,7 +3617,7 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
 
 .debug-icon-btn, .debug-close-btn {
   background: transparent;
-  border: 1px solid var(--line);
+  border: 0 !important;
   color: var(--text-dim);
   border-radius: 6px;
   padding: 4px 8px;
@@ -5865,11 +5865,14 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
 .media-library-search input {
   flex: 1;
   min-width: 0;
-  border: 0;
-  background: transparent;
+  border: 0 !important;
+  background: transparent !important;
   color: var(--text);
   font-size: 11px;
-  outline: none;
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-appearance: none;
+  appearance: none;
 }
 .media-library-filters {
   display: flex;
@@ -6420,7 +6423,7 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
 [data-theme="modern-minimal-light"] .media-library-search:focus-within {
   background: #ffffff !important;
   border-color: #2563eb !important;
-  box-shadow: 0 0 0 3px rgba(37,99,235,.10) !important;
+  box-shadow: none !important;
 }
 
 /* Secondary topbar actions stay neutral; Run remains the only solid primary CTA. */
