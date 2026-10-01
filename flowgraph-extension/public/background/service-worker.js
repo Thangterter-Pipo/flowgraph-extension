@@ -307,9 +307,9 @@
   function makeResponse(requestId, data) {
     return { requestId, ok: true, data };
   }
-  function makeError(requestId, code, message, retryable = false) {
+  function makeError(requestId, code, message, retryable = false, reason) {
     reportDiagnostic("RPC_FAILED");
-    return { requestId, ok: false, error: { code, message, retryable } };
+    return { requestId, ok: false, error: { code, message, retryable, ...reason ? { reason } : {} } };
   }
   function normalizeError(error) {
     if (typeof error === "object" && error !== null && "code" in error && "message" in error) {
@@ -317,10 +317,19 @@
       return {
         code: String(candidate.code ?? "UNKNOWN"),
         message: String(candidate.message ?? "Unknown error"),
-        retryable: Boolean(candidate.retryable)
+        retryable: Boolean(candidate.retryable),
+        ...typeof candidate.reason === "string" && candidate.reason ? { reason: candidate.reason } : {}
       };
     }
-    if (error instanceof Error) return { code: "UNKNOWN", message: error.message, retryable: false };
+    if (error instanceof Error) {
+      const candidate = error;
+      return {
+        code: "UNKNOWN",
+        message: error.message,
+        retryable: false,
+        ...typeof candidate.reason === "string" && candidate.reason ? { reason: candidate.reason } : {}
+      };
+    }
     return { code: "UNKNOWN", message: String(error), retryable: false };
   }
   function timeoutable(promise, ms) {
@@ -1549,7 +1558,7 @@
       if (detailStr.includes("PUBLIC_ERROR_UNUSUAL_ACTIVITY")) {
         const err = bridgeError(
           "PROVIDER_ERROR",
-          "Google Flow t\u1EEB ch\u1ED1i y\xEAu c\u1EA7u do ph\xE1t hi\u1EC7n ho\u1EA1t \u0111\u1ED9ng b\u1EA5t th\u01B0\u1EDDng (PUBLIC_ERROR_UNUSUAL_ACTIVITY). H\xE3y t\u1EA1m d\u1EEBng v\xE0i ph\xFAt, ki\u1EC3m tra tab Google Flow v\xE0 t\u1EAFt VPN/proxy n\u1EBFu \u0111ang b\u1EADt.",
+          error.message,
           false
         );
         err.reason = "PUBLIC_ERROR_UNUSUAL_ACTIVITY";

@@ -33,19 +33,21 @@ export class RuntimeError extends Error {
   readonly code: RuntimeErrorCode;
   readonly retryable: boolean;
   readonly nodeId?: string;
+  readonly reason?: string;
   readonly diagnosticId: string;
 
-  constructor(code: RuntimeErrorCode, message: string, options: { retryable?: boolean; nodeId?: string } = {}) {
+  constructor(code: RuntimeErrorCode, message: string, options: { retryable?: boolean; nodeId?: string; reason?: string } = {}) {
     super(message);
     this.name = 'RuntimeError';
     this.code = code;
     this.retryable = options.retryable ?? RETRYABLE.has(code);
     this.nodeId = options.nodeId;
+    this.reason = options.reason;
     this.diagnosticId = `fg-${code.toLowerCase().replaceAll('_', '-')}-${Math.random().toString(36).slice(2, 10)}`;
   }
 
   toBridgeError(): BridgeError {
-    return { code: this.code, message: this.message, retryable: this.retryable };
+    return { code: this.code, message: this.message, retryable: this.retryable, ...(this.reason ? { reason: this.reason } : {}) };
   }
 }
 
@@ -74,10 +76,10 @@ export function toRuntimeError(error: unknown, nodeId?: string): RuntimeError {
   const normalized: BridgeError = error instanceof RuntimeError
     ? error.toBridgeError()
     : normalizeError(error);
-  const combined = `${normalized.code} ${normalized.message}`;
+  const combined = `${normalized.code} ${normalized.message} ${normalized.reason ?? ''}`;
   let code = CODE_MAP[normalized.code];
   if (!code) {
-    if (combined.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')) {
+    if (normalized.reason === 'PUBLIC_ERROR_UNUSUAL_ACTIVITY' || combined.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')) {
       code = 'PROVIDER_ERROR';
     } else if (combined.includes('reCAPTCHA') || combined.includes('UNUSUAL_ACTIVITY')) {
       code = 'CAPTCHA_REQUIRED';
@@ -85,5 +87,5 @@ export function toRuntimeError(error: unknown, nodeId?: string): RuntimeError {
       code = 'PROVIDER_ERROR';
     }
   }
-  return new RuntimeError(code, normalized.message, { retryable: normalized.retryable, nodeId });
+  return new RuntimeError(code, normalized.message, { retryable: normalized.retryable, nodeId, reason: normalized.reason });
 }

@@ -67,10 +67,11 @@ function timeout(source: () => Promise<unknown>, maxMs: number): Promise<unknown
   ]);
 }
 
-function makeBridgeError(code: string, message: string, retryable: boolean) {
-  const error = new Error(message) as Error & { code: string; retryable: boolean };
+function makeBridgeError(code: string, message: string, retryable: boolean, reason?: string) {
+  const error = new Error(message) as Error & { code: string; retryable: boolean; reason?: string };
   error.code = code;
   error.retryable = retryable;
+  if (reason) error.reason = reason;
   return error;
 }
 
@@ -122,7 +123,7 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
     const work = timeout(() => this.transport.request<T>(type, payload), maxMs);
     const response = (await raceWithSignal(work, abortSignal)) as BridgeResponse<T>;
     if (!response) throw makeBridgeError('BRIDGE_UNAVAILABLE', 'No response from service worker.', true);
-    if (!response.ok) throw makeBridgeError(response.error?.code ?? 'PROVIDER_ERROR', response.error?.message ?? 'Provider error', response.error?.retryable ?? false);
+    if (!response.ok) throw makeBridgeError(response.error?.code ?? 'PROVIDER_ERROR', response.error?.message ?? 'Provider error', response.error?.retryable ?? false, response.error?.reason);
     return response.data as T;
   }
 
@@ -166,7 +167,7 @@ export class RealGoogleFlowAdapter implements GoogleFlowAdapter {
       const work = timeout(() => this.transport.request('FLOWGRAPH_GENERATE', payload, requestId), this.generateTimeoutMs);
       const response = (await raceWithSignal(work, abortSignal)) as BridgeResponse<NormalizedMediaRef>;
       if (!response) throw makeBridgeError('BRIDGE_UNAVAILABLE', 'No response from service worker.', true);
-      if (!response.ok) throw makeBridgeError(response.error?.code ?? 'PROVIDER_ERROR', response.error?.message ?? 'Provider error', response.error?.retryable ?? false);
+      if (!response.ok) throw makeBridgeError(response.error?.code ?? 'PROVIDER_ERROR', response.error?.message ?? 'Provider error', response.error?.retryable ?? false, response.error?.reason);
       const ref = response.data as NormalizedMediaRef;
       if (ref?.mediaId) onMediaId?.(ref.mediaId);
       return ref;

@@ -71,6 +71,7 @@ export interface BridgeError {
   code: string;
   message: string;
   retryable?: boolean;
+  reason?: string;
 }
 
 export function makeRequest<T = unknown>(type: RequestType, payload?: unknown, requestId = PRE_SIGNED_REQUEST_ID): BridgeRequest {
@@ -81,21 +82,30 @@ export function makeResponse<T = unknown>(requestId: string, data?: T): BridgeRe
   return { requestId, ok: true, data };
 }
 
-export function makeError<T = unknown>(requestId: string, code: string, message: string, retryable = false): BridgeResponse<T> {
+export function makeError<T = unknown>(requestId: string, code: string, message: string, retryable = false, reason?: string): BridgeResponse<T> {
   reportDiagnostic('RPC_FAILED');
-  return { requestId, ok: false, error: { code, message, retryable } };
+  return { requestId, ok: false, error: { code, message, retryable, ...(reason ? { reason } : {}) } };
 }
 
 export function normalizeError(error: unknown): BridgeError {
   if (typeof error === 'object' && error !== null && 'code' in error && 'message' in error) {
-    const candidate = error as { code: unknown; message: unknown; retryable?: unknown };
+    const candidate = error as { code: unknown; message: unknown; retryable?: unknown; reason?: unknown };
     return {
       code: String(candidate.code ?? 'UNKNOWN'),
       message: String(candidate.message ?? 'Unknown error'),
       retryable: Boolean(candidate.retryable),
+      ...(typeof candidate.reason === 'string' && candidate.reason ? { reason: candidate.reason } : {}),
     };
   }
-  if (error instanceof Error) return { code: 'UNKNOWN', message: error.message, retryable: false };
+  if (error instanceof Error) {
+    const candidate = error as Error & { reason?: unknown };
+    return {
+      code: 'UNKNOWN',
+      message: error.message,
+      retryable: false,
+      ...(typeof candidate.reason === 'string' && candidate.reason ? { reason: candidate.reason } : {}),
+    };
+  }
   return { code: 'UNKNOWN', message: String(error), retryable: false };
 }
 

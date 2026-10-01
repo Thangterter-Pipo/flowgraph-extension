@@ -557,7 +557,7 @@ function toFlowBatchBridgeError(error: unknown): Error & { code?: string; retrya
     if (detailStr.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')) {
       const err = bridgeError(
         'PROVIDER_ERROR',
-        'Google Flow từ chối yêu cầu do phát hiện hoạt động bất thường (PUBLIC_ERROR_UNUSUAL_ACTIVITY). Hãy tạm dừng vài phút, kiểm tra tab Google Flow và tắt VPN/proxy nếu đang bật.',
+        error.message,
         false,
       ) as Error & { code?: string; retryable?: boolean; reason?: string };
       err.reason = 'PUBLIC_ERROR_UNUSUAL_ACTIVITY';
