@@ -2570,8 +2570,8 @@ function Studio() {
       ...node,
       data: {
         ...node.data,
-        status: 'idle' as const,
-        result: undefined,
+        status: node.data.result ? ('success' as const) : (node.data.status || ('idle' as const)),
+        result: node.data.result,
         cacheHit: false,
         errorMessage: undefined,
         errorCode: undefined,

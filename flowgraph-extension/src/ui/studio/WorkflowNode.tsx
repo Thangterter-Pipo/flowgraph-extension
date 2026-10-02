@@ -391,7 +391,7 @@ function SafeVideoPlayer({
 
   React.useEffect(() => {
     let active = true;
-    const targetUrl = posterUrl || (src.includes('/asb/') ? src : null);
+    const targetUrl = posterUrl || (src.startsWith('data:image/') ? src : src.includes('/asb/') ? src : null);
     if (!targetUrl) return;
 
     if (targetUrl.startsWith('blob:') || targetUrl.startsWith('data:')) {
@@ -415,7 +415,7 @@ function SafeVideoPlayer({
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      {blobPoster && !isPlaying && (
+      {blobPoster && (
         <img
           src={blobPoster}
           alt="Video Thumbnail"
@@ -425,13 +425,14 @@ function SafeVideoPlayer({
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            zIndex: 0,
+            zIndex: isPlaying ? 0 : 1,
+            pointerEvents: 'none',
           }}
         />
       )}
       <video
         ref={videoRef}
-        src={src}
+        src={src.startsWith('data:image/') ? undefined : src}
         controls={isPlaying}
         muted
         playsInline
