@@ -48,8 +48,24 @@ npm run build
 ### 2. Tải Extension vào Trình Duyệt Chrome / Cốc Cốc
 1. Mở Chrome và truy cập: `chrome://extensions`
 2. Bật cờ **Developer mode (Chế độ dành cho nhà phát triển)** ở góc trên bên phải.
-3. Bấm **Load unpacked (Tải tiện ích đã giải nén)** và chọn thư mục `dist/` vừa build.
-4. Mở trang Google Flow ([`labs.google/fx/tools/flow`](https://labs.google/fx/tools/flow)) để trải nghiệm FlowGraph Extension!
+3. Bấm **Load unpacked (Tải tiện ích đã giải nén)** và chọn thư mục `dist/` vừa build (hoặc giải nén từ bản release ZIP).
+4. Mở trang Google Flow ([`flow.google.com`](https://flow.google.com/)) để trải nghiệm FlowGraph Extension!
+
+---
+
+## 💬 Báo Cáo Lỗi & Đề Xuất Phát Triển (Issues)
+
+Dự án tiếp nhận mọi phản hồi, đóng góp và báo cáo lỗi trực tiếp qua **[GitHub Issues](https://github.com/Thangterter-Pipo/flowgraph-extension/issues)**:
+* 🐛 **Báo cáo lỗi (Bug Report)**: Gặp trục trặc khi chạy node, giao diện hoặc kết nối Google Flow? Vui lòng tạo issue kèm ảnh chụp màn hình minh chứng.
+* 💡 **Đề xuất tính năng (Feature Request)**: Bạn cần thêm node xử lý mới, preset tỷ lệ khung hình hay công cụ hỗ trợ nào? Hãy mở issue để đội ngũ phát triển xem xét và triển khai!
+
+---
+
+## 🔒 Cam Kết Bảo Mật & Quyền Riêng Tư (Privacy)
+* Extension hoạt động **100% Client-side** trên trình duyệt của người dùng.
+* Chỉ tương tác với tab `flow.google.com` của chính bạn.
+* **Tuyệt đối KHÔNG thu thập, lưu trữ hay gửi cookie/mật khẩu Google** ra bất kỳ máy chủ bên ngoài nào.
+* Toàn bộ tài nguyên ảnh/video sinh ra thuộc quyền sở hữu của bạn và lưu trên tài khoản Google cá nhân.
 
 ---
 
