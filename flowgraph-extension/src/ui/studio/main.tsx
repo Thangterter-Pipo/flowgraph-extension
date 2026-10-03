@@ -147,7 +147,7 @@ import {
 } from './flowModelRegistry';
 import { inputPort, outputPort, portTypesCompatible, portsForKind } from './ports';
 import { useStudioConnection, type ActiveProjectState, computeRunBlockReason, type RunBlockReason } from './useStudioConnection';
-import { ConnectionPill, ProjectDropdown, ProjectGateOverlay, accountPillLabel, flowPillLabel } from './ProjectGate';
+import { ConnectionPill, ProjectGateOverlay, accountPillLabel } from './ProjectGate';
 import {
   PENDING_RUN_ID,
   acceptRuntimeEvent,
@@ -2679,19 +2679,12 @@ function Studio() {
       <header className="studio-topbar">
         <div className="fg-brand"><div className="fg-logo"><Workflow size={19} /></div><div className="fg-brand-title">FlowGraph <span>Studio</span></div></div>
         <div className="topbar-actions">
-          <ProjectDropdown connection={connection} runLocked={isProjectSelectLocked(runStatus)} />
           <ConnectionPill
             state={accountState === 'CONNECTED' ? 'online' : accountState === 'CHECKING' ? 'checking' : accountState === 'SESSION_EXPIRED' ? 'warn' : accountState === 'DISCONNECTED' ? 'offline' : 'error'}
             label={accountPillLabel(accountState, connection.account.email, connection.credits?.credits)}
             onRefresh={() => void connection.refreshAccount()}
             icon={<CircleUserRound size={14} />}
             className="account-pill"
-          />
-          <ConnectionPill
-            state={flowState === 'READY' || flowState === 'CONNECTED' ? 'online' : flowState === 'CHECKING' ? 'checking' : flowState === 'PROJECT_REQUIRED' ? 'warn' : flowState === 'ERROR' ? 'error' : 'offline'}
-            label={flowPillLabel(flowState, connection.flow.projectId)}
-            onRefresh={() => void connection.refreshFlow()}
-            icon={<Workflow size={14} />}
           />
           <button className="fg-btn" onClick={saveCurrent}><Save size={14} /> Lưu</button>
           <button className="fg-btn" onClick={exportCurrent}><FileDown size={14} /> Xuất</button>
