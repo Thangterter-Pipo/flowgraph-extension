@@ -27,7 +27,6 @@
     "@vitejs/plugin-react": "^4.3.4",
     "archiver": "^8.0.0",
     "esbuild": "0.25.12",
-    "javascript-obfuscator": "^5.8.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vitest": "^2.1.8"
