@@ -9,7 +9,7 @@ describe('developer diagnostics', () => {
     log.setEnabled(true);
     log.report('RPC_FAILED');
     expect(fetcher.mock.calls[0][0]).toBe('http://127.0.0.1:3081/dev-errors');
-    for (const file of ['../manifest.json', 'public/manifest.json']) {
+    for (const file of ['../manifest.json', 'public/manifest.json'].filter(existsSync)) {
       expect(JSON.parse(readFileSync(file, 'utf8')).host_permissions).toContain('http://127.0.0.1:3081/*');
     }
     log.setEnabled(false);

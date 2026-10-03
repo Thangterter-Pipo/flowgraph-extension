@@ -96,6 +96,20 @@ const FLOW_CHECKING: FlowStatus = { state: 'CHECKING' };
 
 function loadPersistedProject(): ActiveProjectState | undefined {
   try {
+    if (typeof window !== 'undefined' && window.location?.search) {
+      const params = new URLSearchParams(window.location.search);
+      const queryId = params.get('projectId');
+      if (queryId) {
+        const title = params.get('title') || 'Flow Project';
+        const project: ActiveProjectState = {
+          projectId: queryId,
+          projectName: title,
+          selectedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(ACTIVE_PROJECT_KEY, JSON.stringify(project));
+        return project;
+      }
+    }
     const raw = localStorage.getItem(ACTIVE_PROJECT_KEY);
     if (!raw) return undefined;
     const parsed = JSON.parse(raw) as ActiveProjectState;

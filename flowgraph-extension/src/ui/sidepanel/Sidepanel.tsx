@@ -150,6 +150,18 @@ export function SidepanelView({ state, controller, lastRun, historyError }: {
   const [creating, setCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>(state.flow.projectId ?? '');
+
+  const lastFlowProjectRef = useRef<string | undefined>(state.flow.projectId);
+  useEffect(() => {
+    const currentId = state.flow.projectId;
+    if (state.flow.state === 'READY' && currentId) {
+      if (lastFlowProjectRef.current !== undefined && lastFlowProjectRef.current !== currentId) {
+        const proj = state.projects.find((p) => p.projectId === currentId);
+        void openStudio(currentId, proj?.projectTitle);
+      }
+      lastFlowProjectRef.current = currentId;
+    }
+  }, [state.flow.projectId, state.flow.state, state.projects]);
   const credits = creditsView(state.credits, state.refreshing);
   const latestError = state.logs.find((log) => log.error);
   const projectLocked = state.running || state.selecting;
@@ -215,10 +227,19 @@ export function SidepanelView({ state, controller, lastRun, historyError }: {
             const hue = Array.from(project.projectId).reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 360, 0);
             return <li className={`sp-project-card${selected ? ' is-selected' : ''}`} key={project.projectId}>
               <button type="button" className="sp-project-select" disabled={projectLocked} aria-label={`Chọn dự án ${title}`} aria-pressed={selected}
-                onClick={() => { setSelectedProjectId(project.projectId); void controller.selectProject(project.projectId); }}>
+                onClick={() => {
+                  setSelectedProjectId(project.projectId);
+                  void controller.selectProject(project.projectId);
+                  void action(() => openStudio(project.projectId, title));
+                }}>
                 <ProjectThumbnail url={project.thumbnailUrl} title={title} hue={hue} />
                 <span className="sp-project-info"><strong title={title}>{title}</strong>{selected && <span className="sp-selected"><Check size={11} aria-hidden="true" />Đang chọn</span>}
                   {date && Number.isFinite(date.getTime()) && <span className="sp-meta">Tạo {date.toLocaleDateString('vi-VN')}</span>}</span>
+                <span className="sp-open-studio-btn" title={`Mở Studio cho ${title}`}>
+                  <Workflow size={13} aria-hidden="true" />
+                  <span>Mở Studio</span>
+                  <ArrowUpRight size={12} aria-hidden="true" />
+                </span>
               </button>
               <div className="sp-card-footer"><code title={project.projectId}>ID · {formatTruncatedUuid(project.projectId)}</code><CopyButton text={project.projectId} label="Sao chép ID" /></div>
             </li>;
@@ -228,7 +249,7 @@ export function SidepanelView({ state, controller, lastRun, historyError }: {
       </>}
     </div>
     {connected && !checking ? <footer className="sp-bottom-actions">
-      <button type="button" className="sp-studio sp-wide" disabled={opening || !selectedProjectId} title={!selectedProjectId ? 'Chọn hoặc tạo Project trước khi mở Studio' : undefined} onClick={() => void action(openStudio)}><Workflow size={19} aria-hidden="true" />Mở Studio<ArrowUpRight size={17} aria-hidden="true" /></button>
+      <button type="button" className="sp-studio sp-wide" disabled={opening || !selectedProjectId} title={!selectedProjectId ? 'Chọn hoặc tạo Project trước khi mở Studio' : undefined} onClick={() => void action(() => openStudio(selectedProjectId))}><Workflow size={19} aria-hidden="true" />Mở Studio<ArrowUpRight size={17} aria-hidden="true" /></button>
       <div className="sp-utilities"><button type="button" disabled={opening} onClick={() => void action(openFlow)}><ExternalLink size={15} aria-hidden="true" />Trang Flow</button>
         <button type="button" disabled={opening} onClick={() => void action(async () => {
           if (typeof chrome === 'undefined' || !chrome.downloads?.showDefaultFolder) throw new Error('Không mở được thư mục tải xuống.');
@@ -239,7 +260,16 @@ export function SidepanelView({ state, controller, lastRun, historyError }: {
       onClose={() => setShowCreate(false)} onCreate={async title => {
         if (creating || projectLocked) return;
         setCreating(true);
-        try { await controller.createProject(title); if (!controller.getSnapshot().projectsError) { setSelectedProjectId(controller.getSnapshot().flow.projectId ?? ''); setShowCreate(false); } }
+        try {
+          await controller.createProject(title);
+          const snap = controller.getSnapshot();
+          if (!snap.projectsError) {
+            const nextId = snap.flow.projectId || snap.pendingCreated?.projectId || '';
+            setSelectedProjectId(nextId);
+            setShowCreate(false);
+            if (nextId) void action(() => openStudio(nextId, title));
+          }
+        }
         finally { setCreating(false); }
       }} />}
   </main>;
