@@ -236,8 +236,8 @@ describe('Film workflow persistence — project/shot isolation', () => {
 
     expect(readSavedWorkflow('project-b', 'main', storage)).toBeUndefined();
     const restoredB = restoreWorkflow('project-b', 'main', storage);
-    expect(restoredB.nodes[0].data.title).not.toBe('Project A Hero');
-    expect(restoredB.nodes[0].data.result?.mediaId).not.toBe('media-a');
+    expect(restoredB.nodes).toEqual([]);
+    expect(restoredB.edges).toEqual([]);
     expect(restoreWorkflow('project-a', 'main', storage).nodes[0].data.title).toBe('Project A Hero');
   });
 });

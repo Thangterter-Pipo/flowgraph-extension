@@ -1528,14 +1528,13 @@ function Studio() {
     pushHistory(nodes, edges);
     cancelRef.current = true;
     if (timerRef.current) window.clearInterval(timerRef.current);
-    setNodes(cloneInitialNodes());
-    setEdges(cloneFlowEdges(initialEdges));
+    setNodes([]);
+    setEdges([]);
     setRunStatus('ready');
     setElapsed(0);
     setValidationIssues([]);
     setRunError(undefined);
-    setSelectedNodeId('2');
-    // setConfirmResetOpen(false);
+    setSelectedNodeId('');
     window.setTimeout(() => reactFlow?.fitView({ padding: .18, duration: 350 }), 0);
   }, [nodes, edges, pushHistory, reactFlow, setEdges, setNodes, runStatus]);
 
@@ -2918,6 +2917,23 @@ function Studio() {
                       color="var(--canvas-dot)"
                     />
                   </ReactFlow>
+                  {nodes.length === 0 && (
+                    <div className="canvas-empty-state" style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      pointerEvents: 'none',
+                      textAlign: 'center',
+                      zIndex: 2,
+                    }}>
+                      <div style={{ fontSize: 26, marginBottom: 8, opacity: 0.5 }}>✦</div>
+                      <h4 style={{ margin: '0 0 6px 0', fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>Dự án mới · Canvas trống</h4>
+                      <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)', maxWidth: 320, lineHeight: 1.5 }}>
+                        Kéo thả node từ thanh công cụ bên trái hoặc chọn <strong>Mẫu</strong> ở góc trên để bắt đầu quy trình sáng tạo.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </ProjectGateOverlay>
             </section>

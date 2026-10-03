@@ -237,7 +237,7 @@ export function restoreWorkflow(
         }
         return restored;
       })
-    : cloneInitialNodes();
-  const edges = saved && Array.isArray(saved.edges) ? saved.edges : initialEdges;
+    : [];
+  const edges = saved && Array.isArray(saved.edges) ? saved.edges : [];
   return { nodes, edges, name: saved?.name };
 }
