@@ -5243,11 +5243,22 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
 
 /* Video: one external zoom action; keep only a quiet play affordance over media. */
 .media-first-node .player-overlay {
-  padding: 0 !important;
+  padding: 6px !important;
   background: transparent !important;
 }
+.media-first-node .player-overlay.is-playing {
+  pointer-events: none !important;
+}
 .media-first-node .player-meta-bottom {
-  display: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 4px 8px !important;
+  border-radius: 4px !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+  color: #fff !important;
+  font-size: 10px !important;
+  z-index: 6 !important;
 }
 .media-first-node .play-button-glass {
   width: 42px !important;
@@ -5257,6 +5268,7 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
   background: rgba(15, 23, 42, 0.58) !important;
   backdrop-filter: blur(8px) !important;
   box-shadow: 0 3px 12px rgba(15, 23, 42, 0.18) !important;
+  pointer-events: auto !important;
 }
 
 /* Prompt / Gemini are text-first surfaces but use the same external-node grammar. */

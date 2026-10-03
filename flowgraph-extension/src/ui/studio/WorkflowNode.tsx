@@ -876,20 +876,77 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
 
   const handleDownloadClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (result?.previewUrl) {
-      const a = document.createElement('a');
-      a.href = result.previewUrl;
-      a.download = result.fileName ?? 'flowgraph-video.mp4';
-      a.click();
+    const targetUrl = recoveredVideoUrl || result?.previewUrl;
+    if (targetUrl) {
+      if (targetUrl.startsWith('data:')) {
+        fetch(targetUrl)
+          .then((res) => res.blob())
+          .then((blob) => {
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = result?.fileName ?? 'Buu_Thiep_Tu_Ngay_Mai_Master_Film.mp4';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
+          })
+          .catch(() => {
+            const a = document.createElement('a');
+            a.href = targetUrl;
+            a.download = result?.fileName ?? 'Buu_Thiep_Tu_Ngay_Mai_Master_Film.mp4';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          });
+      } else {
+        const a = document.createElement('a');
+        a.href = targetUrl;
+        a.download = result?.fileName ?? 'Buu_Thiep_Tu_Ngay_Mai_Master_Film.mp4';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     }
   };
 
   const handleOpenClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (result?.previewUrl) {
-      window.open(result.previewUrl, '_blank');
+    const targetUrl = recoveredVideoUrl || result?.previewUrl;
+    if (!targetUrl) return;
+
+    // 1. If video element exists and is playable, prioritize fullscreen toggle for seamless view
+    if (videoRef.current && typeof videoRef.current.requestFullscreen === 'function') {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+        return;
+      }
+      videoRef.current.requestFullscreen().then(() => {
+        if (videoRef.current?.paused) {
+          videoRef.current.play().catch(() => {});
+        }
+      }).catch(() => {
+        openMediaInCleanTab(targetUrl);
+      });
+      return;
     }
+
+    openMediaInCleanTab(targetUrl);
   };
+
+  function openMediaInCleanTab(url: string) {
+    if (url.startsWith('data:')) {
+      fetch(url)
+        .then((res) => res.blob())
+        .then((blob) => {
+          const blobUrl = URL.createObjectURL(blob);
+          window.open(blobUrl, '_blank');
+        })
+        .catch(() => window.open(url, '_blank'));
+    } else {
+      window.open(url, '_blank');
+    }
+  }
 
   return (
     <div
