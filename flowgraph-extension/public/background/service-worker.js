@@ -2574,11 +2574,68 @@
     throw bridgeError("PROJECT_LIST_UNAVAILABLE", "H\xE3y m\u1EDF trang danh s\xE1ch t\u1EA1i https://flow.google.com/ r\u1ED3i th\u1EED l\u1EA1i.", false);
   }
   async function handleProjectCreate(projectTitle) {
-    const json = await fxApiPost("trpc/project.createProject", buildCreateProjectRequest(projectTitle));
-    const result = unwrapTrpc(json);
-    if (!result?.projectId) throw bridgeError("PROVIDER_ERROR", "Project create returned no projectId", false);
-    activeProjectId = result.projectId;
-    return { projectId: result.projectId, projectTitle: result.projectInfo?.projectTitle ?? projectTitle };
+    try {
+      const json = await fxApiPost("trpc/project.createProject", buildCreateProjectRequest(projectTitle));
+      const result = unwrapTrpc(json);
+      if (result?.projectId) {
+        activeProjectId = result.projectId;
+        return { projectId: result.projectId, projectTitle: result.projectInfo?.projectTitle ?? projectTitle };
+      }
+    } catch {
+    }
+    const tab = await findFlowTab();
+    if (!tab || tab.id === void 0) {
+      throw bridgeError("NO_FLOW_TAB", "Ch\u01B0a m\u1EDF tab Google Flow. H\xE3y m\u1EDF https://flow.google.com/ r\u1ED3i th\u1EED l\u1EA1i.", false);
+    }
+    const tabId = tab.id;
+    const currentUrl = tab.url || "";
+    if (!/^https:\/\/flow\.google\.com\/?(\?.*)?$/.test(currentUrl)) {
+      await chrome.tabs.update(tabId, { url: "https://flow.google.com/" });
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+    }
+    let clicked = false;
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const res = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const btn = document.querySelector(".new-project-button") || Array.from(document.querySelectorAll("button, a")).find((el) => {
+            const t = el.innerText?.toLowerCase() || "";
+            const aria = el.getAttribute("aria-label")?.toLowerCase() || "";
+            return t.includes("d\u1EF1 \xE1n m\u1EDBi") || t.includes("new project") || aria.includes("new project");
+          });
+          if (btn) {
+            btn.click();
+            return true;
+          }
+          return false;
+        }
+      }).catch(() => null);
+      if (res?.[0]?.result) {
+        clicked = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    if (!clicked) {
+      throw bridgeError("PROVIDER_ERROR", "Kh\xF4ng t\xECm th\u1EA5y n\xFAt t\u1EA1o d\u1EF1 \xE1n tr\xEAn tab Google Flow.", false);
+    }
+    let createdProjectId;
+    for (let attempt = 0; attempt < 25; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const freshTab = await chrome.tabs.get(tabId).catch(() => null);
+      const url = freshTab?.url || "";
+      const match = url.match(/\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      if (match) {
+        createdProjectId = match[1];
+        break;
+      }
+    }
+    if (!createdProjectId) {
+      throw bridgeError("PROVIDER_ERROR", "Google Flow ch\u01B0a \u0111i\u1EC1u h\u01B0\u1EDBng \u0111\u1EBFn d\u1EF1 \xE1n m\u1EDBi.", false);
+    }
+    activeProjectId = createdProjectId;
+    const finalTitle = projectTitle.trim() || "D\u1EF1 \xE1n m\u1EDBi";
+    return { projectId: createdProjectId, projectTitle: finalTitle };
   }
   async function syncAndVerifyBeforeGenerate(tab, payload) {
     if (tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);

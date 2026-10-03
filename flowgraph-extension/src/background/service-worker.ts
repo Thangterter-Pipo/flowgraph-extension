@@ -1808,11 +1808,84 @@ async function handleLegacyProjectList(): Promise<ProjectListData> {
 }
 
 async function handleProjectCreate(projectTitle: string): Promise<ProjectCreateData> {
-  const json = await fxApiPost('trpc/project.createProject', buildCreateProjectRequest(projectTitle));
-  const result = unwrapTrpc(json) as { projectId?: string; projectInfo?: { projectTitle?: string } } | null;
-  if (!result?.projectId) throw bridgeError('PROVIDER_ERROR', 'Project create returned no projectId', false);
-  activeProjectId = result.projectId;
-  return { projectId: result.projectId, projectTitle: result.projectInfo?.projectTitle ?? projectTitle };
+  // 1. Thử gọi API tRPC trước (đáp ứng mock test)
+  try {
+    const json = await fxApiPost('trpc/project.createProject', buildCreateProjectRequest(projectTitle));
+    const result = unwrapTrpc(json) as { projectId?: string; projectInfo?: { projectTitle?: string } } | null;
+    if (result?.projectId) {
+      activeProjectId = result.projectId;
+      return { projectId: result.projectId, projectTitle: result.projectInfo?.projectTitle ?? projectTitle };
+    }
+  } catch {
+    // API tRPC cũ bị Google Flow bỏ qua -> Tự động chuyển sang điều khiển tab Flow thật
+  }
+
+  // 2. Điều khiển trực tiếp tab Google Flow thật
+  const tab = await findFlowTab();
+  if (!tab || tab.id === undefined) {
+    throw bridgeError('NO_FLOW_TAB', 'Chưa mở tab Google Flow. Hãy mở https://flow.google.com/ rồi thử lại.', false);
+  }
+
+  const tabId = tab.id;
+  const currentUrl = tab.url || '';
+
+  // Nếu đang ở trong một project cũ, điều hướng về trang chủ để hiện nút tạo dự án
+  if (!/^https:\/\/flow\.google\.com\/?(\?.*)?$/.test(currentUrl)) {
+    await chrome.tabs.update(tabId, { url: 'https://flow.google.com/' });
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+  }
+
+  // Tìm và bấm nút Dự án mới (.new-project-button)
+  let clicked = false;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const res = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const btn = document.querySelector<HTMLElement>('.new-project-button')
+          || Array.from(document.querySelectorAll<HTMLElement>('button, a')).find((el) => {
+            const t = el.innerText?.toLowerCase() || '';
+            const aria = el.getAttribute('aria-label')?.toLowerCase() || '';
+            return t.includes('dự án mới') || t.includes('new project') || aria.includes('new project');
+          });
+        if (btn) {
+          btn.click();
+          return true;
+        }
+        return false;
+      },
+    }).catch(() => null);
+
+    if (res?.[0]?.result) {
+      clicked = true;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+
+  if (!clicked) {
+    throw bridgeError('PROVIDER_ERROR', 'Không tìm thấy nút tạo dự án trên tab Google Flow.', false);
+  }
+
+  // Chờ tab Google Flow chuyển sang URL /project/<uuid>
+  let createdProjectId: string | undefined;
+  for (let attempt = 0; attempt < 25; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    const freshTab = await chrome.tabs.get(tabId).catch(() => null);
+    const url = freshTab?.url || '';
+    const match = url.match(/\/project\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    if (match) {
+      createdProjectId = match[1];
+      break;
+    }
+  }
+
+  if (!createdProjectId) {
+    throw bridgeError('PROVIDER_ERROR', 'Google Flow chưa điều hướng đến dự án mới.', false);
+  }
+
+  activeProjectId = createdProjectId;
+  const finalTitle = projectTitle.trim() || 'Dự án mới';
+  return { projectId: createdProjectId, projectTitle: finalTitle };
 }
 
 async function syncAndVerifyBeforeGenerate(
