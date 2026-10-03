@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "npm run build:bridge && tsc -b && vite build",
     "build:bridge": "node scripts/build-bridge.mjs",
+    "package": "npm run build && node scripts/package-extension.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
@@ -24,7 +25,9 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "archiver": "^8.0.0",
     "esbuild": "0.25.12",
+    "javascript-obfuscator": "^5.8.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "vitest": "^2.1.8"
