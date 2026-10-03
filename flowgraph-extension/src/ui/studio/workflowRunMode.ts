@@ -51,6 +51,7 @@ function validValue(value: RuntimeValue | undefined, projectId: string): boolean
 
 function validOutputs(node: FlowNode, outputs: Record<string, RuntimeValue>, projectId: string): boolean {
   return portsForKind(node.data.kind).outputs.every((port) => {
+    if (port.required === false && !outputs[port.id]) return true;
     const value = outputs[port.id];
     if (!validValue(value, projectId)) return false;
     const expected = port.type.toLowerCase();

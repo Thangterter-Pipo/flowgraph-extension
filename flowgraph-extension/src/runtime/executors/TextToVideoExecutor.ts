@@ -39,7 +39,18 @@ export class TextToVideoExecutor implements NodeExecutor {
     const prompt = asText(context.inputs.prompt) ?? String(context.config.promptSource === 'Custom' ? context.config.customPrompt ?? '' : '');
     if (!prompt) throw new RuntimeError('INVALID_INPUT', 'Text-to-Video received no prompt input.', { nodeId: context.nodeId });
     const projectId = context.context.activeProject.projectId;
-    const modelKey = String(context.config.usageKey ?? context.config.model ?? 'veo_3_1_t2v_fast');
+    const isDraft = context.context.qualityMode === 'DRAFT';
+    const duration = isDraft
+      ? Math.min(context.config.duration !== undefined ? Number.parseInt(String(context.config.duration), 10) : 4, 4)
+      : (context.config.duration !== undefined ? Number.parseInt(String(context.config.duration), 10) : undefined);
+    const targetResolution = isDraft
+      ? '720p'
+      : (context.config.targetResolution !== undefined || context.config.resolution !== undefined
+        ? String(context.config.targetResolution ?? context.config.resolution)
+        : undefined);
+    const modelKey = isDraft
+      ? 'veo_3_1_t2v_fast'
+      : String(context.config.usageKey ?? context.config.model ?? 'veo_3_1_t2v_fast');
 
     let ref;
     try {
@@ -50,10 +61,8 @@ export class TextToVideoExecutor implements NodeExecutor {
         modelKey,
         modelLabel: context.config.model ? normalizeFlowUiModelLabel(String(context.config.model)) : undefined,
         aspectRatio: String(context.config.aspectRatio ?? '16:9 (Landscape)'),
-        durationSeconds: context.config.duration !== undefined ? Number.parseInt(String(context.config.duration), 10) : undefined,
-        targetResolution: context.config.targetResolution !== undefined || context.config.resolution !== undefined
-          ? String(context.config.targetResolution ?? context.config.resolution)
-          : undefined,
+        durationSeconds: duration,
+        targetResolution,
         batchCount: context.config.batchCount !== undefined ? Number.parseInt(String(context.config.batchCount).replace(/^x/i, ''), 10) : undefined,
         seed: context.config.seed !== undefined ? Number(context.config.seed) : undefined,
       }, context.context, abortSignal);
@@ -72,8 +81,15 @@ export class TextToVideoExecutor implements NodeExecutor {
     // fall back to the poller below.
     if (ref.completedViaUi || ref.previewUrl) {
       const media = mediaRefFromPayload({ ...ref, previewUrl: ref.previewUrl });
+      const lastFrameMedia = mediaRefFromPayload({
+        mediaId: ref.mediaId,
+        projectId: ref.projectId,
+        previewUrl: (ref as { thumbnailUrl?: string }).thumbnailUrl || ref.previewUrl,
+        type: 'IMAGE',
+        provider: 'GOOGLE_FLOW',
+      });
       return {
-        outputs: { video: media },
+        outputs: { video: media, lastFrame: lastFrameMedia, image: lastFrameMedia },
         result: {
           type: 'video',
           mediaId: ref.mediaId,
@@ -95,10 +111,17 @@ export class TextToVideoExecutor implements NodeExecutor {
       if (status.status === 'FAILED') throw new RuntimeError('MEDIA_FAILED', status.errorMessage ?? 'Video generation failed.', { nodeId: context.nodeId });
       if (status.status === 'UNKNOWN') throw new RuntimeError('TIMEOUT', status.errorMessage ?? 'Polling timed out waiting for the generated video.', { nodeId: context.nodeId });
 
-      const pollMedia = status.data as { previewUrl?: string } | undefined;
+      const pollMedia = status.data as { previewUrl?: string; thumbnailUrl?: string } | undefined;
       const media = mediaRefFromPayload({ ...ref, previewUrl: pollMedia?.previewUrl });
+      const lastFrameMedia = mediaRefFromPayload({
+        mediaId: ref.mediaId,
+        projectId: ref.projectId,
+        previewUrl: pollMedia?.thumbnailUrl || pollMedia?.previewUrl || '',
+        type: 'IMAGE',
+        provider: 'GOOGLE_FLOW',
+      });
       return {
-        outputs: { video: media },
+        outputs: { video: media, lastFrame: lastFrameMedia, image: lastFrameMedia },
         result: {
           type: 'video',
           mediaId: ref.mediaId,

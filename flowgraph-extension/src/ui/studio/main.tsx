@@ -641,6 +641,22 @@ function Studio() {
   const [runStatus, setRunStatus] = useState<RunStatus>('ready');
   const [runMenuOpen, setRunMenuOpen] = useState(false);
   const [runFeedback, setRunFeedback] = useState('');
+  const [qualityMode, setQualityModeState] = useState<'DRAFT' | 'MASTER'>(() => {
+    try {
+      return (localStorage.getItem('flowgraph.qualityMode.v1') as 'DRAFT' | 'MASTER') || 'MASTER';
+    } catch {
+      return 'MASTER';
+    }
+  });
+
+  const setQualityMode = useCallback((mode: 'DRAFT' | 'MASTER') => {
+    setQualityModeState(mode);
+    try {
+      localStorage.setItem('flowgraph.qualityMode.v1', mode);
+    } catch {}
+    setRunFeedback(mode === 'DRAFT' ? 'Đã bật chế độ Draft (Nhanh 4s/720p)' : 'Đã bật chế độ Master (Chuẩn HQ)');
+  }, []);
+
   const pendingRunModeRef = useRef<WorkflowRunMode>('continue');
   const runStartingRef = useRef(false);
 
@@ -1805,8 +1821,9 @@ function Studio() {
           bypassCacheNodeIds,
           initialOutputs,
           initialCompleted,
-          concurrency: 1, // Khóa cứng 1 luồng tuần tự để tránh debugger contention trên tab Google Flow
+          concurrency: qualityMode === 'DRAFT' ? 4 : 1,
           transportPreference: forceTransport,
+          qualityMode,
         },
         emit,
       );
@@ -2697,6 +2714,8 @@ function Studio() {
             onContinue={() => void runWorkflow(false)}
             onRestart={() => void runWorkflow(false, false, false, 'restart')}
             onRunViaFlowUi={() => void runWorkflow(false, false, true, 'continue', 'FLOW_UI')}
+            qualityMode={qualityMode}
+            onToggleQualityMode={setQualityMode}
             onStop={stopWorkflow} />
         </div>
       </header>

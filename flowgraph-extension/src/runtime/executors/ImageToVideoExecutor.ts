@@ -38,7 +38,18 @@ export class ImageToVideoExecutor implements NodeExecutor {
     const rawPrompt = asText(context.inputs.prompt) ?? String(context.config.prompt ?? '');
     const characterInput = context.inputs.characters || context.inputs.character;
     const prompt = mergeCharacterDna(rawPrompt.trim(), characterInput, 'MOTION EXECUTION');
-    const modelKey = String(context.config.usageKey ?? context.config.model ?? 'abra_i2v_8s');
+    const isDraft = context.context.qualityMode === 'DRAFT';
+    const duration = isDraft
+      ? Math.min(context.config.duration !== undefined ? Number.parseInt(String(context.config.duration), 10) : 4, 4)
+      : (context.config.duration !== undefined ? Number.parseInt(String(context.config.duration), 10) : undefined);
+    const targetResolution = isDraft
+      ? '720p'
+      : (context.config.targetResolution !== undefined || context.config.resolution !== undefined
+        ? String(context.config.targetResolution ?? context.config.resolution)
+        : undefined);
+    const modelKey = isDraft
+      ? 'abra_i2v_8s'
+      : String(context.config.usageKey ?? context.config.model ?? 'abra_i2v_8s');
 
     // Fail before touching the Flow UI. An empty prompt used to be replaced by a
     // hard-coded placeholder inside the service worker, so the run "succeeded"
@@ -61,10 +72,8 @@ export class ImageToVideoExecutor implements NodeExecutor {
         modelKey,
         modelLabel: context.config.model ? normalizeFlowUiModelLabel(String(context.config.model)) : undefined,
         aspectRatio: String(context.config.aspectRatio ?? '16:9 (Landscape)'),
-        durationSeconds: context.config.duration !== undefined ? Number.parseInt(String(context.config.duration), 10) : undefined,
-        targetResolution: context.config.targetResolution !== undefined || context.config.resolution !== undefined
-          ? String(context.config.targetResolution ?? context.config.resolution)
-          : undefined,
+        durationSeconds: duration,
+        targetResolution,
         batchCount: context.config.batchCount !== undefined ? Number.parseInt(String(context.config.batchCount).replace(/^x/i, ''), 10) : undefined,
         seed: context.config.seed !== undefined ? Number(context.config.seed) : undefined,
         startImage: { mediaId: image.mediaId },
@@ -84,8 +93,15 @@ export class ImageToVideoExecutor implements NodeExecutor {
     // fall back to the poller below.
     if (ref.completedViaUi || ref.previewUrl) {
       const media = mediaRefFromPayload({ ...ref, previewUrl: ref.previewUrl });
+      const lastFrameMedia = mediaRefFromPayload({
+        mediaId: ref.mediaId,
+        projectId: ref.projectId,
+        previewUrl: (ref as { thumbnailUrl?: string }).thumbnailUrl || ref.previewUrl,
+        type: 'IMAGE',
+        provider: 'GOOGLE_FLOW',
+      });
       return {
-        outputs: { video: media },
+        outputs: { video: media, lastFrame: lastFrameMedia, image: lastFrameMedia },
         result: {
           type: 'video',
           mediaId: ref.mediaId,
@@ -107,10 +123,17 @@ export class ImageToVideoExecutor implements NodeExecutor {
       if (status.status === 'FAILED') throw new RuntimeError('MEDIA_FAILED', status.errorMessage ?? 'Video generation failed.', { nodeId: context.nodeId });
       if (status.status === 'UNKNOWN') throw new RuntimeError('TIMEOUT', status.errorMessage ?? 'Polling timed out waiting for the generated video.', { nodeId: context.nodeId });
 
-      const pollMedia = status.data as { previewUrl?: string } | undefined;
+      const pollMedia = status.data as { previewUrl?: string; thumbnailUrl?: string } | undefined;
       const media = mediaRefFromPayload({ ...ref, previewUrl: pollMedia?.previewUrl });
+      const lastFrameMedia = mediaRefFromPayload({
+        mediaId: ref.mediaId,
+        projectId: ref.projectId,
+        previewUrl: pollMedia?.thumbnailUrl || pollMedia?.previewUrl || '',
+        type: 'IMAGE',
+        provider: 'GOOGLE_FLOW',
+      });
       return {
-        outputs: { video: media },
+        outputs: { video: media, lastFrame: lastFrameMedia, image: lastFrameMedia },
         result: {
           type: 'video',
           mediaId: ref.mediaId,

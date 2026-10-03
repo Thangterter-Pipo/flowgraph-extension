@@ -56,3 +56,31 @@ export function selectReadyStage(
     return node !== undefined && executionStage(node.kind) === minStage;
   });
 }
+
+/**
+ * Stage-aware concurrency resolution.
+ * - Stage 0 (prompt, gemini, in-memory prep): non-UI, gateway/pure in-memory tasks can run in parallel (up to 8).
+ * - Stage 4 (preview, download): client-side UI/download tasks can run in parallel (up to 4).
+ * - Stage 1, 2, 3 (Flow generation calls): defaults strictly to provider limit (1) for single-tab UI safety,
+ *   with bounded burst allowance when explicit batch transport or draft mode is enabled.
+ */
+export function resolveEffectiveConcurrencyForStage(
+  stage: number,
+  requested?: number,
+  options?: { allowBurst?: boolean; maxBurst?: number },
+): number {
+  if (stage === 0) {
+    return Math.min(Math.max(requested ?? 4, 1), 8);
+  }
+  if (stage === 4) {
+    return Math.min(Math.max(requested ?? 2, 1), 4);
+  }
+  if (options?.allowBurst && requested && requested > 1) {
+    return Math.min(requested, options.maxBurst ?? 4);
+  }
+  // Default to standard verified single-tab provider limit (1)
+  if (requested === undefined || requested === null || requested < 1) {
+    return 1;
+  }
+  return 1;
+}

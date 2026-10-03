@@ -70,7 +70,10 @@ export const nodePortCatalog: Record<string, NodePortSpec> = {
   },
   t2v: {
     inputs: [p('prompt', 'Prompt', 'PROMPT', 'Mô tả video', { required: true, configKey: 'customPrompt' })],
-    outputs: [p('video', 'Video', 'VIDEO', 'Video ra')],
+    outputs: [
+      p('video', 'Video', 'VIDEO', 'Video ra'),
+      p('lastFrame', 'Cuối', 'IMAGE', 'Khung cuối nối tiếp', { required: false }),
+    ],
   },
   i2v: {
     inputs: [
@@ -78,7 +81,10 @@ export const nodePortCatalog: Record<string, NodePortSpec> = {
       p('prompt', 'Prompt', 'PROMPT', 'Chuyển động', { required: true, configKey: 'prompt' }),
       p('characters', 'Char', 'CHARACTER', 'DNA nhân vật', { multiple: true, role: 'CHAR' }),
     ],
-    outputs: [p('video', 'Video', 'VIDEO', 'Video ra')],
+    outputs: [
+      p('video', 'Video', 'VIDEO', 'Video ra'),
+      p('lastFrame', 'Cuối', 'IMAGE', 'Khung cuối nối tiếp', { required: false }),
+    ],
   },
   extend: {
     inputs: [

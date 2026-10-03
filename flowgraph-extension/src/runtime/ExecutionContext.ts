@@ -18,6 +18,7 @@ export interface ExecutionContextOptions {
   abortSignal?: AbortSignal;
   cache?: RuntimeCache;
   transportPreference?: 'BATCH_RPC' | 'FLOW_UI';
+  qualityMode?: 'DRAFT' | 'MASTER';
 }
 
 export interface CachedNodeResult {
@@ -44,6 +45,7 @@ export class ExecutionContext {
   readonly abortSignal?: AbortSignal;
   readonly cache?: RuntimeCache;
   readonly transportPreference?: 'BATCH_RPC' | 'FLOW_UI';
+  readonly qualityMode?: 'DRAFT' | 'MASTER';
 
   private failures = new Map<string, RuntimeError>();
   private inFlightMediaJobs = new Set<string>();
@@ -57,6 +59,7 @@ export class ExecutionContext {
     this.abortSignal = options.abortSignal;
     this.cache = options.cache;
     this.transportPreference = options.transportPreference;
+    this.qualityMode = options.qualityMode;
   }
 
   fail(nodeId: string, error: RuntimeError): void {

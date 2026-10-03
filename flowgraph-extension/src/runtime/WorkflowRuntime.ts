@@ -8,7 +8,7 @@ import { asText, type RuntimeValue } from './RuntimeValue';
 import { ExecutionContext, raceWithSignal, whenAborted, type ActiveProject, type CachedNodeResult, type RuntimeCache } from './ExecutionContext';
 import { CacheStore, fingerprintNode, isCacheableNodeKind } from './CacheStore';
 import { planGraph, readyNodes, downstreamOf, type CompiledGraph, type PlanEdge, type PlanNode } from './GraphPlanner';
-import { selectReadyStage } from './executionPolicy';
+import { selectReadyStage, executionStage, resolveEffectiveConcurrencyForStage } from './executionPolicy';
 import { validateGraph, type NodeSpecForValidation, type RuntimePlanEdge, type ValidationIssue, type ValidationReport } from './GraphValidator';
 import { registryModelResolver } from './registryModelResolver';
 import { retryGraphChanged, workflowRetrySnapshot } from './workflowSnapshot';
@@ -39,6 +39,8 @@ export interface RuntimeRunOptions {
   initialCompleted?: Set<string>;
   /** Explicit transport route override (e.g. 'FLOW_UI' to bypass batch RPC). */
   transportPreference?: 'BATCH_RPC' | 'FLOW_UI';
+  /** Quality mode: 'DRAFT' (fast preview, 720p, 4s) or 'MASTER' (high-fidelity). */
+  qualityMode?: 'DRAFT' | 'MASTER';
 }
 
 export interface RuntimeNodeEvent {
@@ -252,6 +254,7 @@ export class WorkflowRuntime {
       abortSignal: abort.signal,
       cache,
       transportPreference: options.transportPreference,
+      qualityMode: options.qualityMode,
     });
     const planEdges: PlanEdge[] = edges.map((edge) => ({ ...edge, sourceHandle: edge.sourceHandle ?? undefined, targetHandle: edge.targetHandle ?? undefined }));
     const plan = planGraph(nodes.map((node) => ({ id: node.id, kind: node.kind })), planEdges);
@@ -302,7 +305,13 @@ export class WorkflowRuntime {
         if (!staged.length) break;
         if (emitQueued) for (const id of staged) emit({ type: 'node', runId, nodeId: id, state: 'queued' });
 
-        await this.executeBatch(session, byId, staged, options, emit, concurrency, this.executors);
+        const firstNode = byId.get(staged[0]);
+        const stage = firstNode ? executionStage(firstNode.kind) : 99;
+        const stageConcurrency = resolveEffectiveConcurrencyForStage(stage, options.concurrency, {
+          allowBurst: options.transportPreference === 'BATCH_RPC' || options.qualityMode === 'DRAFT',
+        });
+
+        await this.executeBatch(session, byId, staged, options, emit, stageConcurrency, this.executors);
 
         // A failed node blocks only its downstream — independent branches keep running.
         for (const nodeId of [...failed]) {
