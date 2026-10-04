@@ -562,7 +562,7 @@ function toFlowBatchBridgeError(error: unknown): Error & { code?: string; retrya
     if (detailStr.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')) {
       const err = bridgeError(
         'PROVIDER_ERROR',
-        error.message,
+        'Google Flow từ chối yêu cầu do phát hiện hoạt động bất thường (PUBLIC_ERROR_UNUSUAL_ACTIVITY). Hãy chuyển sang tùy chọn "Chạy qua Giao diện Flow (Flow UI)" ở nút Chạy.',
         false,
       ) as Error & { code?: string; retryable?: boolean; reason?: string };
       err.reason = 'PUBLIC_ERROR_UNUSUAL_ACTIVITY';
@@ -3491,6 +3491,88 @@ async function handleMediaStatus(payload: MediaStatusPayload): Promise<MediaStat
   return pollOnce(payload, true);
 }
 
+async function uploadImageViaFlowTabDom(payload: MediaUploadPayload): Promise<{ mediaId: string }> {
+  const tab = await findFlowTab();
+  if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'Open Google Flow first.', false);
+
+  const results = await timeoutable(
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      world: 'MAIN',
+      args: [payload.imageBytesBase64, payload.mimeType, payload.fileName],
+      func: async (b64: string, mimeType: string, fileName: string) => {
+        try {
+          const beforeIds = new Set(
+            Array.from(document.querySelectorAll('flow-image-tile img[data-media-id]'))
+              .map((el) => el.getAttribute('data-media-id'))
+              .filter(Boolean),
+          );
+
+          let input = Array.from(document.querySelectorAll('input[type="file"]')).pop() as HTMLInputElement | undefined;
+          if (!input) {
+            const addBtn = document.querySelector('.add-menu-trigger') as HTMLButtonElement | null;
+            if (addBtn) addBtn.click();
+            await new Promise((r) => setTimeout(r, 600));
+
+            const overlay = document.querySelector('.cdk-overlay-container');
+            const upBtn = (overlay
+              ? Array.from(overlay.querySelectorAll('button')).find((b) =>
+                  b.innerText?.includes('Tải nội dung') || b.innerText?.includes('Upload') || b.classList.contains('sidebar-upload-btn'),
+                )
+              : null) as HTMLButtonElement | null;
+            if (upBtn) upBtn.click();
+            await new Promise((r) => setTimeout(r, 600));
+
+            input = Array.from(document.querySelectorAll('input[type="file"]')).pop() as HTMLInputElement | undefined;
+          }
+
+          if (!input) return { ok: false, error: 'Could not activate file input on Google Flow' };
+
+          const byteCharacters = atob(b64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const file = new File([byteArray], fileName || 'upload.png', { type: mimeType || 'image/png' });
+
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+
+          const deadline = Date.now() + 15000;
+          while (Date.now() < deadline) {
+            await new Promise((r) => setTimeout(r, 600));
+            const currentTiles = Array.from(document.querySelectorAll('flow-image-tile img[data-media-id]'));
+            for (const img of currentTiles) {
+              const id = img.getAttribute('data-media-id');
+              if (id && !beforeIds.has(id)) {
+                return {
+                  ok: true,
+                  mediaId: id,
+                  src: (img as HTMLImageElement).src || (img as HTMLImageElement).currentSrc,
+                };
+              }
+            }
+          }
+          return { ok: false, error: 'Timeout waiting for uploaded media in Google Flow' };
+        } catch (e: any) {
+          return { ok: false, error: e?.message || String(e) };
+        }
+      },
+    }),
+    REQUEST_TIMEOUT_MS,
+  );
+
+  const reply = results[0]?.result as { ok?: boolean; mediaId?: string; error?: string } | undefined;
+  if (!reply?.ok || !reply.mediaId) {
+    throw bridgeError('MEDIA_FAILED', reply?.error || 'Failed to upload image to Google Flow.', false);
+  }
+  return { mediaId: reply.mediaId };
+}
+
 async function uploadImageViaFlowTab(body: Record<string, unknown>): Promise<unknown> {
   const tab = await findFlowTab();
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'Open Google Flow first.', false);
@@ -3521,6 +3603,23 @@ async function uploadImageViaFlowTab(body: Record<string, unknown>): Promise<unk
 }
 
 async function handleMediaUpload(payload: MediaUploadPayload): Promise<NormalizedMediaRef> {
+  // 1. Thử upload trực tiếp qua DOM tab Google Flow (đảm bảo ảnh xuất hiện 100% trong Gallery dự án)
+  try {
+    const domRes = await uploadImageViaFlowTabDom(payload);
+    if (domRes?.mediaId) {
+      return {
+        mediaId: domRes.mediaId,
+        type: 'IMAGE',
+        projectId: payload.projectId,
+        mimeType: payload.mimeType,
+        fileName: payload.fileName,
+      };
+    }
+  } catch (domErr: any) {
+    console.warn('[FlowGraph] uploadImageViaFlowTabDom failed, trying API fallback:', domErr?.message, domErr?.stack);
+  }
+
+  // 2. Fallback qua API
   const body = buildUploadRequest(
     payload.projectId,
     payload.imageBytesBase64,

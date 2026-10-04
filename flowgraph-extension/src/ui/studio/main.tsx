@@ -1830,9 +1830,10 @@ function Studio() {
       if (isLiveRun(epochAtStart, runEpochRef.current, runGenerationRef.current, projectIdAtStart)) {
         const runtimeError = error instanceof RuntimeError ? error : new RuntimeError('PROVIDER_ERROR', error instanceof Error ? error.message : String(error));
         // Hiển thị thông báo tiếng Việt thân thiện, rõ ràng, dựa trên reason có cấu trúc
-        const isUnusual = runtimeError.reason === 'PUBLIC_ERROR_UNUSUAL_ACTIVITY';
+        const isUnusual = runtimeError.reason === 'PUBLIC_ERROR_UNUSUAL_ACTIVITY'
+          || runtimeError.message.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY');
         const displayMessage = isUnusual
-          ? 'Google Flow từ chối yêu cầu do phát hiện hoạt động bất thường (UNUSUAL_ACTIVITY). Hãy tạm dừng vài phút, kiểm tra tab Google Flow và tắt VPN/proxy nếu đang bật.'
+          ? 'Google Flow từ chối yêu cầu do phát hiện hoạt động bất thường (UNUSUAL_ACTIVITY). Hãy bấm mũi tên ở nút Chạy và chọn "Chạy qua Giao diện Flow (Flow UI)" để tiếp tục.'
           : runtimeError.message;
         setRunError({ code: runtimeError.code, message: displayMessage, retryable: runtimeError.retryable, diagnosticId: runtimeError.diagnosticId, reason: runtimeError.reason });
         setRunStatus('error');
@@ -2280,9 +2281,9 @@ function Studio() {
               data: {
                 ...hydrateNodeData(spec),
                 title: file.name.length > 20 ? `${file.name.slice(0, 18)}…` : file.name,
-                subtitle: 'Local Image File',
+                subtitle: 'Uploading to Google Flow…',
                 tone: 'blue',
-                config: { source: file.name, fileName: file.name, mediaId: initialMediaId, mediaType: 'IMAGE' },
+                config: { source: file.name, fileName: file.name, mediaId: initialMediaId, mediaType: 'IMAGE', projectId: connection.activeProject?.projectId ?? '' },
                 status: 'idle',
                 result: {
                   type: 'image',
@@ -2293,6 +2294,71 @@ function Studio() {
               },
             };
             newCreatedNodes.push(imgNode);
+
+            // Tự động upload ảnh lên Google Flow để đồng bộ vào Gallery của Flow
+            void (async () => {
+              try {
+                const dataUrl = await new Promise<string>((resolve, reject) => {
+                  const r = new FileReader();
+                  r.onload = () => resolve(String(r.result || ''));
+                  r.onerror = () => reject(new Error('Failed reading file'));
+                  r.readAsDataURL(file);
+                });
+                const match = /^data:([^;,]+)[^,]*,(.*)$/s.exec(dataUrl);
+                const activeProjId = connection.activeProject?.projectId;
+                if (match && activeProjId) {
+                  const adapter = new RealGoogleFlowAdapter();
+                  const ref = await adapter.uploadImage({
+                    projectId: activeProjId,
+                    imageBytesBase64: match[2],
+                    mimeType: match[1],
+                    fileName: file.name,
+                  });
+                  if (ref.mediaId) {
+                    setNodes((current) =>
+                      current.map((n) =>
+                        n.id === fileId
+                          ? {
+                              ...n,
+                              data: {
+                                ...n.data,
+                                subtitle: 'Flow Synchronized',
+                                status: 'success',
+                                config: {
+                                  ...n.data.config,
+                                  mediaId: ref.mediaId,
+                                  projectId: activeProjId,
+                                },
+                                result: {
+                                  ...n.data.result,
+                                  type: 'image',
+                                  mediaId: ref.mediaId,
+                                  fileName: file.name,
+                                  previewUrl: initialBlob,
+                                },
+                              },
+                            }
+                          : n,
+                      ),
+                    );
+                    setRecentUploads((cur) => [
+                      {
+                        id: `${activeProjId}_${ref.mediaId}`,
+                        projectId: activeProjId,
+                        mediaId: ref.mediaId,
+                        mediaType: 'IMAGE',
+                        fileName: file.name,
+                        uploadedAt: Date.now(),
+                        previewUrl: initialBlob,
+                      },
+                      ...cur,
+                    ]);
+                  }
+                }
+              } catch (err) {
+                console.warn('[FlowGraph] Auto-sync dropped image to Flow failed:', err);
+              }
+            })();
         } else if (file.type.startsWith('video/')) {
           // There is no verified local-video upload executor yet. Do not create a fake
           // Download/source node with a pseudo mediaId: that would look runnable but fail
@@ -2735,7 +2801,9 @@ function Studio() {
           alignItems: 'center',
           gap: '8px',
         }}>
-          <span>⚠️ {runError?.message || validationIssues[0]}</span>
+          <span>⚠️ {runError?.message?.includes('PUBLIC_ERROR_UNUSUAL_ACTIVITY')
+            ? 'Google Flow từ chối yêu cầu do phát hiện hoạt động bất thường (UNUSUAL_ACTIVITY). Hãy bấm mũi tên ở nút Chạy và chọn "Chạy qua Giao diện Flow (Flow UI)" để tiếp tục.'
+            : (runError?.message || validationIssues[0])}</span>
           <button
             onClick={() => {
               setValidationIssues([]);

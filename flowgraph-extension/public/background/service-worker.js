@@ -1578,7 +1578,7 @@
       if (detailStr.includes("PUBLIC_ERROR_UNUSUAL_ACTIVITY")) {
         const err = bridgeError(
           "PROVIDER_ERROR",
-          error.message,
+          'Google Flow t\u1EEB ch\u1ED1i y\xEAu c\u1EA7u do ph\xE1t hi\u1EC7n ho\u1EA1t \u0111\u1ED9ng b\u1EA5t th\u01B0\u1EDDng (PUBLIC_ERROR_UNUSUAL_ACTIVITY). H\xE3y chuy\u1EC3n sang t\xF9y ch\u1ECDn "Ch\u1EA1y qua Giao di\u1EC7n Flow (Flow UI)" \u1EDF n\xFAt Ch\u1EA1y.',
           false
         );
         err.reason = "PUBLIC_ERROR_UNUSUAL_ACTIVITY";
@@ -3961,6 +3961,74 @@
     }
     return pollOnce(payload, true);
   }
+  async function uploadImageViaFlowTabDom(payload) {
+    const tab = await findFlowTab();
+    if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "Open Google Flow first.", false);
+    const results = await timeoutable(
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: "MAIN",
+        args: [payload.imageBytesBase64, payload.mimeType, payload.fileName],
+        func: async (b64, mimeType, fileName) => {
+          try {
+            const beforeIds = new Set(
+              Array.from(document.querySelectorAll("flow-image-tile img[data-media-id]")).map((el) => el.getAttribute("data-media-id")).filter(Boolean)
+            );
+            let input = Array.from(document.querySelectorAll('input[type="file"]')).pop();
+            if (!input) {
+              const addBtn = document.querySelector(".add-menu-trigger");
+              if (addBtn) addBtn.click();
+              await new Promise((r) => setTimeout(r, 600));
+              const overlay = document.querySelector(".cdk-overlay-container");
+              const upBtn = overlay ? Array.from(overlay.querySelectorAll("button")).find(
+                (b) => b.innerText?.includes("T\u1EA3i n\u1ED9i dung") || b.innerText?.includes("Upload") || b.classList.contains("sidebar-upload-btn")
+              ) : null;
+              if (upBtn) upBtn.click();
+              await new Promise((r) => setTimeout(r, 600));
+              input = Array.from(document.querySelectorAll('input[type="file"]')).pop();
+            }
+            if (!input) return { ok: false, error: "Could not activate file input on Google Flow" };
+            const byteCharacters = atob(b64);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const file = new File([byteArray], fileName || "upload.png", { type: mimeType || "image/png" });
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+            input.dispatchEvent(new Event("change", { bubbles: true }));
+            const deadline = Date.now() + 15e3;
+            while (Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, 600));
+              const currentTiles = Array.from(document.querySelectorAll("flow-image-tile img[data-media-id]"));
+              for (const img of currentTiles) {
+                const id = img.getAttribute("data-media-id");
+                if (id && !beforeIds.has(id)) {
+                  return {
+                    ok: true,
+                    mediaId: id,
+                    src: img.src || img.currentSrc
+                  };
+                }
+              }
+            }
+            return { ok: false, error: "Timeout waiting for uploaded media in Google Flow" };
+          } catch (e) {
+            return { ok: false, error: e?.message || String(e) };
+          }
+        }
+      }),
+      REQUEST_TIMEOUT_MS
+    );
+    const reply = results[0]?.result;
+    if (!reply?.ok || !reply.mediaId) {
+      throw bridgeError("MEDIA_FAILED", reply?.error || "Failed to upload image to Google Flow.", false);
+    }
+    return { mediaId: reply.mediaId };
+  }
   async function uploadImageViaFlowTab(body) {
     const tab = await findFlowTab();
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "Open Google Flow first.", false);
@@ -3993,6 +4061,20 @@
     return json;
   }
   async function handleMediaUpload(payload) {
+    try {
+      const domRes = await uploadImageViaFlowTabDom(payload);
+      if (domRes?.mediaId) {
+        return {
+          mediaId: domRes.mediaId,
+          type: "IMAGE",
+          projectId: payload.projectId,
+          mimeType: payload.mimeType,
+          fileName: payload.fileName
+        };
+      }
+    } catch (domErr) {
+      console.warn("[FlowGraph] uploadImageViaFlowTabDom failed, trying API fallback:", domErr?.message, domErr?.stack);
+    }
     const body = buildUploadRequest(
       payload.projectId,
       payload.imageBytesBase64,
