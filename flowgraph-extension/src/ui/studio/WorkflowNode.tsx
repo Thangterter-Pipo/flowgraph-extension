@@ -817,7 +817,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   // resizes the node and keeps ports/edges attached to the new bounds.
   const previewAspect = configuredPreviewAspect;
   const emptyMediaCopy = data.kind === 'preview'
-    ? 'Chưa có target preview'
+    ? 'Connect a branch to run'
     : data.kind === 'videoInput'
     ? 'Chưa chọn video'
     : ['download', 'mediaInput'].includes(data.kind)
