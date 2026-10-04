@@ -350,6 +350,28 @@ export const NODE_PRESENTATION_SPECS: Record<string, NodePresentationSpec> = {
     controls: [],
     width: 210,
   },
+  storyboardSplit: {
+    kind: 'storyboardSplit',
+    archetype: 'transform',
+    icon: Crop,
+    category: 'IMAGE',
+    defaultTone: 'blue',
+    isMediaHolder: true,
+    isVideoMedia: false,
+    controls: [],
+    width: 280,
+  },
+  sceneGroup: {
+    kind: 'sceneGroup',
+    archetype: 'utility',
+    icon: Layers,
+    category: 'LOGIC',
+    defaultTone: 'purple',
+    isMediaHolder: false,
+    isVideoMedia: false,
+    controls: [],
+    width: 320,
+  },
 };
 
 export function getPresentationSpec(kind: string): NodePresentationSpec {

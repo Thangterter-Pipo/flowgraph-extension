@@ -8,6 +8,7 @@ const STAGE_0 = new Set([
   'mediaInput',
   'videoInput',
   'creationAgent',
+  'sceneGroup',
 ]);
 
 const STAGE_1 = new Set([
@@ -16,6 +17,7 @@ const STAGE_1 = new Set([
   'characterAssign',
   'imageUpscale',
   'imageTransform',
+  'storyboardSplit',
 ]);
 
 const STAGE_2 = new Set([

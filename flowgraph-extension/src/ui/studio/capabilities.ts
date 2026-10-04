@@ -206,6 +206,18 @@ export const capabilityRegistry: Record<string, CapabilityMeta> = {
     experimental: false,
     summary: 'Local workflow annotation node.',
   },
+  storyboardSplit: {
+    maturity: 'RUNTIME_LOCAL',
+    label: 'LOCAL',
+    experimental: false,
+    summary: 'Phân tách ảnh lưới cửu cung (3x3 / 2x2 Storyboard Grid) thành từng Shot riêng biệt.',
+  },
+  sceneGroup: {
+    maturity: 'RUNTIME_LOCAL',
+    label: 'GROUP',
+    experimental: false,
+    summary: 'Group Container tổ chức và điều phối các cụm phân cảnh.',
+  },
 };
 
 export function capabilityFor(kind: string): CapabilityMeta {
@@ -259,6 +271,8 @@ export const runtimeCapabilityMatrix: RuntimeCapabilityRow[] = [
   { kind: 'condition', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'Local branch concept (Phase 13).' },
   { kind: 'delay', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'Local utility (Phase 13).' },
   { kind: 'note', runtime: 'UI_ONLY', executor: false, adapter: false, note: 'Local annotation.' },
+  { kind: 'storyboardSplit', runtime: 'RUNTIME_LOCAL', executor: true, adapter: false, note: 'Tự động cắt lưới Storyboard 3x3 thành 9 shot images độc lập.' },
+  { kind: 'sceneGroup', runtime: 'RUNTIME_LOCAL', executor: true, adapter: false, note: 'Group container tổ chức và quản lý phân cảnh.' },
 ];
 
 export function runtimeClassFor(kind: string): RuntimeCapabilityClass {

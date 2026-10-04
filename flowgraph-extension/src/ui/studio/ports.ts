@@ -122,6 +122,30 @@ export const nodePortCatalog: Record<string, NodePortSpec> = {
     ],
     outputs: [p('video', 'Video', 'VIDEO', 'Video đã ghép')],
   },
+  storyboardSplit: {
+    inputs: [
+      p('image', 'Lưới', 'IMAGE', 'Ảnh lưới cửu cung', { required: true }),
+    ],
+    outputs: [
+      p('shot1', 'Shot 1', 'IMAGE', 'Cảnh 1 toàn cảnh'),
+      p('shot2', 'Shot 2', 'IMAGE', 'Cảnh 2 trung cảnh'),
+      p('shot3', 'Shot 3', 'IMAGE', 'Cảnh 3 cận cảnh'),
+      p('shot4', 'Shot 4', 'IMAGE', 'Cảnh 4 góc nghiêng'),
+      p('shot5', 'Shot 5', 'IMAGE', 'Cảnh 5 đặc tả'),
+      p('shot6', 'Shot 6', 'IMAGE', 'Cảnh 6 góc ngược'),
+      p('shot7', 'Shot 7', 'IMAGE', 'Cảnh 7 hành động'),
+      p('shot8', 'Shot 8', 'IMAGE', 'Cảnh 8 cao trào'),
+      p('shot9', 'Shot 9', 'IMAGE', 'Cảnh 9 kết thúc'),
+    ],
+  },
+  sceneGroup: {
+    inputs: [
+      p('mediaIn', 'Vào', 'MEDIA', 'Đầu vào phân cảnh'),
+    ],
+    outputs: [
+      p('mediaOut', 'Ra', 'MEDIA', 'Đầu ra phân cảnh'),
+    ],
+  },
   cancelGeneration: {
     inputs: [p('media', 'Task', 'MEDIA', 'Tác vụ đang chạy', { required: true })],
     outputs: [p('canceled', 'Canceled', 'BOOLEAN', 'Đã hủy')],

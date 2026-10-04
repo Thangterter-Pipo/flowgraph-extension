@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Crop,
   Download,
   ExternalLink,
   Film,
@@ -1188,6 +1189,51 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                   <span>Cancel Active Task</span>
                 </button>
               </div>
+            ) : data.kind === 'sceneGroup' ? (
+              <div className="compact-scenegroup-body" style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--sp-text, #0f172a)', letterSpacing: '0.04em' }}>
+                    PHÂN CẢNH
+                  </span>
+                  <span style={{ fontSize: '10px', padding: '2px 6px', background: 'rgba(154, 82, 248, 0.1)', color: '#9a52f8', borderRadius: '4px', fontWeight: 600 }}>
+                    SCENE GROUP
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  className="scenegroup-title-input nodrag nopan"
+                  style={{
+                    width: '100%',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--line, #e2e8f0)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    background: 'var(--card-bg, #ffffff)',
+                    color: 'var(--text, #0f172a)'
+                  }}
+                  value={data.config.sceneName || 'Scene 1'}
+                  onChange={(e) => dispatchUpdate('sceneName', e.target.value)}
+                  placeholder="Tên phân cảnh..."
+                />
+                <textarea
+                  className="scenegroup-desc-input nodrag nopan"
+                  style={{
+                    width: '100%',
+                    minHeight: '42px',
+                    padding: '6px 8px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--line, #e2e8f0)',
+                    fontSize: '11px',
+                    background: 'var(--card-bg, #ffffff)',
+                    color: 'var(--text-muted, #64748b)',
+                    resize: 'none'
+                  }}
+                  value={data.config.description || ''}
+                  onChange={(e) => dispatchUpdate('description', e.target.value)}
+                  placeholder="Ghi chú bối cảnh, phục trang..."
+                />
+              </div>
             ) : (
               <div className="compact-utility-body">
                 <span className="utility-label">{data.title || data.kind}</span>
@@ -1596,6 +1642,40 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                   { value: 'cut', label: 'Hard Cut' },
                 ]}
                 onChange={(val) => dispatchUpdate('transition', val)}
+              />
+            </div>
+          ) : data.kind === 'storyboardSplit' ? (
+            /* Footer chuyên biệt cho Storyboard 9-Grid Splitter */
+            <div className="inline-combobox-toolbar nodrag nopan">
+              <CustomCombobox
+                id={`${id}-grid`}
+                activeId={activeComboboxId}
+                onToggle={setGlobalComboboxId}
+                wrapClass="res-wrap"
+                title="Định dạng lưới cửu cung"
+                label="Lưới"
+                icon={<Crop size={10} />}
+                value={data.config.gridFormat || '3x3'}
+                options={[
+                  { value: '3x3', label: 'Cửu cung (3x3 · 9 Shots)' },
+                  { value: '2x2', label: 'Lưới 4 ô (2x2 · 4 Shots)' },
+                ]}
+                onChange={(val) => dispatchUpdate('gridFormat', val)}
+              />
+              <CustomCombobox
+                id={`${id}-clean`}
+                activeId={activeComboboxId}
+                onToggle={setGlobalComboboxId}
+                wrapClass="res-wrap"
+                title="Tự động lọc viền chia ô"
+                label="Khử viền"
+                icon={<Maximize2 size={10} />}
+                value={data.config.cleanBorders || 'true'}
+                options={[
+                  { value: 'true', label: 'Bật khử viền' },
+                  { value: 'false', label: 'Giữ nguyên viền' },
+                ]}
+                onChange={(val) => dispatchUpdate('cleanBorders', val)}
               />
             </div>
           ) : isImageUpscale || data.kind === 'videoUpscale' ? (

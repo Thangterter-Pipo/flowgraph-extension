@@ -118,6 +118,15 @@ const allPaletteSpecs: PaletteSpec[] = [
     config: { model: '2K', serviceTier: 'SERVICE_TIER_INTERMEDIATE', targetResolution: '2K', mediaSource: 'Input MediaRef' },
   },
   {
+    kind: 'storyboardSplit',
+    title: 'Storyboard 9-Grid',
+    subtitle: 'Tách lưới cửu cung thành 9 shots',
+    tone: 'blue',
+    group: 'Image',
+    preview: 'image',
+    config: { gridFormat: '3x3', cleanBorders: 'true' },
+  },
+  {
     kind: 't2v',
     title: 'Text to Video',
     subtitle: 'Veo 3.1 / Omni 1.1 Flash',
@@ -330,6 +339,14 @@ const allPaletteSpecs: PaletteSpec[] = [
     tone: 'purple',
     group: 'Utility',
     config: { note: 'Add workflow documentation here.' },
+  },
+  {
+    kind: 'sceneGroup',
+    title: 'Scene Container',
+    subtitle: 'Gom nhóm điều phối phân cảnh',
+    tone: 'purple',
+    group: 'Utility',
+    config: { sceneName: 'Scene 1', description: 'Phân cảnh điện ảnh' },
   },
 ];
 

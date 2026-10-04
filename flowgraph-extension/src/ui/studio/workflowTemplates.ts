@@ -255,6 +255,62 @@ export const BUILTIN_TEMPLATES: WorkflowTemplate[] = [
       edge('bm-e-t2i1-char', 'bm-t2i-1', 'image', 'bm-char-1', 'image', W_IMAGE),
     ],
   },
+
+  // 9. STORYBOARD 9-GRID & SCENE CONTAINER PIPELINE (Theo phong cách LibTV)
+  {
+    id: 'tpl-libtv-storyboard-grid',
+    title: 'Storyboard 9-Grid & Scene Pipeline (LibTV Style)',
+    description: 'Quy trình điện ảnh chuẩn LibTV: Prompt Grid → T2I 3x3 → Storyboard Splitter → Scene Group Containers → I2V → Final Concat.',
+    category: 'cinematic',
+    tags: ['Storyboard', 'LibTV', '9-Grid', 'SceneGroup', 'I2V', 'Continuity'],
+    nodes: [
+      node('sb-p1', 'prompt', 40, 160, {
+        title: 'Master Storyboard Grid Prompt',
+        config: { prompt: '3x3 cinematic storyboard grid, 9 sequential panels of An 27yo woman in charcoal coat inside post office 17, from establishing wide shot, medium profile, to dramatic macro close-up, warm tungsten lighting, rainy night, highly detailed film still.' },
+      }),
+      node('sb-t2i', 't2i', 340, 160, {
+        title: 'T2I Master 9-Grid',
+        config: { model: 'Nano Banana 2', aspectRatio: '16:9' },
+      }),
+      node('sb-split', 'storyboardSplit', 640, 160, {
+        title: 'Storyboard 9-Grid Splitter',
+        config: { gridFormat: '3x3', cleanBorders: 'true' },
+      }),
+      node('sb-grp1', 'sceneGroup', 960, 60, {
+        title: 'Phân Cảnh 1: Thiết lập',
+        config: { sceneName: 'Scene 1: Đêm mưa Bưu điện 17', description: 'Góc máy toàn cảnh và trung cảnh nhân vật An nhìn ra cửa sổ.' },
+      }),
+      node('sb-i2v-1', 'i2v', 1260, 60, {
+        title: 'Shot 1: Toàn Cảnh Mưa',
+        config: { model: 'Omni 1.1 Flash', prompt: 'Cinematic slow dolly forward through the rainy window.' },
+      }),
+      node('sb-grp2', 'sceneGroup', 960, 360, {
+        title: 'Phân Cảnh 2: Bưu thiếp',
+        config: { sceneName: 'Scene 2: Ký ức thời gian', description: 'Góc quay cận cảnh bàn tay An cầm bức bưu thiếp phát sáng.' },
+      }),
+      node('sb-i2v-2', 'i2v', 1260, 360, {
+        title: 'Shot 2: Cận Cảnh Thư',
+        config: { model: 'Omni 1.1 Flash', prompt: 'Close up on An holding the postcard, fingers trembling gently.' },
+      }),
+      node('sb-concat', 'videoConcat', 1600, 200, {
+        title: 'Stitch / Timeline',
+        config: { transition: 'crossfade' },
+      }),
+      node('sb-dl', 'download', 1900, 200, {
+        title: 'Export Master Film',
+        config: { format: 'Original media', fileName: 'storyboard-grid-master-film' },
+      }),
+    ],
+    edges: [
+      edge('sb-e-p-t2i', 'sb-p1', 'prompt', 'sb-t2i', 'prompt', W_PROMPT),
+      edge('sb-e-t2i-split', 'sb-t2i', 'image', 'sb-split', 'image', W_IMAGE),
+      edge('sb-e-split-s1', 'sb-split', 'shot1', 'sb-i2v-1', 'image', W_IMAGE),
+      edge('sb-e-split-s2', 'sb-split', 'shot2', 'sb-i2v-2', 'image', W_IMAGE),
+      edge('sb-e-i2v1-concat', 'sb-i2v-1', 'video', 'sb-concat', 'videos', W_VIDEO),
+      edge('sb-e-i2v2-concat', 'sb-i2v-2', 'video', 'sb-concat', 'videos', W_VIDEO),
+      edge('sb-e-concat-dl', 'sb-concat', 'video', 'sb-dl', 'media', W_VIDEO),
+    ],
+  },
 ];
 
 export function loadAllTemplates(): WorkflowTemplate[] {

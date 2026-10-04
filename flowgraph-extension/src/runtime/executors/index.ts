@@ -21,6 +21,8 @@ import { VideoInputExecutor } from './VideoInputExecutor';
 import { PreviewExecutor } from './PreviewExecutor';
 import { DownloadExecutor } from './DownloadExecutor';
 import { GeminiEnhanceExecutor } from './GeminiEnhanceExecutor';
+import { StoryboardSplitterExecutor } from './StoryboardSplitterExecutor';
+import { SceneGroupExecutor } from './SceneGroupExecutor';
 import { GatewayGeminiAdapter } from '../../adapters/gemini/GatewayGeminiAdapter';
 import { PollManager } from '../PollManager';
 
@@ -36,6 +38,8 @@ export const RUNTIME_SUPPORTED_KINDS: ReadonlySet<string> = new Set([
   'imageUpscale',
   'videoUpscale',
   'videoConcat',
+  'storyboardSplit',
+  'sceneGroup',
   'mediaInput',
   'imageInput',
   'videoInput',
@@ -63,6 +67,8 @@ export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager)
     new ImageUpscaleExecutor({ adapter }),
     new VideoUpscaleExecutor({ adapter, poller }),
     new VideoConcatExecutor({ adapter }),
+    new StoryboardSplitterExecutor(),
+    new SceneGroupExecutor(),
     new MediaInputExecutor(),
     new UploadImageExecutor({ adapter }),
     new CharacterCreateExecutor(),
@@ -78,6 +84,6 @@ export function buildExecutors(adapter: GoogleFlowAdapter, poller?: PollManager)
 
 export { RUNTIME_SUPPORTED_KINDS as supportedKinds };
 export { VideoConcatExecutor };
-export { ImageUpscaleExecutor, VideoUpscaleExecutor, MediaInputExecutor, ImageInputExecutor, VideoInputExecutor, PreviewExecutor, UploadImageExecutor, CharacterCreateExecutor, GeminiEnhanceExecutor };
+export { ImageUpscaleExecutor, VideoUpscaleExecutor, MediaInputExecutor, ImageInputExecutor, VideoInputExecutor, PreviewExecutor, UploadImageExecutor, CharacterCreateExecutor, GeminiEnhanceExecutor, StoryboardSplitterExecutor, SceneGroupExecutor };
 
 
