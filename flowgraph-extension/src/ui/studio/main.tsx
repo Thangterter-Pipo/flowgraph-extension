@@ -2611,7 +2611,7 @@ function Studio() {
   // Hook listener cho phép AI Agent / script MCP nạp workflow trực tiếp lên Canvas theo prompt
   useEffect(() => {
     const handleApplyWorkflow = (event: any) => {
-      const tpl = event.detail?.template || event.detail?.workflow;
+      const tpl = event.detail?.template || event.detail?.workflow || (event.detail?.nodes && event.detail?.edges ? event.detail : null);
       if (tpl && tpl.nodes && tpl.edges) {
         applyTemplate(tpl);
       }

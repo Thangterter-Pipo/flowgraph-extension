@@ -810,16 +810,16 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
     // UX rule: Prompt is always the lowest input port when a node has multiple inputs.
     .sort((a, b) => Number(a.id === 'prompt') - Number(b.id === 'prompt'));
   const visibleOutputs = portsForKind(data.kind).outputs.filter((port) => port.connectable !== false);
-  const showNodeTools = spec.isMediaHolder || spec.controls.length > 0 || isGemini;
+  const showNodeTools = (spec.isMediaHolder || spec.controls.length > 0 || isGemini) && data.kind !== 'storyboardSplit';
   const configuredPreviewAspect = (shortAspect(data.config.aspectRatio) || '16:9').replace(':', ' / ');
   // The media surface must represent the configured output ratio. React Flow geometry
   // is refreshed by the ResizeObserver above, so changing 16:9 -> 9:16/1:1/etc.
   // resizes the node and keeps ports/edges attached to the new bounds.
   const previewAspect = configuredPreviewAspect;
   const emptyMediaCopy = data.kind === 'preview'
-    ? 'Connect a branch to run'
+    ? 'Chưa có target preview'
     : data.kind === 'videoInput'
-    ? 'Choose existing Flow video'
+    ? 'Chưa chọn video'
     : ['download', 'mediaInput'].includes(data.kind)
     ? 'Chưa có media'
     : isVideoNode
@@ -827,9 +827,11 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
       : 'Chưa có ảnh';
   const portTop = (index: number, count: number, side: 'in' | 'out') => {
     if (count <= 1) return spec.isMediaHolder && side === 'out' ? '27%' : '50%';
-    // Keep connector spacing invariant when the media surface changes aspect ratio.
-    // The old percentage-based distribution stretched 3 ports from ~53px apart at
-    // 16:9 to ~166px apart at 9:16. Centre the group, but keep a fixed 53px pitch.
+    if (count > 4) {
+      // Cho các node có mật độ cổng cao (như Storyboard Cửu Cung 9 shots) phân bổ đều trong chiều cao card
+      const step = 82 / (count - 1);
+      return `${9 + index * step}%`;
+    }
     const PORT_PITCH_PX = 53;
     const offsetPx = (index - (count - 1) / 2) * PORT_PITCH_PX;
     if (Math.abs(offsetPx) < 0.001) return '50%';
@@ -953,6 +955,10 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
     <div
       ref={nodeRootRef}
       className={`flow-card-stitch media-first-node archetype-${archetype} ${spec.isMediaHolder ? 'has-media-surface' : 'has-text-surface'} ${data.kind} ${data.tone} ${selected ? 'selected' : ''} ${data.status === 'running' && !result?.mediaId ? 'running' : ''} ${data.status === 'failed' ? 'error' : ''} ${isCollapsed ? 'collapsed-node' : ''}`}
+      style={{
+        minHeight: data.kind === 'storyboardSplit' ? 360 : undefined,
+        minWidth: data.kind === 'storyboardSplit' ? 280 : undefined,
+      }}
     >
       {/* Dedicated drag contact: large hit target, tiny visual point at the top-right corner. */}
       <div className="node-drag-point" title="Drag node" aria-label="Drag node" />
