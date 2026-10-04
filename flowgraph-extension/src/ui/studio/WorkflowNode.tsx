@@ -376,6 +376,7 @@ function SafeVideoPlayer({
   onError,
   onCanPlay,
   sourceToken,
+  onAspectDetected,
 }: {
   src: string;
   posterUrl?: string;
@@ -387,6 +388,7 @@ function SafeVideoPlayer({
   onError: (sourceToken: string) => void;
   onCanPlay: (sourceToken: string) => void;
   sourceToken: string;
+  onAspectDetected?: (aspect: string) => void;
 }) {
   const [blobPoster, setBlobPoster] = React.useState<string | null>(null);
 
@@ -420,12 +422,18 @@ function SafeVideoPlayer({
         <img
           src={blobPoster}
           alt="Video Thumbnail"
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            if (img.naturalWidth && img.naturalHeight) {
+              onAspectDetected?.(`${img.naturalWidth} / ${img.naturalHeight}`);
+            }
+          }}
           style={{
             position: 'absolute',
             inset: 0,
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
+            objectFit: 'contain',
             zIndex: isPlaying ? 0 : 1,
             pointerEvents: 'none',
           }}
@@ -447,12 +455,15 @@ function SafeVideoPlayer({
         }}
         onLoadedMetadata={(event) => {
           const video = event.currentTarget;
+          if (video.videoWidth && video.videoHeight) {
+            onAspectDetected?.(`${video.videoWidth} / ${video.videoHeight}`);
+          }
           onClock?.(video.currentTime || 0, video.duration || 0, sourceToken);
         }}
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'cover',
+          objectFit: 'contain',
           position: 'relative',
           zIndex: isPlaying ? 2 : 0,
         }}
@@ -461,7 +472,17 @@ function SafeVideoPlayer({
   );
 }
 
-function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: string }) {
+function SafeImage({
+  src,
+  alt,
+  mediaId,
+  onAspectDetected,
+}: {
+  src: string;
+  alt: string;
+  mediaId?: string;
+  onAspectDetected?: (aspect: string) => void;
+}) {
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
 
@@ -571,7 +592,19 @@ function SafeImage({ src, alt, mediaId }: { src: string; alt: string; mediaId?: 
     );
   }
 
-  return <img src={finalSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+  return (
+    <img
+      src={finalSrc}
+      alt={alt || ''}
+      onLoad={(e) => {
+        const img = e.currentTarget;
+        if (img.naturalWidth && img.naturalHeight) {
+          onAspectDetected?.(`${img.naturalWidth} / ${img.naturalHeight}`);
+        }
+      }}
+      style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+    />
+  );
 }
 
 import { parseConfigFromPrompt } from './promptConfigParser';
@@ -812,10 +845,11 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
   const visibleOutputs = portsForKind(data.kind).outputs.filter((port) => port.connectable !== false);
   const showNodeTools = (spec.isMediaHolder || spec.controls.length > 0 || isGemini) && data.kind !== 'storyboardSplit';
   const configuredPreviewAspect = (shortAspect(data.config.aspectRatio) || '16:9').replace(':', ' / ');
-  // The media surface must represent the configured output ratio. React Flow geometry
-  // is refreshed by the ResizeObserver above, so changing 16:9 -> 9:16/1:1/etc.
-  // resizes the node and keeps ports/edges attached to the new bounds.
-  const previewAspect = configuredPreviewAspect;
+  const [detectedAspect, setDetectedAspect] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    setDetectedAspect(null);
+  }, [result?.mediaId, result?.previewUrl]);
+  const previewAspect = detectedAspect || configuredPreviewAspect;
   const emptyMediaCopy = data.kind === 'preview'
     ? 'Connect a branch to run'
     : data.kind === 'videoInput'
@@ -1130,6 +1164,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                   src={result.previewUrl || ''}
                   mediaId={result.mediaId}
                   alt={data.config.displayName || data.title || 'Character DNA'}
+                  onAspectDetected={setDetectedAspect}
                 />
               ) : (
                 <div className="placeholder-art empty-media-well" aria-hidden="true">
@@ -1264,6 +1299,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                     }}
                     onClock={handleClock}
                     videoRef={videoRef}
+                    onAspectDetected={setDetectedAspect}
                     onError={(eventSourceToken) => {
                       if (eventSourceToken !== currentPlaybackSourceToken.current) return;
                       const status = recoveryStatusRef.current;
@@ -1424,6 +1460,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
                     src={result.previewUrl || ''}
                     mediaId={result.mediaId}
                     alt="Generated Preview"
+                    onAspectDetected={setDetectedAspect}
                   />
                 ) : (
                   <div className="placeholder-art empty-media-well">
@@ -1784,33 +1821,7 @@ export default function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>
         </div>
       )}
 
-      {showNodeTools && (
-        <div className="node-side-tools nodrag nopan" aria-label="Node tools">
-          {spec.isMediaHolder && (
-            <button
-              className="node-side-tool zoom-tool"
-              onClick={handleOpenClick}
-              disabled={!result?.previewUrl}
-              title={result?.previewUrl ? 'Zoom media' : 'Media chưa sẵn sàng'}
-              aria-label="Zoom media"
-            >
-              <Maximize2 size={15} />
-            </button>
-          )}
-          <button
-            className={`node-side-tool settings-tool ${showAdvancedSettings ? 'active' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowAdvancedSettings((value) => !value);
-            }}
-            title="Node settings"
-            aria-label="Node settings"
-          >
-            <Settings2 size={15} />
-            <span>Settings</span>
-          </button>
-        </div>
-      )}
+
 
       {showAdvancedSettings && (
         <div

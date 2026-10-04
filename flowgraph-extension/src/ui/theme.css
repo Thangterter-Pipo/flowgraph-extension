@@ -926,10 +926,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Định dạng chuyên biệt cho Storyboard 9-Grid và Scene Group */
 .flow-card-stitch.storyboardSplit {
   width: 320px !important;
-  min-height: 480px !important;
 }
 .flow-card-stitch.storyboardSplit .media-preview-container {
-  height: 340px !important;
+  height: auto !important;
 }
 .flow-card-stitch.sceneGroup {
   width: 380px !important;
@@ -5202,18 +5201,20 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
   border: 0 !important;
   border-radius: calc(var(--mf-radius) - 1px) !important;
   overflow: hidden !important;
-  background: var(--mf-surface) !important;
+  background: transparent !important;
   box-shadow: none !important;
 }
 
 .media-first-node .media-preview-container {
   position: relative !important;
   display: block !important;
+  background: transparent !important;
 }
 
 .media-first-node .image-preview-wrap {
   position: absolute !important;
   inset: 0 !important;
+  background: transparent !important;
 }
 
 .media-first-node .image-preview-wrap img,
@@ -5225,7 +5226,7 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
   object-fit: contain !important;
   border: 0 !important;
   border-radius: calc(var(--mf-radius) - 1px) !important;
-  background: var(--mf-surface) !important;
+  background: transparent !important;
 }
 
 .media-first-node .placeholder-art.empty-media-well {
@@ -5546,16 +5547,7 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
 
 /* One Zoom button; Settings immediately below, both outside the surface. */
 .media-first-node .node-side-tools {
-  position: absolute !important;
-  left: calc(100% + 21px) !important;
-  top: calc((100% - var(--mf-bottom-space)) * .58) !important;
-  transform: translateY(-50%) !important;
-  z-index: 45 !important;
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  gap: 9px !important;
-  pointer-events: auto !important;
+  display: none !important;
 }
 
 .media-first-node .node-side-tool {
@@ -7803,9 +7795,17 @@ html.flowgraph-theme-switching *::after {
   html[data-theme="premium-warm-light"], html[data-theme="premium-warm-dark"]
 ) .media-first-node :is(
   .media-preview-container, .image-preview-wrap, .video-player-preview,
-  .character-dna-visual-body, .character-dna-image-card,
-  .placeholder-art.empty-media-well
+  .character-dna-visual-body, .character-dna-image-card
 ) {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+:is(
+  html[data-theme="modern-minimal-light"], html[data-theme="modern-minimal-dark"],
+  html[data-theme="futuristic-ai-light"], html[data-theme="futuristic-ai-dark"],
+  html[data-theme="developer-pro-light"], html[data-theme="developer-pro-dark"],
+  html[data-theme="premium-warm-light"], html[data-theme="premium-warm-dark"]
+) .media-first-node .placeholder-art.empty-media-well {
   background: var(--surface-input) !important;
   color: var(--mf-muted) !important;
   border-color: var(--mf-line) !important;
