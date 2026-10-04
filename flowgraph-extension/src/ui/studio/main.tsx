@@ -113,6 +113,7 @@ import {
 } from './projectMediaUploadUi';
 import { MediaLibrary } from './MediaLibrary';
 import { RunModeControl } from './RunModeControl';
+import { FloatingCopilotDock } from './FloatingCopilotDock';
 import { buildRunModePlan, createRunReceipt, runNodeSignatures, type WorkflowRunMode } from './workflowRunMode';
 import {
   FLOWGRAPH_MEDIA_CLIP,
@@ -306,7 +307,7 @@ function NodeLibrary({
     {
       id: 'image',
       name: 'IMAGE',
-      kinds: ['t2i', 'imageUpscale', 'imageTransform'],
+      kinds: ['t2i', 'imageUpscale', 'imageTransform', 'storyboardSplit'],
     },
     {
       id: 'video',
@@ -326,7 +327,7 @@ function NodeLibrary({
     {
       id: 'logic',
       name: 'LOGIC & CONTROL',
-      kinds: ['condition', 'delay', 'note', 'cancelGeneration'],
+      kinds: ['condition', 'delay', 'note', 'cancelGeneration', 'sceneGroup'],
     },
   ];
 
@@ -429,42 +430,6 @@ function NodeLibrary({
             </div>
           );
         })}
-
-        {/* Nhóm các node khác chưa xếp (nếu có) */}
-        {(() => {
-          const allCategorizedKinds = categories.flatMap((c) => c.kinds);
-          const otherNodes = palette.filter((n) => !allCategorizedKinds.includes(n.kind) && filterMatches(n));
-          if (otherNodes.length === 0) return null;
-          return (
-            <div className="sidebar-category-group">
-              <div className="sidebar-category-title">OTHER NODES</div>
-              <div className="sidebar-category-items">
-                {otherNodes.map((node) => (
-                  <div
-                    key={node.kind}
-                    className={`palette-node compact modern-node-row tone-${node.tone}`}
-                    draggable={!locked}
-                    onDragStart={locked ? undefined : (event) => dragStart(event, node)}
-                    onDoubleClick={locked ? undefined : () => onAddNode?.(node)}
-                    onKeyDown={locked ? undefined : (event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        onAddNode?.(node);
-                      }
-                    }}
-                    title={`${node.title} — ${node.subtitle} (Kéo vào Canvas, Click đúp hoặc nhấn Enter để thêm)`}
-                    role="button"
-                    aria-disabled={locked}
-                    tabIndex={locked ? -1 : 0}
-                  >
-                    <span className={`palette-icon ${node.tone}`}><NodeIcon kind={node.kind} size={15} /></span>
-                    <span className="palette-node-title">{node.title}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
       </div>
     </aside>
   );
@@ -2978,6 +2943,11 @@ function Studio() {
                       color="var(--canvas-dot)"
                     />
                   </ReactFlow>
+                  <FloatingCopilotDock
+                    onApplyTemplate={applyTemplate}
+                    onFitView={() => fitWorkflowView(350)}
+                    isCanvasLocked={!connection.isCanvasUnlocked || isSemanticMutationLocked(runStatus)}
+                  />
                   {nodes.length === 0 && (
                     <div className="canvas-empty-state" style={{
                       position: 'absolute',

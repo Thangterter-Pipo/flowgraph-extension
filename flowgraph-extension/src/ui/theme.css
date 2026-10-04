@@ -8302,3 +8302,212 @@ html[data-theme$="-dark"] .run-mode-menu button.fg-btn.run-restart-btn svg,
 html[data-theme="cyber-dark"] .run-mode-menu button.fg-btn.run-restart-btn svg {
   color: #93c5fd !important;
 }
+
+/* ========================================================================== */
+/* FLOATING COPILOT DOCK (AI DIRECTOR DOCK Ở ĐÁY MÀN HÌNH - CHUẨN LIBLIB.TV)  */
+/* ========================================================================== */
+.floating-copilot-container {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 80;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.copilot-feedback-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #c084fc;
+  font-size: 12px;
+  font-weight: 550;
+  padding: 6px 14px;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  animation: fadeInSlideUp 0.25s ease-out;
+}
+
+.copilot-sparkle-icon {
+  color: #a855f7;
+  animation: pulseSparkle 1.8s infinite ease-in-out;
+}
+
+.copilot-toast-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  margin-left: 6px;
+  padding: 0 4px;
+}
+.copilot-toast-close:hover {
+  color: #ffffff;
+}
+
+.floating-copilot-dock {
+  height: 56px;
+  background: rgba(22, 27, 34, 0.88);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 32px;
+  padding: 6px 8px 6px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.floating-copilot-dock:focus-within {
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 0 2px rgba(99, 102, 241, 0.25);
+}
+
+.copilot-presets {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.copilot-preset-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 11.5px;
+  font-weight: 550;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.copilot-preset-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #e0e7ff;
+}
+
+.copilot-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.copilot-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.copilot-input-sparkle {
+  color: #818cf8;
+  flex-shrink: 0;
+}
+
+.copilot-input {
+  width: 520px;
+  background: transparent;
+  border: none;
+  color: #f8fafc;
+  font-size: 13.5px;
+  font-family: inherit;
+  outline: none;
+}
+
+.copilot-input::placeholder {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.copilot-action-btn {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 24px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.copilot-action-btn.has-input {
+  background: linear-gradient(135deg, #4f46e5, #9333ea);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.4);
+}
+
+.copilot-action-btn.has-input:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.5);
+}
+
+.copilot-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.copilot-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeInSlideUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseSparkle {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Light Mode Overrides for Floating Copilot Dock */
+[data-theme="studio-light"] .floating-copilot-dock,
+[data-theme="modern-minimal-light"] .floating-copilot-dock {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.12) !important;
+}
+
+[data-theme="studio-light"] .copilot-input,
+[data-theme="modern-minimal-light"] .copilot-input {
+  color: #0f172a !important;
+}
+
+[data-theme="studio-light"] .copilot-preset-btn,
+[data-theme="modern-minimal-light"] .copilot-preset-btn {
+  background: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+  color: #334155 !important;
+}
+
