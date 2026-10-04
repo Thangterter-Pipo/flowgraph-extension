@@ -1292,7 +1292,11 @@
   var SYNC_WRITE_TIMEOUT_MS = 1e4;
   var DOWNLOAD_TIMEOUT_MS = DOWNLOAD_TRANSFER_BUDGET_MS;
   var FLOW_SITEKEY = "6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV";
-  var PROXY_FETCH_ALLOWED_HOSTS = /* @__PURE__ */ new Set([]);
+  var PROXY_FETCH_ALLOWED_HOSTS = /* @__PURE__ */ new Set([
+    "gateway.thangterter.online",
+    "api.openai.com",
+    "generativelanguage.googleapis.com"
+  ]);
   var VIDEO_KINDS = /* @__PURE__ */ new Set([
     "i2v",
     "t2v",

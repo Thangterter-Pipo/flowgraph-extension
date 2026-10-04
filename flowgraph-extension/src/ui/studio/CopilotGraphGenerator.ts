@@ -1,10 +1,12 @@
 import { node, type FlowEdge, type FlowNode } from './model';
 import type { WorkflowTemplate } from './workflowTemplates';
+import { GatewayGeminiAdapter } from '../../adapters/gemini/GatewayGeminiAdapter';
 
 export interface StoryScene {
   index: number;
   title: string;
   prompt: string;
+  camera?: string;
 }
 
 export interface ParsedStory {
@@ -13,6 +15,8 @@ export interface ParsedStory {
   style: string;
   strategy: 'STORYBOARD_9GRID' | 'MULTI_SCENE' | 'SINGLE_SHOT';
   scenes: StoryScene[];
+  directorNotes?: string;
+  isAiGenerated?: boolean;
 }
 
 const W_PROMPT = { stroke: '#9a52f8' };
@@ -38,13 +42,89 @@ const makeEdge = (
 });
 
 /**
- * Phân tích mọi format prompt từ người dùng:
- * - Đánh số (1., 2., Cảnh 1, Shot 1, Scene 1)
- * - Gạch đầu dòng (- / *)
- * - Đoạn văn tự do (tự động phân câu)
- * - Từ khóa đặc biệt (9 ô, cửu cung, 3x3, storyboard)
+ * AI DIRECTOR THỰC THỤ:
+ * Gửi prompt của người dùng sang LLM (Gemini / GPT qua Gateway/9Router)
+ * để AI phân tích kịch bản, lập dàn ý các shot và quyết định kiến trúc node.
  */
-export function parseCopilotPrompt(raw: string): ParsedStory {
+export async function consultAiDirector(rawPrompt: string): Promise<ParsedStory> {
+  const text = (rawPrompt || '').trim();
+  if (!text) {
+    return parseCopilotPromptFallback('');
+  }
+
+  const adapter = new GatewayGeminiAdapter();
+
+  const systemPrompt = `You are an expert AI Film Director and Graph Architect for FlowGraph Studio.
+The user provides a filmmaking request, script, or story in ANY format (Vietnamese or English, natural language paragraph, numbered scenes, bullet points, single-sentence idea, etc.).
+
+Analyze the user's creative vision and return a strictly valid JSON object representing the film structure:
+{
+  "title": "Short evocative title (max 50 chars)",
+  "strategy": "STORYBOARD_9GRID" | "MULTI_SCENE" | "SINGLE_SHOT",
+  "style": "Cinematic visual style description",
+  "scenes": [
+    {
+      "index": 1,
+      "title": "Scene 1 name",
+      "prompt": "Detailed cinematic prompt for this scene including character, environment, action, lighting and mood in English",
+      "camera": "Camera shot and motion (e.g. Wide establishing shot, Slow push in, Low angle tracking)"
+    }
+  ],
+  "directorNotes": "A concise explanation in Vietnamese explaining how you structured the film, visual beats, and why you chose this layout."
+}
+
+Rules for strategy:
+- Use "STORYBOARD_9GRID" if user mentions 9 panels / 9-grid / Cửu cung / 3x3, or if the story requires 7-9 consistent narrative frames.
+- Use "MULTI_SCENE" if the story has 2 to 6 distinct sequential scenes.
+- Use "SINGLE_SHOT" if the user only describes a single short clip or single idea.
+- Output ONLY the raw JSON string. Do NOT wrap in markdown code blocks like \`\`\`json ... \`\`\`. No extra text before or after.`;
+
+  try {
+    const rawResponse = await adapter.enhancePrompt(text, {
+      customInstruction: systemPrompt,
+    });
+
+    // Làm sạch chuỗi JSON nếu LLM có bọc markdown
+    let cleanJson = rawResponse.trim();
+    if (cleanJson.startsWith('```')) {
+      cleanJson = cleanJson.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    }
+
+    const parsed = JSON.parse(cleanJson);
+    if (parsed && Array.isArray(parsed.scenes) && parsed.scenes.length > 0) {
+      return {
+        rawPrompt: text,
+        title: parsed.title || 'Phim Điện Ảnh AI',
+        style: parsed.style || 'Cinematic',
+        strategy: ['STORYBOARD_9GRID', 'MULTI_SCENE', 'SINGLE_SHOT'].includes(parsed.strategy)
+          ? parsed.strategy
+          : parsed.scenes.length >= 7
+          ? 'STORYBOARD_9GRID'
+          : parsed.scenes.length >= 2
+          ? 'MULTI_SCENE'
+          : 'SINGLE_SHOT',
+        scenes: parsed.scenes.map((s: any, idx: number) => ({
+          index: s.index || idx + 1,
+          title: s.title || `Cảnh ${idx + 1}`,
+          prompt: s.prompt || text,
+          camera: s.camera,
+        })),
+        directorNotes: parsed.directorNotes || 'AI Director đã phân tích và hoàn tất kịch bản.',
+        isAiGenerated: true,
+      };
+    }
+  } catch (err) {
+    console.warn('[Copilot AI Director] LLM call failed or offline, using rule-based parser fallback:', err);
+  }
+
+  // Fallback nếu LLM offline
+  return parseCopilotPromptFallback(text);
+}
+
+/**
+ * Parser dự phòng (khi không có kết nối LLM hoặc chạy unit test offline)
+ */
+export function parseCopilotPromptFallback(raw: string): ParsedStory {
   const text = (raw || '').trim();
   if (!text) {
     return {
@@ -53,6 +133,8 @@ export function parseCopilotPrompt(raw: string): ParsedStory {
       style: 'Cinematic',
       strategy: 'SINGLE_SHOT',
       scenes: [{ index: 1, title: 'Cảnh 1', prompt: 'Cinematic scene' }],
+      directorNotes: 'Khởi tạo cảnh đơn lẻ mặc định.',
+      isAiGenerated: false,
     };
   }
 
@@ -72,7 +154,6 @@ export function parseCopilotPrompt(raw: string): ParsedStory {
     }
   }
 
-  // 2. Nếu tìm thấy ít nhất 2 phân cảnh đánh số
   if (numberedMatches.length >= 2) {
     const scenes: StoryScene[] = numberedMatches.map((item, idx) => ({
       index: idx + 1,
@@ -88,10 +169,12 @@ export function parseCopilotPrompt(raw: string): ParsedStory {
       style: 'Cinematic',
       strategy,
       scenes,
+      directorNotes: `Đã phân rã ${scenes.length} phân cảnh đánh số liên hoàn.`,
+      isAiGenerated: false,
     };
   }
 
-  // 3. Tìm theo gạch đầu dòng (- / *)
+  // 2. Tìm theo gạch đầu dòng (- / *)
   const bulletLines = text
     .split('\n')
     .map((l) => l.trim())
@@ -113,12 +196,13 @@ export function parseCopilotPrompt(raw: string): ParsedStory {
       style: 'Cinematic',
       strategy,
       scenes,
+      directorNotes: `Đã bóc tách ${scenes.length} gạch đầu dòng thành các phân cảnh tuần tự.`,
+      isAiGenerated: false,
     };
   }
 
-  // 4. Nếu là đoạn văn tự do không có định dạng phân cảnh
+  // 3. Nếu có từ khóa Cửu cung / 9 ô
   if (is9GridExplicit) {
-    // Người dùng muốn 9 ô từ 1 prompt tự do
     const scenes: StoryScene[] = Array.from({ length: 9 }, (_, i) => ({
       index: i + 1,
       title: `Shot ${i + 1}`,
@@ -130,10 +214,12 @@ export function parseCopilotPrompt(raw: string): ParsedStory {
       style: 'Cinematic Storyboard',
       strategy: 'STORYBOARD_9GRID',
       scenes,
+      directorNotes: 'Áp dụng chuẩn LibTV Cửu Cung 9 Ô khóa nhân vật và ánh sáng toàn cảnh.',
+      isAiGenerated: false,
     };
   }
 
-  // Tách câu tự do nếu đoạn văn dài có nhiều câu hành động
+  // 4. Tách câu tự do nếu đoạn văn dài có nhiều câu hành động
   const sentences = text
     .split(/[.;!?\n]+/)
     .map((s) => s.trim())
@@ -151,6 +237,8 @@ export function parseCopilotPrompt(raw: string): ParsedStory {
       style: 'Cinematic',
       strategy: 'MULTI_SCENE',
       scenes,
+      directorNotes: `Tự động phân tích các câu hành động thành ${scenes.length} phân cảnh phim.`,
+      isAiGenerated: false,
     };
   }
 
@@ -161,6 +249,8 @@ export function parseCopilotPrompt(raw: string): ParsedStory {
     style: 'Cinematic',
     strategy: 'SINGLE_SHOT',
     scenes: [{ index: 1, title: 'Cảnh 1', prompt: text }],
+    directorNotes: 'Thiết lập quy trình tạo video đơn lẻ chất lượng cao.',
+    isAiGenerated: false,
   };
 }
 
@@ -168,11 +258,13 @@ export function parseCopilotPrompt(raw: string): ParsedStory {
  * Tự động sinh toàn bộ đồ thị Node và tự động nối dây (Auto-wiring)
  * dựa trên phân tích từ AI Director.
  */
-export function generateWorkflowFromPrompt(rawPrompt: string): {
+export async function generateWorkflowFromPrompt(rawPrompt: string): Promise<{
   template: WorkflowTemplate;
   summary: string;
-} {
-  const story = parseCopilotPrompt(rawPrompt);
+  story: ParsedStory;
+}> {
+  // 1. Tham vấn AI Director (LLM thật)
+  const story = await consultAiDirector(rawPrompt);
   const nodes: FlowNode[] = [];
   const edges: FlowEdge[] = [];
 
@@ -186,7 +278,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       'Maintain character identity and lighting consistency across all 9 panels.',
     ].join('\n');
 
-    // 1. Master Prompt Node
     nodes.push(
       node('cp-prompt-master', 'prompt', 80, 180, {
         title: 'Kịch bản Cửu Cung',
@@ -196,7 +287,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       }),
     );
 
-    // 2. T2I Master 9-Grid
     nodes.push(
       node('cp-t2i-master', 't2i', 480, 120, {
         title: 'T2I Master 9-Grid',
@@ -207,7 +297,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
     );
     edges.push(makeEdge('e-p-to-t2i', 'cp-prompt-master', 'prompt', 'cp-t2i-master', 'prompt', W_PROMPT));
 
-    // 3. Storyboard 9-Grid Splitter
     nodes.push(
       node('cp-sb-split', 'storyboardSplit', 880, 80, {
         title: 'Storyboard 9-Grid Splitter',
@@ -218,7 +307,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
     );
     edges.push(makeEdge('e-t2i-to-split', 'cp-t2i-master', 'image', 'cp-sb-split', 'imageIn', W_IMAGE));
 
-    // 4. Sinh các Node Video tương ứng cho từng Shot (ví dụ chọn 3-4 shot tiêu biểu hoặc đủ số shot)
     const shotsToGenerate = Math.min(story.scenes.length || 4, 4);
     const videoNodeIds: string[] = [];
 
@@ -231,7 +319,7 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
 
       nodes.push(
         node(vNodeId, 'i2v', 1260, shotY, {
-          title: `Shot ${i}: ${sceneData?.prompt?.slice(0, 20) || `Phân cảnh ${i}`}`,
+          title: `Shot ${i}: ${sceneData?.title || `Phân cảnh ${i}`}`,
           subtitle: 'I2V Motion',
           tone: 'green',
           config: {
@@ -243,11 +331,9 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
         }),
       );
 
-      // Nối từ output tương ứng của Splitter sang cổng 'image' (Start Frame) của Video
       edges.push(makeEdge(`e-split-to-v${i}`, 'cp-sb-split', shotId, vNodeId, 'image', W_IMAGE));
     }
 
-    // 5. Stitch / Timeline Node (ghép toàn bộ video clip thành phim hoàn chỉnh)
     nodes.push(
       node('cp-stitch-timeline', 'videoConcat', 1700, 240, {
         title: 'Stitch / Timeline',
@@ -257,12 +343,10 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       }),
     );
 
-    // Nối các video vào Stitch Timeline
     videoNodeIds.forEach((vId, idx) => {
       edges.push(makeEdge(`e-v${idx + 1}-to-stitch`, vId, 'video', 'cp-stitch-timeline', 'video', W_VIDEO));
     });
 
-    // 6. Master Output Video
     nodes.push(
       node('cp-master-output', 'download', 2080, 240, {
         title: 'Phim Master 40s',
@@ -276,13 +360,14 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       template: {
         id: `copilot-storyboard-${Date.now()}`,
         title: story.title,
-        description: `Quy trình điện ảnh Cửu Cung 9 Ô tự động sinh bởi AI Director: ${story.title}`,
+        description: `Quy trình điện ảnh Cửu Cung 9 Ô bởi AI Director: ${story.title}`,
         category: 'cinematic',
         tags: ['copilot', 'storyboard-9grid', 'libtv', 'cinematic'],
         nodes,
         edges,
       },
-      summary: `Đã thiết lập quy trình Cửu Cung 9 Ô (LibTV Standard): 1 Prompt Master ➔ T2I Master 9-Grid ➔ Splitter bóc tách ${shotsToGenerate} Shots ➔ I2V Motion ➔ Ghép phim Stitch Timeline.`,
+      summary: `🎬 [AI Director] ${story.directorNotes || 'Đã thiết lập quy trình Cửu Cung 9 Ô'} (1 Master Prompt ➔ T2I Grid ➔ Splitter ${shotsToGenerate} Shots ➔ I2V ➔ Stitch Film).`,
+      story,
     };
   }
 
@@ -293,7 +378,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
     const sceneCount = story.scenes.length;
     const videoNodeIds: string[] = [];
 
-    // Master Prompt
     nodes.push(
       node('cp-prompt-overall', 'prompt', 80, 240, {
         title: 'Cốt Truyện Tổng',
@@ -303,13 +387,11 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       }),
     );
 
-    // Từng phân cảnh tuần tự
     story.scenes.forEach((sc, idx) => {
       const sceneNum = sc.index;
       const xBase = 460 + (sceneNum - 1) * 380;
       const yBase = 120;
 
-      // 1. Prompt của cảnh
       const pId = `cp-sc-${sceneNum}-prompt`;
       nodes.push(
         node(pId, 'prompt', xBase, yBase, {
@@ -320,7 +402,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
         }),
       );
 
-      // 2. T2I của cảnh
       const t2iId = `cp-sc-${sceneNum}-t2i`;
       nodes.push(
         node(t2iId, 't2i', xBase, yBase + 180, {
@@ -332,7 +413,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       );
       edges.push(makeEdge(`e-p-t2i-${sceneNum}`, pId, 'prompt', t2iId, 'prompt', W_PROMPT));
 
-      // 3. I2V Motion của cảnh
       const i2vId = `cp-sc-${sceneNum}-i2v`;
       videoNodeIds.push(i2vId);
       nodes.push(
@@ -346,7 +426,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       edges.push(makeEdge(`e-t2i-i2v-${sceneNum}`, t2iId, 'image', i2vId, 'image', W_IMAGE));
     });
 
-    // Stitch / Timeline ghép tất cả video
     const stitchX = 460 + sceneCount * 380;
     nodes.push(
       node('cp-stitch-timeline', 'videoConcat', stitchX, 260, {
@@ -361,7 +440,6 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       edges.push(makeEdge(`e-v${idx + 1}-to-concat`, vId, 'video', 'cp-stitch-timeline', 'video', W_VIDEO));
     });
 
-    // Master Output Video
     nodes.push(
       node('cp-final-film', 'download', stitchX + 380, 260, {
         title: 'Phim Hoàn Chỉnh',
@@ -381,7 +459,8 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
         nodes,
         edges,
       },
-      summary: `Đã thiết lập phim ngắn ${sceneCount} phân cảnh tuần tự: Mỗi cảnh gồm Prompt ➔ T2I Khung Hình ➔ Video Motion ➔ Ghép nối thành Phim Hoàn Chỉnh.`,
+      summary: `🎬 [AI Director] ${story.directorNotes || `Đã thiết lập phim ${sceneCount} phân cảnh`} (Mỗi cảnh gồm Prompt ➔ T2I Khung Hình ➔ Video Motion ➔ Ghép nối Stitch Timeline).`,
+      story,
     };
   }
 
@@ -436,6 +515,7 @@ export function generateWorkflowFromPrompt(rawPrompt: string): {
       nodes,
       edges,
     },
-    summary: `Đã thiết lập quy trình tạo video hoàn chỉnh: Prompt ➔ T2I Khung hình đầu ➔ I2V Sinh chuyển động ➔ Xuất Video.`,
+    summary: `🎬 [AI Director] ${story.directorNotes || 'Đã thiết lập video đơn lẻ'} (Prompt ➔ T2I Khung hình đầu ➔ I2V Chuyển động ➔ Xuất Video).`,
+    story,
   };
 }

@@ -148,7 +148,11 @@ const FLOW_SITEKEY = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
 // FLOWGRAPH_PROXY_FETCH runs with the extension's host permissions and cookie
 // jar, so without an allowlist it is an authenticated open proxy. Local gateways
 // are user-configurable on any port; add vetted remote hosts here explicitly.
-const PROXY_FETCH_ALLOWED_HOSTS: ReadonlySet<string> = new Set([]);
+const PROXY_FETCH_ALLOWED_HOSTS: ReadonlySet<string> = new Set([
+  'gateway.thangterter.online',
+  'api.openai.com',
+  'generativelanguage.googleapis.com',
+]);
 
 // Video generation kinds share a video composer mode / VIDEO media type. Image
 // generation (t2i) is the only IMAGE kind; everything else in GeneratePayload is

@@ -8374,32 +8374,19 @@ html[data-theme="cyber-dark"] .run-mode-menu button.fg-btn.run-restart-btn svg {
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65), 0 0 0 2px rgba(99, 102, 241, 0.25);
 }
 
-.copilot-presets {
+.copilot-ai-badge {
   display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.copilot-preset-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
-  padding: 6px 12px;
+  gap: 7px;
+  background: rgba(99, 102, 241, 0.18);
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #c084fc;
+  padding: 6px 14px;
   border-radius: 20px;
-  font-size: 11.5px;
-  font-weight: 550;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
   white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.copilot-preset-btn:hover {
-  background: rgba(99, 102, 241, 0.15);
-  border-color: rgba(99, 102, 241, 0.4);
-  color: #e0e7ff;
 }
 
 .copilot-divider {
@@ -8504,10 +8491,10 @@ html[data-theme="cyber-dark"] .run-mode-menu button.fg-btn.run-restart-btn svg {
   color: #0f172a !important;
 }
 
-[data-theme="studio-light"] .copilot-preset-btn,
-[data-theme="modern-minimal-light"] .copilot-preset-btn {
-  background: #f1f5f9 !important;
-  border-color: #e2e8f0 !important;
-  color: #334155 !important;
+[data-theme="studio-light"] .copilot-ai-badge,
+[data-theme="modern-minimal-light"] .copilot-ai-badge {
+  background: #ede9fe !important;
+  border-color: #c4b5fd !important;
+  color: #7c3aed !important;
 }
 
