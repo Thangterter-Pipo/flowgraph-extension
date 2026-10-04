@@ -270,7 +270,7 @@ export const BUILTIN_TEMPLATES: WorkflowTemplate[] = [
       }),
       node('sb-t2i', 't2i', 820, 260, {
         title: 'T2I Master 9-Grid',
-        config: { model: 'Banana 2 (Pro)', aspectRatio: '16:9' },
+        config: { model: '🍌 Nano Banana 2', aspectRatio: '16:9' },
       }),
       node('sb-split', 'storyboardSplit', 1240, 180, {
         title: 'Storyboard 9-Grid Splitter',
