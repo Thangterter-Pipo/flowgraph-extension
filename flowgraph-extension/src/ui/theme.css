@@ -5695,17 +5695,9 @@ textarea.form-control { min-height: 66px; padding-top: 6px; }
 }
 
 .media-first-node .port-anchor-wrap::after {
-  content: "" !important;
-  position: absolute !important;
-  top: 50% !important;
-  width: 15px !important;
-  height: 1px !important;
-  background: #b8c2cf !important;
-  transform: translateY(-.5px) !important;
-  pointer-events: none !important;
+  display: none !important;
+  content: none !important;
 }
-.media-first-node .port-anchor-wrap.in::after { right: 0 !important; }
-.media-first-node .port-anchor-wrap.out::after { left: 0 !important; }
 
 .media-first-node .stitch-port-handle,
 .media-first-node .react-flow__handle.stitch-port-handle,
@@ -7979,7 +7971,8 @@ html.flowgraph-theme-switching *::after {
   html[data-theme="developer-pro-light"], html[data-theme="developer-pro-dark"],
   html[data-theme="premium-warm-light"], html[data-theme="premium-warm-dark"]
 ) .media-first-node .port-anchor-wrap::after {
-  background: var(--mf-line) !important;
+  display: none !important;
+  content: none !important;
 }
 :is(
   html[data-theme="modern-minimal-light"], html[data-theme="modern-minimal-dark"],
