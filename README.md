@@ -40,7 +40,7 @@ flowgraph-extension/
 │       └── studio/        # Giao diện Studio Canvas toàn màn hình (React Flow)
 ├── public/                # Manifest.json, icons, content script
 ├── scripts/               # Package & build automation scripts
-├── tests/unit/            # Bộ kiểm thử tự động 88 test files (Vitest)
+├── tests/unit/            # Bộ kiểm thử tự động 96 test files (Vitest)
 └── vite.config.ts         # Cấu hình Vite bundle & vendor chunk splitting
 ```
 
@@ -69,7 +69,7 @@ cd flowgraph-extension
 # 2. Cài đặt các gói phụ thuộc
 npm install
 
-# 3. Chạy kiểm thử tự động (88 test files / 1,162 tests)
+# 3. Chạy kiểm thử tự động (96 test files / 1,231 tests)
 npm test
 
 # 4. Build bản sản xuất (kết quả xuất ra thư mục dist/)
