@@ -111,6 +111,19 @@ export function editorPromptMatches(editorPrompt: string, expectedPrompt: string
   return seen.includes(expected.slice(0, Math.min(40, expected.length)));
 }
 
+export function exactEditorPromptMatches(editorPrompt: string, expectedPrompt: string): boolean {
+  const expected = normalizePrompt(expectedPrompt);
+  if (!expected) return false;
+  const seen = normalizePrompt(editorPrompt);
+  if (!seen) return false;
+  if (seen === expected) return true;
+  const minLen = Math.min(seen.length, expected.length);
+  if (minLen >= 150 && seen.slice(0, minLen) === expected.slice(0, minLen)) {
+    return true;
+  }
+  return false;
+}
+
 function normalizePrompt(value: string): string {
   return (value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 }

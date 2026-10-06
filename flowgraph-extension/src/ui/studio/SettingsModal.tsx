@@ -44,6 +44,7 @@ export interface FlowGraphSettings {
   // 4. Runtime & Debug
   enableDebugLogs: boolean;
   skipExperimentalPrompt: boolean;
+  flowUiPipeline?: boolean;
 }
 
 export const DEFAULT_SETTINGS: FlowGraphSettings = {
@@ -64,6 +65,7 @@ export const DEFAULT_SETTINGS: FlowGraphSettings = {
   autoSave: true,
   enableDebugLogs: true,
   skipExperimentalPrompt: false,
+  flowUiPipeline: true,
 };
 
 export function loadSettings(): FlowGraphSettings {
@@ -507,6 +509,11 @@ export function SettingsModal({ open, onClose, settings, onSave }: SettingsModal
             {activeTab === 'runtime' && (
               <div className="settings-section">
                 <h3 className="section-heading">Quản trị Hệ thống, Bộ nhớ đệm & Bắt lỗi</h3>
+                <label className="checkbox-label">
+                  <input type="checkbox" checked={form.flowUiPipeline === true}
+                    onChange={(e) => update('flowUiPipeline', e.target.checked)} />
+                  <span>Gửi nối tiếp cảnh T2V độc lập (tối đa 2 cảnh đang render; ô nhập vẫn dùng tuần tự)</span>
+                </label>
                 <p className="section-tip">Theo dõi dung lượng, xóa cache và bật nhật ký chi tiết chuỗi workflow.</p>
 
                 <div className="system-status-box">

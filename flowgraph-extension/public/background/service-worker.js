@@ -122,6 +122,59 @@
     globalThis.addEventListener("unhandledrejection", () => logger.report("UNHANDLED_REJECTION"));
   }
 
+  // src/background/FlowUiLease.ts
+  var FlowUiMutex = class {
+    tail = Promise.resolve();
+    async acquire(check = () => {
+    }) {
+      let release;
+      const next = new Promise((resolve) => {
+        release = resolve;
+      });
+      const previous = this.tail;
+      this.tail = previous.then(() => next, () => next);
+      try {
+        check();
+        while (true) {
+          let done = false;
+          await Promise.race([
+            previous.then(() => {
+              done = true;
+            }),
+            new Promise((resolve) => setTimeout(resolve, 150))
+          ]);
+          check();
+          if (done) break;
+        }
+      } catch (error) {
+        release();
+        throw error;
+      }
+      let released = false;
+      return () => {
+        if (!released) {
+          released = true;
+          release();
+        }
+      };
+    }
+  };
+  var FlowUiLease = class {
+    constructor(mutex, check) {
+      this.mutex = mutex;
+      this.check = check;
+    }
+    release;
+    async acquire() {
+      if (!this.release) this.release = await this.mutex.acquire(this.check);
+      this.check();
+    }
+    yield() {
+      this.release?.();
+      this.release = void 0;
+    }
+  };
+
   // src/shared/flowPayloads.ts
   function recaptchaContext(token) {
     return {
@@ -393,6 +446,18 @@
     const seen = normalizePrompt(editorPrompt);
     if (!seen) return false;
     return seen.includes(expected.slice(0, Math.min(40, expected.length)));
+  }
+  function exactEditorPromptMatches(editorPrompt, expectedPrompt) {
+    const expected = normalizePrompt(expectedPrompt);
+    if (!expected) return false;
+    const seen = normalizePrompt(editorPrompt);
+    if (!seen) return false;
+    if (seen === expected) return true;
+    const minLen = Math.min(seen.length, expected.length);
+    if (minLen >= 150 && seen.slice(0, minLen) === expected.slice(0, minLen)) {
+      return true;
+    }
+    return false;
   }
   function normalizePrompt(value) {
     return (value ?? "").replace(/\s+/g, " ").trim().toLowerCase();
@@ -2940,7 +3005,42 @@
       }
     }
   }
+  var generationUiMutex = new FlowUiMutex();
+  var claimedVideoIds = /* @__PURE__ */ new Set();
+  async function isVideoIdClaimed(projectId, mediaId) {
+    const key = `${projectId}:${mediaId}`;
+    if (claimedVideoIds.has(key)) return true;
+    try {
+      const data = await chrome.storage.session.get("flowgraph_claimed_video_ids");
+      if (Array.isArray(data?.flowgraph_claimed_video_ids)) {
+        for (const id of data.flowgraph_claimed_video_ids) claimedVideoIds.add(id);
+      }
+    } catch {
+    }
+    return claimedVideoIds.has(key);
+  }
+  async function markVideoIdClaimed(projectId, mediaId) {
+    const key = `${projectId}:${mediaId}`;
+    claimedVideoIds.add(key);
+    if (claimedVideoIds.size > 512) claimedVideoIds.delete(claimedVideoIds.values().next().value);
+    try {
+      await chrome.storage.session.set({
+        flowgraph_claimed_video_ids: Array.from(claimedVideoIds)
+      });
+    } catch {
+    }
+  }
   async function handleGenerate(payload, requestId) {
+    const check = () => throwIfGenerationAborted(requestId);
+    const lease = new FlowUiLease(generationUiMutex, check);
+    try {
+      await lease.acquire();
+      return await handleGenerateWithLease(payload, requestId, lease);
+    } finally {
+      lease.yield();
+    }
+  }
+  async function handleGenerateWithLease(payload, requestId, lease) {
     throwIfGenerationAborted(requestId);
     const tab = await findFlowTab(payload.projectId);
     if (!tab || tab.id === void 0) throw bridgeError("NO_FLOW_TAB", "No Google Flow tab is open.", false);
@@ -3220,7 +3320,7 @@
           // The editor hydrates asynchronously after navigation; give it a beat.
           for (let k = 0; k < 10; k += 1) {
             const t = read();
-            if (t) return t.slice(0, 200);
+            if (t) return t.slice(0, 2000);
             await waitWhileNotAborted(500, requestId);
           }
           return '';
@@ -3667,7 +3767,7 @@
               .filter((i) => Boolean(i.currentSrc || i.src)).length
             + ' tiles=' + document.querySelectorAll('[data-media-id]').length;
         })()`);
-        for (let attempt = 0; attempt < 4 && !submitAccepted; attempt += 1) {
+        for (let attempt = 0; attempt < (payload.kind === "t2v" ? 1 : 4) && !submitAccepted; attempt += 1) {
           throwIfGenerationAborted(requestId);
           if (attempt > 0) await waitWhileNotAborted(1500, requestId);
           const measured = await measureGenerateButton();
@@ -3703,7 +3803,7 @@
             }
             if (consumed) submitAccepted = true;
           }
-          if (!submitAccepted) {
+          if (!submitAccepted && payload.kind !== "t2v") {
             await assertScalarReadyToSubmit();
             await assertModeReadyToSubmit();
             await assertModelReadyToSubmit();
@@ -3736,9 +3836,15 @@
         if (!submitAccepted) {
           throw bridgeError(
             "PROVIDER_ERROR",
-            `Google Flow did not accept the Generate click: the prompt editor never cleared. Trace ${submitTrace.join(" | ")}`,
-            true
+            `Flow submission is unconfirmed or its queue is full. Check the Flow tab before retrying; no automatic resubmit. Trace ${submitTrace.join(" | ")}`,
+            false
           );
+        }
+        const pipelined = payload.kind === "t2v";
+        if (pipelined) {
+          await chrome.debugger.detach(target);
+          attached = false;
+          lease.yield();
         }
         const maxWaitMs = isVideoKind(payload.kind) ? MEDIA_WAIT_VIDEO_MS : MEDIA_WAIT_IMAGE_MS;
         const startMs = Date.now();
@@ -3750,6 +3856,34 @@
         const detectInteractiveCaptcha = () => evalOnPage(
           `(()=>{for(const f of document.querySelectorAll('iframe')){if(!/recaptcha/i.test(f.src||''))continue;const r=f.getBoundingClientRect();if(r.width<120||r.height<40)continue;const cx=r.x+r.width/2,cy=r.y+r.height/2;if(cx<0||cy<0||cx>=innerWidth||cy>=innerHeight)continue;let el=f,vis=true;while(el){const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity)===0){vis=false;break}el=el.parentElement}if(!vis)continue;const hit=document.elementFromPoint(cx,cy);if(hit&&(hit===f||f.contains(hit)))return true}return false})()`
         );
+        const readVideoPosterTokensViaScripting = async () => {
+          try {
+            const results = await chrome.scripting.executeScript({
+              target: { tabId },
+              func: () => {
+                const key = (el) => {
+                  const s = el.currentSrc || el.src || "";
+                  if (!s) return "";
+                  try {
+                    const u = new URL(s, location.href);
+                    const asb = u.pathname.match(/\/asb\/([A-Za-z0-9_-]+)/);
+                    if (asb) return "asb:" + asb[1];
+                    return "p:" + u.host + u.pathname;
+                  } catch {
+                    return "r:" + s.split("?")[0].slice(-80);
+                  }
+                };
+                return Array.from(document.querySelectorAll("flow-video-tile")).map((t) => {
+                  const img = t.querySelector("img");
+                  return img ? key(img) : "";
+                });
+              }
+            });
+            return results?.[0]?.result ?? [];
+          } catch {
+            return [];
+          }
+        };
         while (Date.now() - startMs < maxWaitMs) {
           await waitWhileNotAborted(4e3, requestId);
           throwIfGenerationAborted(requestId);
@@ -3776,8 +3910,8 @@
               const attributedId = selectAttributedImageMediaId({ candidates, expectedPrompt: prompt });
               if (attributedId) {
                 emitGenerateProgress(requestId, attributedId);
-                const previewUrl2 = await resolveRedirectSafe(attributedId, "IMAGE");
-                return completeGenerate(requestId, { mediaId: attributedId, type: "IMAGE", projectId: payload.projectId, previewUrl: previewUrl2, completedViaUi: true }, payload.projectId);
+                const previewUrl = await resolveRedirectSafe(attributedId, "IMAGE");
+                return completeGenerate(requestId, { mediaId: attributedId, type: "IMAGE", projectId: payload.projectId, previewUrl, completedViaUi: true }, payload.projectId);
               }
             }
             if (elapsed >= captchaGraceMs && await detectInteractiveCaptcha()) {
@@ -3789,7 +3923,7 @@
             }
             continue;
           }
-          const tokens = await readVideoPosterTokens() ?? [];
+          const tokens = pipelined ? await readVideoPosterTokensViaScripting() : await readVideoPosterTokens() ?? [];
           const verdict = decideVideoTileArrival(
             { tokens: beforeVidTokens },
             { tokens },
@@ -3798,10 +3932,10 @@
           if (!verdict.appeared) {
             if (waitTick % 8 === 0) {
               submitTrace.push(
-                `w${Math.round(elapsed / 1e3)}s:vt${tokens.length}${verdict.rotated ? `:rot${verdict.unknownIndexes.length}` : ""}:${await composerDiag() ?? "noeval"}`
+                `w${Math.round(elapsed / 1e3)}s:vt${tokens.length}${verdict.rotated ? `:rot${verdict.unknownIndexes.length}` : ""}:${pipelined ? "pipelined" : await composerDiag() ?? "noeval"}`
               );
             }
-            if (elapsed >= captchaGraceMs && await detectInteractiveCaptcha()) {
+            if (elapsed >= captchaGraceMs && !pipelined && await detectInteractiveCaptcha()) {
               throw bridgeError(
                 "CAPTCHA_REQUIRED",
                 "Google Flow presented an interactive reCAPTCHA challenge for this generation. Solve it in the Flow tab, then run the workflow again.",
@@ -3815,36 +3949,71 @@
           );
           if (elapsed - lastAttributionMs < VIDEO_TILE_RECOVERY_STEP_MS) continue;
           lastAttributionMs = elapsed;
-          let matched;
-          let everyCandidateDisproved = verdict.grew && verdict.candidates.length > 0;
-          for (const index of verdict.candidates) {
-            const opened = await openVideoTileAndGetId({ index });
-            if (!opened) {
-              everyCandidateDisproved = false;
-              submitTrace.push(`v${index}:noeditor`);
+          if (pipelined) {
+            await lease.acquire();
+            const currentTab = await chrome.tabs.get(tabId);
+            if (projectIdFromUrl(currentTab.url || "") !== payload.projectId) {
+              throw bridgeError("PROJECT_MISMATCH", "Flow project changed while video was rendering.", false);
+            }
+            await ensureFlowProjectComposerReady(currentTab, payload.projectId);
+            try {
+              await chrome.debugger.attach(target, "1.3");
+              attached = true;
+              await ensureInputReachable(target);
+            } catch {
+              lease.yield();
+              submitTrace.push("attach-busy-retry");
               continue;
             }
-            if (!editorPromptMatches(opened.editorPrompt, normalizedPrompt)) {
-              if (!opened.editorPrompt) everyCandidateDisproved = false;
-              submitTrace.push(`v${index}:mismatch:${opened.editorPrompt.slice(0, 24)}`);
+          }
+          try {
+            let matched;
+            let everyCandidateDisproved = verdict.grew && verdict.candidates.length > 0;
+            for (const index of verdict.candidates) {
+              const opened = await openVideoTileAndGetId({ index });
+              if (!opened) {
+                everyCandidateDisproved = false;
+                submitTrace.push(`v${index}:noeditor`);
+                continue;
+              }
+              if (await isVideoIdClaimed(payload.projectId, opened.mediaId)) {
+                everyCandidateDisproved = false;
+                continue;
+              }
+              if (!(pipelined ? exactEditorPromptMatches : editorPromptMatches)(opened.editorPrompt, normalizedPrompt)) {
+                if (!opened.editorPrompt) everyCandidateDisproved = false;
+                submitTrace.push(`v${index}:mismatch:${opened.editorPrompt.slice(0, 24)}`);
+                continue;
+              }
+              matched = opened;
+              break;
+            }
+            if (!matched && everyCandidateDisproved && !pipelined) {
+              throw bridgeError(
+                "MEDIA_FAILED",
+                `New video tile(s) appeared on Flow but none had an editor prompt matching this node, so the pipeline cannot claim them. Trace ${submitTrace.slice(-6).join(" | ")}`,
+                true
+              );
+            }
+            if (!matched) {
               continue;
             }
-            matched = opened;
-            break;
+            const previewUrl = await resolveRedirectSafe(matched.mediaId, "VIDEO");
+            if (!previewUrl) {
+              submitTrace.push("matched-video-not-playable-yet");
+              continue;
+            }
+            await markVideoIdClaimed(payload.projectId, matched.mediaId);
+            emitGenerateProgress(requestId, matched.mediaId);
+            return completeGenerate(requestId, { mediaId: matched.mediaId, type: "VIDEO", projectId: payload.projectId, previewUrl, completedViaUi: true }, payload.projectId);
+          } finally {
+            if (pipelined) {
+              if (attached) await chrome.debugger.detach(target).catch(() => {
+              });
+              attached = false;
+              lease.yield();
+            }
           }
-          if (!matched && everyCandidateDisproved) {
-            throw bridgeError(
-              "MEDIA_FAILED",
-              `New video tile(s) appeared on Flow but none had an editor prompt matching this node, so the pipeline cannot claim them. Trace ${submitTrace.slice(-6).join(" | ")}`,
-              true
-            );
-          }
-          if (!matched) {
-            continue;
-          }
-          const previewUrl = await resolveRedirectSafe(matched.mediaId, "VIDEO");
-          emitGenerateProgress(requestId, matched.mediaId);
-          return completeGenerate(requestId, { mediaId: matched.mediaId, type: "VIDEO", projectId: payload.projectId, previewUrl, completedViaUi: true }, payload.projectId);
         }
         throw bridgeError(
           "TIMEOUT",
@@ -3852,7 +4021,7 @@
           true
         );
       } finally {
-        try {
+        if (attached) try {
           await chrome.debugger.detach(target);
         } catch {
         }

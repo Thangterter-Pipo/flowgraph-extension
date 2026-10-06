@@ -113,7 +113,14 @@ OUTPUT RULE: Return ONLY the final enhanced English prompt. Do not write any pre
         throw new Error(`AI Gateway response is not JSON: ${response.text}`);
       }
     } else {
-      const res = await fetch(url, { method: 'POST', headers, body: bodyStr });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4000);
+      let res: Response;
+      try {
+        res = await fetch(url, { method: 'POST', headers, body: bodyStr, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
         throw new Error(`AI Gateway error HTTP ${res.status}: ${errText || res.statusText}`);

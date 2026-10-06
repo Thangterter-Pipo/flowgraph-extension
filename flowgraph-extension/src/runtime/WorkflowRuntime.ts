@@ -33,6 +33,8 @@ export interface RuntimeRunOptions {
   bypassCacheNodeIds?: ReadonlySet<string>;
   /** Max generations executing concurrently (FG-1001). */
   concurrency?: number;
+  /** Opt-in pipelining for independent T2V nodes; composer stays serialized. */
+  flowUiPipeline?: boolean;
   /** Initial completed node results from canvas (preserves already generated outputs across runs). */
   initialOutputs?: Map<string, Record<string, RuntimeValue>>;
   /** Initial completed node IDs from canvas. */
@@ -307,7 +309,8 @@ export class WorkflowRuntime {
 
         const firstNode = byId.get(staged[0]);
         const stage = firstNode ? executionStage(firstNode.kind) : 99;
-        const stageConcurrency = resolveEffectiveConcurrencyForStage(stage, options.concurrency, {
+        const pipelineT2v = options.flowUiPipeline === true && staged.some((id) => byId.get(id)?.kind === 't2v');
+        const stageConcurrency = pipelineT2v ? 2 : resolveEffectiveConcurrencyForStage(stage, options.concurrency, {
           allowBurst: options.transportPreference === 'BATCH_RPC' || options.qualityMode === 'DRAFT',
         });
 

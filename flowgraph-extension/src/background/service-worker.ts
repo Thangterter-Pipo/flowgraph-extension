@@ -1,5 +1,6 @@
 // Manifest V3 background service worker — FlowGraph provider bridge.
 import { installDiagnostics } from '../shared/devDiagnostics';
+import { FlowUiLease, FlowUiMutex } from './FlowUiLease';
 installDiagnostics('service-worker');
 // Responsibilities:
 //  - message router with requestId correlation + timeout (FG-0103)
@@ -49,6 +50,7 @@ import {
 import {
   decideVideoTileArrival,
   editorPromptMatches,
+  exactEditorPromptMatches,
   selectAttributedImageMediaId,
   EDITOR_PLACEHOLDER_PREFIXES,
   type ImageCandidateAttribution,
@@ -2223,7 +2225,44 @@ async function generateImageUpscaleViaFlowUi(
   }
 }
 
+const generationUiMutex = new FlowUiMutex();
+const claimedVideoIds = new Set<string>();
+
+async function isVideoIdClaimed(projectId: string, mediaId: string): Promise<boolean> {
+  const key = `${projectId}:${mediaId}`;
+  if (claimedVideoIds.has(key)) return true;
+  try {
+    const data = await chrome.storage.session.get('flowgraph_claimed_video_ids');
+    if (Array.isArray(data?.flowgraph_claimed_video_ids)) {
+      for (const id of data.flowgraph_claimed_video_ids) claimedVideoIds.add(id);
+    }
+  } catch {}
+  return claimedVideoIds.has(key);
+}
+
+async function markVideoIdClaimed(projectId: string, mediaId: string): Promise<void> {
+  const key = `${projectId}:${mediaId}`;
+  claimedVideoIds.add(key);
+  if (claimedVideoIds.size > 512) claimedVideoIds.delete(claimedVideoIds.values().next().value!);
+  try {
+    await chrome.storage.session.set({
+      flowgraph_claimed_video_ids: Array.from(claimedVideoIds),
+    });
+  } catch {}
+}
+
 async function handleGenerate(payload: GeneratePayload, requestId?: string): Promise<NormalizedMediaRef> {
+  const check = () => throwIfGenerationAborted(requestId);
+  const lease = new FlowUiLease(generationUiMutex, check);
+  try {
+    await lease.acquire();
+    return await handleGenerateWithLease(payload, requestId, lease);
+  } finally {
+    lease.yield();
+  }
+}
+
+async function handleGenerateWithLease(payload: GeneratePayload, requestId: string | undefined, lease: FlowUiLease): Promise<NormalizedMediaRef> {
   throwIfGenerationAborted(requestId);
   const tab = await findFlowTab(payload.projectId);
   if (!tab || tab.id === undefined) throw bridgeError('NO_FLOW_TAB', 'No Google Flow tab is open.', false);
@@ -2603,7 +2642,7 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
           // The editor hydrates asynchronously after navigation; give it a beat.
           for (let k = 0; k < 10; k += 1) {
             const t = read();
-            if (t) return t.slice(0, 200);
+            if (t) return t.slice(0, 2000);
             await waitWhileNotAborted(500, requestId);
           }
           return '';
@@ -3127,7 +3166,7 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
             + ' tiles=' + document.querySelectorAll('[data-media-id]').length;
         })()`);
 
-      for (let attempt = 0; attempt < 4 && !submitAccepted; attempt += 1) {
+      for (let attempt = 0; attempt < (payload.kind === 't2v' ? 1 : 4) && !submitAccepted; attempt += 1) {
         throwIfGenerationAborted(requestId);
         if (attempt > 0) await waitWhileNotAborted(1_500, requestId);
         const measured = await measureGenerateButton();
@@ -3170,7 +3209,7 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
         // Pointer click landed on a live, hit-testable button but Flow did not take
         // the prompt. Flow's composer also submits on Enter, so try that as a second
         // legitimate UI gesture before giving the attempt up.
-        if (!submitAccepted) {
+        if (!submitAccepted && payload.kind !== 't2v') {
           await assertScalarReadyToSubmit();
           await assertModeReadyToSubmit();
           await assertModelReadyToSubmit();
@@ -3195,10 +3234,18 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
       if (!submitAccepted) {
         throw bridgeError(
           'PROVIDER_ERROR',
-          'Google Flow did not accept the Generate click: the prompt editor never cleared. '
+          'Flow submission is unconfirmed or its queue is full. Check the Flow tab before retrying; no automatic resubmit. '
             + `Trace ${submitTrace.join(' | ')}`,
-          true,
+          false,
         );
+      }
+
+      // Only T2V currently supports yielding the composer while rendering.
+      const pipelined = payload.kind === 't2v';
+      if (pipelined) {
+        await chrome.debugger.detach(target);
+        attached = false;
+        lease.yield();
       }
 
       // Images commit to the gallery in seconds; a real video render takes minutes.
@@ -3230,6 +3277,33 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
         evalOnPage<boolean>(
           `(()=>{for(const f of document.querySelectorAll('iframe')){if(!/recaptcha/i.test(f.src||''))continue;const r=f.getBoundingClientRect();if(r.width<120||r.height<40)continue;const cx=r.x+r.width/2,cy=r.y+r.height/2;if(cx<0||cy<0||cx>=innerWidth||cy>=innerHeight)continue;let el=f,vis=true;while(el){const cs=getComputedStyle(el);if(cs.display==='none'||cs.visibility==='hidden'||Number(cs.opacity)===0){vis=false;break}el=el.parentElement}if(!vis)continue;const hit=document.elementFromPoint(cx,cy);if(hit&&(hit===f||f.contains(hit)))return true}return false})()`,
         );
+
+      const readVideoPosterTokensViaScripting = async (): Promise<string[]> => {
+        try {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId },
+            func: () => {
+              const key = (el: HTMLImageElement) => {
+                const s = el.currentSrc || el.src || '';
+                if (!s) return '';
+                try {
+                  const u = new URL(s, location.href);
+                  const asb = u.pathname.match(/\/asb\/([A-Za-z0-9_-]+)/);
+                  if (asb) return 'asb:' + asb[1];
+                  return 'p:' + u.host + u.pathname;
+                } catch { return 'r:' + s.split('?')[0].slice(-80); }
+              };
+              return Array.from(document.querySelectorAll('flow-video-tile')).map((t) => {
+                const img = t.querySelector('img');
+                return img ? key(img) : '';
+              });
+            },
+          });
+          return (results?.[0]?.result as string[]) ?? [];
+        } catch {
+          return [];
+        }
+      };
 
       while (Date.now() - startMs < maxWaitMs) {
         await waitWhileNotAborted(4000, requestId);
@@ -3277,7 +3351,9 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
         // observed gallery shapes stay unit tested; each candidate tile is only
         // accepted when the editor prompt matches the prompt we submitted, so a
         // stale clip can never be reported as this node's success.
-        const tokens = (await readVideoPosterTokens()) ?? [];
+        const tokens = pipelined
+          ? (await readVideoPosterTokensViaScripting())
+          : ((await readVideoPosterTokens()) ?? []);
         const verdict = decideVideoTileArrival(
           { tokens: beforeVidTokens },
           { tokens },
@@ -3292,10 +3368,10 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
             submitTrace.push(
               `w${Math.round(elapsed / 1000)}s:vt${tokens.length}`
                 + `${verdict.rotated ? `:rot${verdict.unknownIndexes.length}` : ''}`
-                + `:${(await composerDiag()) ?? 'noeval'}`,
+                + `:${pipelined ? 'pipelined' : (await composerDiag()) ?? 'noeval'}`,
             );
           }
-          if (elapsed >= captchaGraceMs && (await detectInteractiveCaptcha())) {
+          if (elapsed >= captchaGraceMs && !pipelined && (await detectInteractiveCaptcha())) {
             throw bridgeError(
               'CAPTCHA_REQUIRED',
               'Google Flow presented an interactive reCAPTCHA challenge for this generation. Solve it in the Flow tab, then run the workflow again.',
@@ -3311,6 +3387,26 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
         );
         if (elapsed - lastAttributionMs < VIDEO_TILE_RECOVERY_STEP_MS) continue;
         lastAttributionMs = elapsed;
+
+        if (pipelined) {
+          await lease.acquire();
+          const currentTab = await chrome.tabs.get(tabId);
+          if (projectIdFromUrl(currentTab.url || '') !== payload.projectId) {
+            throw bridgeError('PROJECT_MISMATCH', 'Flow project changed while video was rendering.', false);
+          }
+          await ensureFlowProjectComposerReady(currentTab, payload.projectId);
+          try {
+            await chrome.debugger.attach(target, '1.3');
+            attached = true;
+            await ensureInputReachable(target);
+          } catch {
+            lease.yield();
+            submitTrace.push('attach-busy-retry');
+            continue;
+          }
+        }
+
+        try {
         let matched: { mediaId: string; editorPrompt: string } | undefined;
         // Only a candidate whose real prompt was actually read can *disprove*
         // attribution. A tile that would not open, or whose prompt the editor
@@ -3330,7 +3426,11 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
             submitTrace.push(`v${index}:noeditor`);
             continue;
           }
-          if (!editorPromptMatches(opened.editorPrompt, normalizedPrompt)) {
+          if (await isVideoIdClaimed(payload.projectId, opened.mediaId)) {
+            everyCandidateDisproved = false;
+            continue;
+          }
+          if (!(pipelined ? exactEditorPromptMatches : editorPromptMatches)(opened.editorPrompt, normalizedPrompt)) {
             if (!opened.editorPrompt) everyCandidateDisproved = false;
             // Not our clip — keep looking instead of claiming someone else's media.
             submitTrace.push(`v${index}:mismatch:${opened.editorPrompt.slice(0, 24)}`);
@@ -3339,7 +3439,7 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
           matched = opened;
           break;
         }
-        if (!matched && everyCandidateDisproved) {
+        if (!matched && everyCandidateDisproved && !pipelined) {
           // Every candidate was explainable as an older clip. Surface that honestly
           // rather than returning a mediaId we cannot attribute to this node.
           throw bridgeError(
@@ -3355,12 +3455,24 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
           continue;
         }
         const previewUrl = await resolveRedirectSafe(matched.mediaId, 'VIDEO');
+        if (!previewUrl) {
+          submitTrace.push('matched-video-not-playable-yet');
+          continue;
+        }
+        await markVideoIdClaimed(payload.projectId, matched.mediaId);
         // The tile only appears once Flow finishes rendering the clip, its id was
         // recovered from the /edit/<mediaId> URL, and its prompt matches, so
         // completion is proven on the real UI. Mark it so the video executor skips
         // the dead bearer poll.
         emitGenerateProgress(requestId, matched.mediaId);
         return completeGenerate(requestId, { mediaId: matched.mediaId, type: 'VIDEO', projectId: payload.projectId, previewUrl, completedViaUi: true }, payload.projectId);
+        } finally {
+          if (pipelined) {
+            if (attached) await chrome.debugger.detach(target).catch(() => {});
+            attached = false;
+            lease.yield();
+          }
+        }
       }
       throw bridgeError(
         'TIMEOUT',
@@ -3369,7 +3481,7 @@ async function handleGenerate(payload: GeneratePayload, requestId?: string): Pro
         true,
       );
     } finally {
-      try { await chrome.debugger.detach(target); } catch { /* best-effort */ }
+      if (attached) try { await chrome.debugger.detach(target); } catch { /* best-effort */ }
     }
   }
 

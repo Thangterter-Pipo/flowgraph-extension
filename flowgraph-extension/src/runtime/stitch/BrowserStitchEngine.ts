@@ -151,8 +151,10 @@ export async function stitchInBrowser(sources: string[], config: Record<string, 
     // Throw on tainted canvas before recording anything.
     ctx.getImageData(0, 0, 1, 1);
     const started = new Set<number>([0]);
+    const videoPlayErrors: Record<number, unknown> = {};
+    const progress = videos.map(() => ({ lastTime: -1, lastAdvance: performance.now() }));
     gains[0].gain.value = 1;
-    // Cho video[0] thực sự bắt đầu phát frame đầu tiên trước khi chốt mốc epoch
+    // Cho video[0] thực sự bắt đầu phát frame đầu tiên
     await stitchWait(videos[0].play(), operationSignal);
     await new Promise<void>((resolve) => {
       const checkFirstFrame = () => {
@@ -162,15 +164,20 @@ export async function stitchInBrowser(sources: string[], config: Record<string, 
       checkFirstFrame();
     });
 
-    const epoch = performance.now() - videos[0].currentTime * 1000;
     recorder.start(250);
+    // Cho recorder khởi tạo xong capture stream qua 1 animation frame rồi mới chốt mốc epoch
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    const epoch = performance.now() - videos[0].currentTime * 1000;
+    progress[0].lastTime = videos[0].currentTime;
+    progress[0].lastAdvance = performance.now();
+
     let lastTick = performance.now();
     await stitchWait(new Promise<void>((resolve, reject) => {
-      const tick = async () => {
+      const tick = () => {
         try {
           if (operationSignal.aborted) throw new RuntimeError('CANCELLED', 'Stitch was cancelled.');
           const now = performance.now();
-          if (document.hidden || now - lastTick > 300 || audio!.state !== 'running') {
+          if (document.hidden || now - lastTick > 350 || audio!.state !== 'running') {
             throw new RuntimeError('MEDIA_FAILED', 'Stitch was throttled or audio suspended; keep the tab active and retry.');
           }
           if (recordingError || recordingStopped) throw new RuntimeError('MEDIA_FAILED', 'Stitch recorder stopped unexpectedly.');
@@ -179,7 +186,10 @@ export async function stitchInBrowser(sources: string[], config: Record<string, 
           for (let i = 0; i < videos.length; i++) {
             if (time >= timeline.starts[i] && !started.has(i)) {
               started.add(i);
-              await stitchWait(videos[i].play(), operationSignal, 2_000);
+              progress[i].lastAdvance = now;
+              void videos[i].play().catch((err) => {
+                if (!operationSignal.aborted) videoPlayErrors[i] = err;
+              });
             }
           }
           ctx.globalAlpha = 1;
@@ -189,21 +199,38 @@ export async function stitchInBrowser(sources: string[], config: Record<string, 
             const localTime = time - timeline.starts[i];
             const active = localTime >= 0 && localTime < video.duration;
             if (!active) { gains[i].gain.value = 0; if (localTime >= video.duration) video.pause(); return; }
-            if (video.error || video.readyState < 2 || Math.abs(video.currentTime - localTime) > 0.25) {
+            if (video.error || videoPlayErrors[i]) {
+              throw new RuntimeError('MEDIA_FAILED', `Stitch source ${i + 1} decode error.`);
+            }
+            if (video.readyState < 2 && localTime > 1.2) {
+              throw new RuntimeError('MEDIA_FAILED', `Stitch source ${i + 1} not ready after startup.`);
+            }
+            // Dung sai drift: 1.0s trong 1.5s đầu khi decoder khởi động, 0.75s khi đã phát ổn định
+            const maxDrift = localTime < 1.5 ? 1.0 : 0.75;
+            const drift = Math.abs(video.currentTime - localTime);
+            if (drift > maxDrift) {
               throw new RuntimeError('MEDIA_FAILED', `Stitch source ${i + 1} stalled or drifted (expected ${localTime.toFixed(3)}s, decoded ${video.currentTime.toFixed(3)}s, ready ${video.readyState}, audio ${audio!.currentTime.toFixed(3)}s, paused ${video.paused}).`);
             }
+            // Phát hiện đóng băng playback thực tế (không nhích frame > 2.5s)
+            if (Math.abs(video.currentTime - progress[i].lastTime) > 0.001) {
+              progress[i].lastTime = video.currentTime;
+              progress[i].lastAdvance = now;
+            } else if (now - progress[i].lastAdvance > 2500 && !video.paused) {
+              throw new RuntimeError('MEDIA_FAILED', `Stitch source ${i + 1} playback frozen at ${video.currentTime.toFixed(3)}s.`);
+            }
+
             const fadeIn = i > 0 && timeline.overlap ? Math.min(1, localTime / timeline.overlap) : 1;
             const fadeOut = i < videos.length - 1 && timeline.overlap ? Math.min(1, (video.duration - localTime) / timeline.overlap) : 1;
             gains[i].gain.setValueAtTime(Math.max(0, Math.min(fadeIn, fadeOut)), audio!.currentTime);
             draw(video, activeCount++ === 0 ? 1 : fadeIn);
           });
           if (time >= timeline.duration) {
-            if (videos.some((video) => video.currentTime < video.duration - 0.25)) throw new RuntimeError('MEDIA_FAILED', 'Stitch did not reach every clip ending.');
+            if (videos.some((video) => video.currentTime < video.duration - 0.5)) throw new RuntimeError('MEDIA_FAILED', 'Stitch did not reach every clip ending.');
             resolve();
-          } else frame = requestAnimationFrame(() => { void tick(); });
+          } else frame = requestAnimationFrame(() => { tick(); });
         } catch (error) { reject(error); }
       };
-      frame = requestAnimationFrame(() => { void tick(); });
+      frame = requestAnimationFrame(() => { tick(); });
     }), operationSignal, timeline.duration * 1000 + 10_000);
     recorder.stop();
     const blob = await stitchWait(finalizeWebmDuration(await stitchWait(recorded, operationSignal), timeline.duration), operationSignal);

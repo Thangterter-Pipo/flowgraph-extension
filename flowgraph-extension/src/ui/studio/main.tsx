@@ -145,6 +145,7 @@ import {
   aspectRatioOptions,
   deriveRegistryConfig,
   modelFamilyOptions,
+  type ServiceTier,
 } from './flowModelRegistry';
 import { inputPort, outputPort, portTypesCompatible, portsForKind } from './ports';
 import { useStudioConnection, type ActiveProjectState, computeRunBlockReason, type RunBlockReason } from './useStudioConnection';
@@ -466,17 +467,16 @@ function storedEntitlementServiceTier(): string | undefined {
 }
 
 function applyStoredEntitlement(nodes: FlowNode[]): FlowNode[] {
-  const serviceTier = storedEntitlementServiceTier();
-  if (!serviceTier) return nodes;
+  const serviceTier = storedEntitlementServiceTier() ?? 'SERVICE_TIER_INTERMEDIATE';
   return nodes.map((node) => {
-    if (!node.data.config.serviceTier || node.data.config.serviceTier === serviceTier) return node;
+    const effectiveTier = (node.data.config?.serviceTier as ServiceTier | undefined) || serviceTier;
     return {
       ...node,
       data: {
         ...node.data,
         config: deriveRegistryConfig(node.data.kind, {
-          ...node.data.config,
-          serviceTier,
+          ...(node.data.config || {}),
+          serviceTier: effectiveTier,
         }),
       },
     };
@@ -1503,8 +1503,8 @@ function Studio() {
     window.setTimeout(() => reactFlow?.fitView({ padding: .18, duration: 350 }), 0);
   }, [nodes, edges, pushHistory, reactFlow, setEdges, setNodes, runStatus]);
 
-  const validate = useCallback(() => {
-    const specs = nodes.map((node) => {
+  const validate = useCallback((nodesToValidate: FlowNode[] = nodes) => {
+    const specs = nodesToValidate.map((node) => {
       const portSpec = portsForKind(node.data.kind);
       return {
         id: node.id,
@@ -1786,6 +1786,7 @@ function Studio() {
           initialOutputs,
           initialCompleted,
           concurrency: qualityMode === 'DRAFT' ? 4 : 1,
+          flowUiPipeline: settings.flowUiPipeline === true,
           transportPreference: forceTransport,
           qualityMode,
         },
@@ -1817,7 +1818,7 @@ function Studio() {
     } finally {
       runStartingRef.current = false;
     }
-  }, [nodes, edges, runStatus, connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, connection, updateStatus, applyResult, applyError, runtime, setNodes, setRunStatus, activeWorkflowId, workflowName, validate, settings.skipExperimentalPrompt, settings.enableDebugLogs]);
+  }, [nodes, edges, runStatus, connection.isCanvasUnlocked, connection.activeProject, connection.account, connection.flow, connection, updateStatus, applyResult, applyError, runtime, setNodes, setRunStatus, activeWorkflowId, workflowName, validate, settings.skipExperimentalPrompt, settings.enableDebugLogs, settings.flowUiPipeline]);
 
   const stopWorkflow = () => {
     cancelRef.current = true;
@@ -2613,10 +2614,15 @@ function Studio() {
   const applyTemplate = useCallback((template: WorkflowTemplate) => {
     if (isSemanticMutationLocked(runStatus)) return;
     pushHistory(nodes, edges);
+    const serviceTier = storedEntitlementServiceTier() ?? 'SERVICE_TIER_INTERMEDIATE';
     const freshNodes = cloneFlowNodes(template.nodes).map((node) => ({
       ...node,
       data: {
         ...node.data,
+        config: deriveRegistryConfig(node.data.kind, {
+          ...(node.data.config || {}),
+          serviceTier: node.data.config?.serviceTier || serviceTier,
+        }),
         status: node.data.result ? ('success' as const) : (node.data.status || ('idle' as const)),
         result: node.data.result,
         cacheHit: false,
@@ -2852,7 +2858,29 @@ function Studio() {
 
         <section className="studio-center">
           <ProjectGateOverlay connection={connection}>
-            <div className="canvas-wrap" onDrop={onDrop} onDragOver={onDragOver}>
+            <div className="canvas-wrap copilot-workspace" data-copilot-dock="bottom">
+              <div className="copilot-canvas-stage" onDrop={onDrop} onDragOver={onDragOver}>
+                <div className="copilot-canvas-actions" aria-label="Công cụ canvas">
+                  <button className="fg-btn" onClick={handleUndo} disabled={history.length === 0 || runStatus === 'running'} title="Hoàn tác"><Undo2 size={15} /></button>
+                  <button className="fg-btn" onClick={handleRedo} disabled={redoStack.length === 0 || runStatus === 'running'} title="Làm lại"><Redo2 size={15} /></button>
+                  <button className="fg-btn" onClick={handleAutoLayout} disabled={!connection.isCanvasUnlocked || isSemanticMutationLocked(runStatus)} title="Sắp xếp"><LayoutGrid size={15} /></button>
+                  <button className="fg-btn" onClick={() => fitWorkflowView(300)} title="Vừa khung"><Maximize2 size={15} /></button>
+                  <details>
+                    <summary aria-label="Thêm công cụ">⋯</summary>
+                    <button
+                      className="fg-btn fg-btn-danger"
+                      disabled={isSemanticMutationLocked(runStatus) || (nodes.length === 0 && edges.length === 0)}
+                      onClick={() => {
+                        const confirmed = window.confirm(
+                          `Làm trống canvas?\n\nThao tác này sẽ xóa ${nodes.length} node và ${edges.length} đường nối. Bạn có thể hoàn tác bằng Ctrl+Z.`,
+                        );
+                        if (confirmed) resetWorkflow();
+                      }}
+                    >
+                      Làm trống canvas
+                    </button>
+                  </details>
+                </div>
               {/* Danh sách Node HUD nổi trực tiếp trên nền Canvas (Không viền, không box, chỉ Icon + Chữ) */}
               {sidebarOpen && activeDockTab === 'media' && (
                 <MediaLibrary
@@ -2883,34 +2911,6 @@ function Studio() {
                 />
               )}
 
-              <div className="canvas-toolbar">
-                    <button
-                      className="fg-btn fg-icon-btn"
-                      onClick={handleUndo}
-                      disabled={history.length === 0 || runStatus === 'running'}
-                      title="Hoàn tác (Ctrl+Z)"
-                    >
-                      <Undo2 size={13} />
-                    </button>
-                    <button
-                      className="fg-btn fg-icon-btn"
-                      onClick={handleRedo}
-                      disabled={redoStack.length === 0 || runStatus === 'running'}
-                      title="Làm lại (Ctrl+Y / Ctrl+Shift+Z)"
-                    >
-                      <Redo2 size={13} />
-                    </button>
-                    <button
-                      className="fg-btn fg-icon-btn"
-                      onClick={handleAutoLayout}
-                      disabled={!connection.isCanvasUnlocked || nodes.length === 0 || runStatus === 'running'}
-                      title="Tự động sắp xếp các Node thẳng hàng (Auto Layout)"
-                    >
-                      <LayoutGrid size={13} />
-                    </button>
-                    <button className="fg-btn fg-icon-btn" onClick={() => fitWorkflowView(300)} title="Căn chỉnh khung nhìn"><Maximize2 size={13} /></button>
-                    <button className="fg-btn" disabled={isSemanticMutationLocked(runStatus)} onClick={resetWorkflow}><RotateCcw size={12} /> Reset</button>
-                  </div>
                   <ReactFlow<FlowNode, FlowEdge>
                     nodes={nodes}
                     edges={computedEdges}
@@ -2943,11 +2943,6 @@ function Studio() {
                       color="var(--canvas-dot)"
                     />
                   </ReactFlow>
-                  <FloatingCopilotDock
-                    onApplyTemplate={applyTemplate}
-                    onFitView={() => fitWorkflowView(350)}
-                    isCanvasLocked={!connection.isCanvasUnlocked || isSemanticMutationLocked(runStatus)}
-                  />
                   {nodes.length === 0 && (
                     <div className="canvas-empty-state" style={{
                       position: 'absolute',
@@ -2965,6 +2960,36 @@ function Studio() {
                       </p>
                     </div>
                   )}
+              </div>
+                  <FloatingCopilotDock
+                    nodes={nodes}
+                    edges={edges}
+                    setNodes={setNodes}
+                    setEdges={setEdges}
+                    activeProject={connection.activeProject}
+                    onApplyTemplate={applyTemplate}
+                    onFitView={() => fitWorkflowView(350)}
+                    isCanvasLocked={!connection.isCanvasUnlocked || isSemanticMutationLocked(runStatus)}
+                    onRunWorkflow={async (mode) => {
+                      await runWorkflow(false, true, true, mode || 'continue');
+                    }}
+                    onCancelRun={stopWorkflow}
+                    runStatus={runStatus}
+                    runFeedback={runFeedback}
+                    runError={runError}
+                    onUndo={handleUndo}
+                    canUndo={history.length > 0 && runStatus !== 'running'}
+                    onRedo={handleRedo}
+                    canRedo={redoStack.length > 0 && runStatus !== 'running'}
+                    onAutoLayout={handleAutoLayout}
+                    onReset={resetWorkflow}
+                    onBeforeGraphMutation={() => {
+                      if (nodes.length > 0 || edges.length > 0) {
+                        pushHistory(nodes, edges);
+                      }
+                    }}
+                  />
+                  <div className="copilot-dock-drop-preview" aria-hidden="true" />
                 </div>
               </ProjectGateOverlay>
             </section>
