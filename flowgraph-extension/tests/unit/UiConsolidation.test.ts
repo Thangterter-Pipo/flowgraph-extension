@@ -22,8 +22,12 @@ describe('UI consolidation P0', () => {
   it('does not import unused Share2 and does not fake ⌘K', () => {
     expect(mainSrc).not.toMatch(/\bShare2\b/);
     expect(mainSrc).not.toMatch(/search-shortcut-badge/);
-    expect(mainSrc).toMatch(/metaKey[\s\S]{0,80}key === ['"]k['"]/);
+    // ⌘K shortcut may live in main.tsx or extracted NodeLibrary.tsx
+    const nodeLibSrc = readFileSync(resolve(studio, 'NodeLibrary.tsx'), 'utf8');
+    const combinedSrc = mainSrc + nodeLibSrc;
+    expect(combinedSrc).toMatch(/metaKey[\s\S]{0,80}key === ['"]k['"]/);
   });
+
 
   it('topbar theme toggle preserves the selected family and flips Light / Dark', () => {
     expect(getPairedTheme('modern-minimal-light')).toBe('modern-minimal-dark');

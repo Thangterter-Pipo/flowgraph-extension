@@ -1,0 +1,66 @@
+name: Release Package
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Package & Release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: flowgraph-extension
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: flowgraph-extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test -- --run
+
+      - name: Package extension (.zip)
+        run: npm run package
+
+      - name: Find packaged zip
+        id: find_zip
+        run: |
+          ZIP=$(ls packages/*.zip | head -1)
+          echo "zip_path=$ZIP" >> $GITHUB_OUTPUT
+          echo "zip_name=$(basename $ZIP)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: FlowGraph Extension ${{ github.ref_name }}
+          body: |
+            ## FlowGraph Extension ${{ github.ref_name }}
+
+            ### Install
+            1. Download `flowgraph-extension-*.zip` below
+            2. Extract to a folder
+            3. Open Chrome → `chrome://extensions` → Enable Developer Mode
+            4. Click "Load unpacked" → Select the extracted folder
+
+            ### What's new
+            See [CHANGELOG.md](CHANGELOG.md) for details.
+          files: flowgraph-extension/${{ steps.find_zip.outputs.zip_path }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}

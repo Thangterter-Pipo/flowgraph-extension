@@ -89,11 +89,16 @@ describe('fail-closed scalar generation settings', () => {
 
   it('gives the content settings-menu retry loop enough time to return a real outcome', () => {
     const source = workerSource();
-    const match = source.match(/const SYNC_WRITE_TIMEOUT_MS = ([\d_]+);/);
+    // SYNC_WRITE_TIMEOUT_MS may be defined inline in service-worker.ts or
+    // extracted to swConstants.ts (refactor-safe: check both).
+    const constSrc = readFileSync(resolve(__dirname, '../../src/background/swConstants.ts'), 'utf8');
+    const combined = source + constSrc;
+    const match = combined.match(/(?:export )?const SYNC_WRITE_TIMEOUT_MS = ([\d_]+);/);
     expect(match).not.toBeNull();
     const timeoutMs = Number(match![1].replaceAll('_', ''));
     expect(timeoutMs).toBeGreaterThanOrEqual(8_000);
   });
+
 
   it('opens composer settings with one click and reacquires remounted triggers', () => {
     const source = readFileSync(resolve(__dirname, '../../public/content/flow-content-script.js'), 'utf8');
